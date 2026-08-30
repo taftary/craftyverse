@@ -14,6 +14,7 @@ The `Node` class represents a geometric structure composed of a center point, di
 - **Topology**
   - `children` — Fixed triplet of node links (`[nodeI, nodeJ, nodeK]`). Each slot is a bidirectional connection to an adjacent node: `children[0]` is the link in direction I, `children[1]` in direction J, `children[2]` in direction K.
 - **Identity**
+  - `name` — String uniquely identifying the node. This value must be unique across all nodes.
   - `level` — Integer representing the split depth of the node (defaults to 0). Minimum is 0 (root node); there is no maximum.
 
 ### Pseudocode Representation
@@ -31,6 +32,7 @@ class Node {
   Node[3] children               // [nodeI, nodeJ, nodeK] — bidirectional links
 
   // --- Identity ---
+  String name                    // unique identifier for the node
   Integer level = 0              // split depth; >= 0, no upper bound
 }
 ```
@@ -53,7 +55,7 @@ The choice between NormalDirection and RevertedDirection depends on the node's `
 
 ### Methods
 
-- `new(direction_of_node, center, origin, baseLength)` — Creates a node and initializes its geometry (see Constructor below).
+- `new(direction_of_node, center, origin, baseLength, name)` — Creates a node and initializes its geometry (see Constructor below).
 - `split()` — Splits the current node into four new nodes according to the geometric construction, direction set, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
 
 ### Constructor
@@ -61,7 +63,7 @@ The choice between NormalDirection and RevertedDirection depends on the node's `
 **Signature**
 
 ```
-new(direction_of_node: DirectionSet, center: Point, origin: Vector, baseLength: Float)
+new(direction_of_node: DirectionSet, center: Point, origin: Vector, baseLength: Float, name: String)
 ```
 
 **Parameters**
@@ -70,10 +72,12 @@ new(direction_of_node: DirectionSet, center: Point, origin: Vector, baseLength: 
 - `center` — Center point of the node.
 - `origin` — Position vector of the origin, used to orient the node.
 - `baseLength` — Length of the base edge BC of the node's triangle.
+- `name` — Unique name identifying the node. This value must be unique across all nodes.
 
 **Initialization**
 
 - Stores `direction_of_node` and `center`.
+- Stores the unique `name`.
 - Computes `direction_to_origin = origin - center`.
 - Builds the node's triangle from `center` and `baseLength` (BC), then computes `directions` (`[i, j, k]`) and `uvs` (`[A, B, C]`) from that triangle and the direction set.
 - `children` starts empty (no links).
