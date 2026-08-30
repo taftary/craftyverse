@@ -1,3 +1,8 @@
+mod node;
+
+use node::Node;
+
 fn main() {
-    println!("Hello, world!");
+    let node = Node::new("root");
+    println!("Created node: {}", node.name);
 }
