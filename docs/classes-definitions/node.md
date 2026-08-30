@@ -39,17 +39,16 @@ class Node {
 
 ### Direction Sets
 
-The `direction_of_node` attribute determines how the three perpendicular directions (I, J, K) are computed relative to the triangle edges:
+Direction vectors always follow one uniform rule, computed from the node's **own** UV triplet:
 
-- **NormalDirection:**
-  - I = perpendicular to AB, pointing from the center toward edge AB
-  - J = perpendicular to BC, pointing from the center toward edge BC
-  - K = perpendicular to CA, pointing from the center toward edge CA
+- I = perpendicular to AB, pointing from the center toward edge AB
+- J = perpendicular to BC, pointing from the center toward edge BC
+- K = perpendicular to CA, pointing from the center toward edge CA
 
-- **RevertedDirection:**
-  - K = perpendicular to AB, pointing from the center toward edge AB
-  - J = perpendicular to BC, pointing from the center toward edge BC
-  - I = perpendicular to CA, pointing from the center toward edge CA
+The `direction_of_node` attribute describes the **orientation (winding) of the UV triplet**:
+
+- **NormalDirection:** A on top, B bottom-right, C bottom-left — I points up-right, J straight down, K up-left.
+- **RevertedDirection:** mirror image of NormalDirection (B and C swapped: B bottom-left, C bottom-right) — I points up-left, J straight down, K up-right.
 
 The choice between NormalDirection and RevertedDirection depends on the node's `direction_to_origin` value.
 
@@ -79,7 +78,7 @@ new(direction_of_node: DirectionSet, center: Point, origin: Vector, baseLength: 
 - Stores `direction_of_node` and `center`.
 - Stores the unique `name`.
 - Computes `direction_to_origin = origin - center`.
-- Builds the node's triangle from `center` and `baseLength` (BC), then computes `directions` (`[i, j, k]`) and `uvs` (`[A, B, C]`) from that triangle and the direction set.
+- Builds the node's triangle from `center` and `baseLength` (BC) as an equilateral triangle whose centroid is `center`: A on top, base BC horizontal. NormalDirection places B bottom-right and C bottom-left; RevertedDirection mirrors the triangle (B bottom-left, C bottom-right). `uvs` (`[A, B, C]`) and `directions` (`[i, j, k]`) are then computed from that triangle.
 - `children` starts empty (no links).
 - `level` defaults to 0.
 
@@ -110,19 +109,19 @@ Each new node gets a center computed from its UV triplet, exactly like the paren
 
 3. UV Subdivision
 
-Each new node receives its UV triplet:
+Each new node receives its UV triplet. In each corner node the corner vertex keeps its letter and the midpoint toward a neighbor takes that neighbor's letter, so corner nodes keep the parent's orientation. The center node receives `[uvBC, uvAB, uvCA]` — the mirrored orientation:
 
 - NodeI (corner uvA) — `[uvA, uvAB, uvCA]`
-- NodeJ (corner uvB) — `[uvB, uvBC, uvAB]`
-- NodeK (corner uvC) — `[uvC, uvCA, uvBC]`
-- NodeCenter (middle) — `[uvAB, uvBC, uvCA]`
+- NodeJ (corner uvB) — `[uvAB, uvB, uvBC]`
+- NodeK (corner uvC) — `[uvCA, uvBC, uvC]`
+- NodeCenter (middle) — `[uvBC, uvAB, uvCA]`
 
 #### Direction Set Rules
 
 1. Direction Set Inheritance
 
-- Corner nodes (NodeI, NodeJ, NodeK) inherit the same direction set (NormalDirection or RevertedDirection) as the parent.
-- The center node always flips direction set:
+- Corner nodes (NodeI, NodeJ, NodeK) inherit the same direction set (NormalDirection or RevertedDirection) as the parent. Their UV assignment keeps the parent's orientation, so their direction vectors have the same global orientation as the parent's.
+- The center node always flips direction set (its UV triplet `[uvBC, uvAB, uvCA]` has the mirrored orientation):
   - If parent uses NormalDirection, center uses RevertedDirection
   - If parent uses RevertedDirection, center uses NormalDirection
 
@@ -131,16 +130,10 @@ Each new node receives its UV triplet:
 For each new node:
 
 - Compute vector V = center → origin and store it as the node's `direction_to_origin`.
-- Apply direction set rules:
-  - **NormalDirection set:**
-    - I ⊥ AB
-    - J ⊥ BC
-    - K ⊥ CA
-  - **RevertedDirection set:**
-    - K ⊥ AB
-    - J ⊥ BC
-    - I ⊥ CA
-- Perpendiculars must be computed from the new node's own UV triplet, not the parent.
+- Apply the uniform direction rule to the new node's **own** UV triplet (never the parent's):
+  - I ⊥ AB, pointing from the center toward edge AB
+  - J ⊥ BC, pointing from the center toward edge BC
+  - K ⊥ CA, pointing from the center toward edge CA
 
 #### Topology Rules
 
@@ -167,6 +160,7 @@ Each new node must store:
 - New `direction_to_origin`
 - New directions
 - Direction set type (NormalDirection/RevertedDirection)
+- `name` — derived from the parent's name with a suffix to stay unique: `<parent>.I`, `<parent>.J`, `<parent>.K` for the corner nodes, `<parent>.C` for the center node (e.g. splitting `root` yields `root.I`, `root.J`, `root.K`, `root.C`).
 - `level` — set to the parent's previous level + 1 (i.e. new_node.level = old_level + 1). The "old level" is the node's level before calling split().
 
 #### Full Method Specification

@@ -1,0 +1,5 @@
+# vulkano's runtime SPIR-V parser (`Spirv::new`, used by every `ShaderModule::new`)
+# needs more stack than the Windows default 1 MB main-thread stack reserve
+# (measured: >1 MB even for a trivial shader). Raise the reserve to 16 MB.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-args=/STACK:16777216"]
