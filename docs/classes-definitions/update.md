@@ -218,3 +218,34 @@ Node split()
 9. Create nodes and set `node.level = old_level + 1`.
 10. Establish internal interconnections (`NodeCenter` ↔ `NodeI/J/K`).
 11. Return `NodeCenter`.
+
+
+## Summary of the update :
+
+
+Here is a summary of all modifications made to the `Node` class specification across our edits:
+
+* **Orientation Vector (`direction_of_node`)**
+* Replaced the directional enum (`NormalDirection` / `RevertedDirection`) with a `Vector2` pointing from base BC toward apex point A (with base BC perpendicular to it).
+* Updated `split()` propagation: corner nodes retain `parent.direction_of_node`, while the center node flips direction (`-parent.direction_of_node`).
+
+
+* **Type & Terminology Standardizations**
+* Replaced all UV and vertex terminology (`UV`, `uvs`, vertex, vertices) with `Point2` and `points`.
+* Updated spatial data types from generic `Vector` and `Point` to explicit `Vector2` and `Point2`.
+
+
+* **New Attribute (`height`)**
+* Added `height` (Float) to represent the perpendicular distance from base BC to apex point A.
+
+
+* **Subdivision Dimension Rules in `split()**`
+* Explicitly mandated that each split halves both geometric dimensions for all 4 newly created child nodes:
+* `new_baseLength = parent.baseLength / 2.0`
+* `new_height = parent.height / 2.0`
+
+
+
+
+* **Class Structure & Constructor Updates**
+* Updated the class property list, pseudocode definition, and `new(...)` constructor signature to explicitly include both `baseLength` and `height`.
