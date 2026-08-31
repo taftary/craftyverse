@@ -15,7 +15,9 @@ run(scenarios: Vec<Vec<NodeRef>>)
 ```
 
 `scenarios` are the scenes to display; number keys **1..N** switch between
-them. The function returns when the window closes.
+them. Left-clicking a checkbox of the display-options panel (top-left) toggles
+the display of the matching node attribute. The function returns when the
+window closes.
 
 ### Rendering Model
 
@@ -25,17 +27,31 @@ One render pass, three graphics pipelines, drawn in order:
    dashes. Vertex: `pos` + `color`.
 2. **Triangles** (`TriangleList`) — arrowheads and center dots on top of the
    lines. Same shaders and vertex format as lines.
-3. **Text** (`TriangleList`, alpha blending) — glyph quads sampling the
-   `text` module's R8 atlas. Vertex: `pos` + `uv` + `color`.
+3. **Checkbox panel** — the scene's UI geometry, drawn with the same line and
+   triangle pipelines but the pixel-space transform.
+4. **Text** (`TriangleList`, alpha blending) — glyph quads sampling the
+   `text` module's R8 atlas (node labels and checkbox labels).
+   Vertex: `pos` + `uv` + `color`.
 
 - World-space geometry is placed with a `scale`/`offset` **push-constant**
-  transform (`world_to_clip` from `scene`); text uses a second transform
-  (`pixel_to_clip`) so glyphs stay at constant pixel size.
+  transform (`world_to_clip` from `scene`); the checkbox panel and text use a
+  second transform (`pixel_to_clip`) so the UI and glyphs stay at constant
+  pixel size.
 - No depth buffer: draw order provides the layering (links → outlines →
-  arrows → dots → text).
-- Line width is 1.0 (universally supported); arrowheads and dots are real
-  triangles, so the visuals do not depend on wide-line support.
+  arrows → dots → checkbox panel → text).
+- Line width is 1.0 (universally supported); arrowheads, dots and checkbox
+  fills are real triangles, so the visuals do not depend on wide-line support.
 - Background is cleared to white, matching the former SVG output.
+
+### Interaction
+
+- **Number keys 1..N** — switch scenario.
+- **Left click** — the cursor position (physical pixels, tracked from
+  `CursorMoved` events) is hit-tested against the scene's `Checkbox`
+  rectangles; on a hit the matching `DisplayOptions` flag is toggled and the
+  scene is rebuilt.
+- **Resize** — swapchain and framebuffers are recreated, and the scene is
+  rebuilt because the view fit and the text anchors depend on the viewport.
 
 ### Initialization Flow
 
@@ -55,12 +71,11 @@ One render pass, three graphics pipelines, drawn in order:
 ### Per-Frame Flow
 
 - Acquire swapchain image, record one command buffer (viewport set
-  dynamically, three draw batches), submit joined with the previous frame's
+  dynamically, five draw batches), submit joined with the previous frame's
   fence, present. Two frames in flight via the standard
   `GpuFuture` join/execute/present/signal-fence flow.
-- On resize: swapchain and framebuffers are recreated, and the scene is
-  rebuilt because the view fit and the text anchors depend on the viewport.
-- On scene key: the scene mesh and all vertex buffers are regenerated.
+- On resize, scene key or checkbox toggle: the scene mesh and all vertex
+  buffers are regenerated.
 - The loop is event-driven (`ControlFlow::Wait` + `request_redraw`), so the
   viewer is idle when nothing changes.
 
@@ -80,9 +95,10 @@ One render pass, three graphics pipelines, drawn in order:
 
 ### Structure
 
-- **`Viewer`** — winit `ApplicationHandler`: owns the instance, the scenarios
-  and the current scene index; creates the window in `resumed()`; routes
-  resize, keyboard and redraw events.
+- **`Viewer`** — winit `ApplicationHandler`: owns the instance, the scenarios,
+  the current scene index, the `DisplayOptions` and the cursor position;
+  creates the window in `resumed()`; routes resize, mouse, keyboard and
+  redraw events.
 - **`Renderer`** — owns all Vulkan objects (device, swapchain, pipelines,
-  buffers, descriptor sets) and exposes `set_scene()`, `draw_frame()` and
-  swapchain recreation.
+  buffers, descriptor sets) and the current checkbox hit rectangles; exposes
+  `set_scene()`, `draw_frame()`, `checkbox_at()` and swapchain recreation.

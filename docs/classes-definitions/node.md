@@ -1,32 +1,43 @@
 ## Node Class Definition
 
 ### Overview
-The `Node` class represents a geometric structure composed of a center point, directional vectors, UV coordinates, and recursive child nodes. This design supports hierarchical or fractal-like spatial organization.
+
+The `Node` class represents a geometric structure composed of a center point, directional vectors, points, dimensions (`baseLength` and `height`), and recursive child nodes. This design supports hierarchical or fractal-like spatial organization based on isosceles triangular subdivisions.
 
 ### Structure
 
-- **Geometry**
-  - `center` — Point representing the center of the node.
-  - `direction_to_origin` — Vector from the node center toward the origin.
-  - `directions` — Fixed triplet of directional vectors (`[i, j, k]`).
-  - `uvs` — Fixed triplet of barycentric UV coordinates (`[A, B, C]`) representing the node's triangle corners.
-  - `direction_of_node` — Direction set type for the node (`NormalDirection` or `RevertedDirection`).
-- **Topology**
-  - `children` — Fixed triplet of node links (`[nodeI, nodeJ, nodeK]`). Each slot is a bidirectional connection to an adjacent node: `children[0]` is the link in direction I, `children[1]` in direction J, `children[2]` in direction K.
-- **Identity**
-  - `name` — String uniquely identifying the node. This value must be unique across all nodes.
-  - `level` — Integer representing the split depth of the node (defaults to 0). Minimum is 0 (root node); there is no maximum.
+* **Geometry**
+* `center` — `Point2` representing the center of the node.
+* `direction_to_origin` — `Vector2` from the node center toward the origin.
+* `directions` — Fixed triplet of directional vectors (`[i, j, k]`).
+* `points` — Fixed triplet of `Point2` instances (`[A, B, C]`) representing the node's triangle corner points.
+* `direction_of_node` — `Vector2` defining the orientation of the isosceles triangle (points toward apex point A, with base BC perpendicular to it).
+* `baseLength` — Float representing the length of the base edge BC of the node's triangle.
+* `height` — Float representing the height of the node's isosceles triangle (distance from base BC to apex point A).
+
+
+* **Topology**
+* `children` — Fixed triplet of node links (`[nodeI, nodeJ, nodeK]`). Each slot is a bidirectional connection to an adjacent node: `children[0]` is the link in direction I, `children[1]` in direction J, `children[2]` in direction K.
+
+
+* **Identity**
+* `name` — String uniquely identifying the node. This value must be unique across all nodes.
+* `level` — Integer representing the split depth of the node (defaults to 0). Minimum is 0 (root node); there is no maximum.
+
+
 
 ### Pseudocode Representation
 
 ```
 class Node {
   // --- Geometry ---
-  Point center
-  Vector direction_to_origin
-  Vector[3] directions           // [i, j, k]
-  UV[3] uvs                      // [A, B, C] — barycentric triangle corners
-  DirectionSet direction_of_node // NormalDirection or RevertedDirection
+  Point2 center
+  Vector2 direction_to_origin
+  Vector2[3] directions          // [i, j, k]
+  Point2[3] points               // [A, B, C] — triangle corner points
+  Vector2 direction_of_node      // Vector2 pointing toward apex A, perpendicular to base BC
+  Float baseLength               // length of the base edge BC
+  Float height                   // height of the isosceles triangle (base BC to apex A)
 
   // --- Topology ---
   Node[3] children               // [nodeI, nodeJ, nodeK] — bidirectional links
@@ -35,133 +46,151 @@ class Node {
   String name                    // unique identifier for the node
   Integer level = 0              // split depth; >= 0, no upper bound
 }
+
 ```
 
-### Direction Sets
+### Isosceles Geometry & Direction Rules
 
-Direction vectors always follow one uniform rule, computed from the node's **own** UV triplet:
+The node represents an **isosceles triangle** defined by points `[A, B, C]`, where `BC` forms the base and `A` is the apex point:
 
-- I = perpendicular to AB, pointing from the center toward edge AB
-- J = perpendicular to BC, pointing from the center toward edge BC
-- K = perpendicular to CA, pointing from the center toward edge CA
+* **Orientation Vector (`direction_of_node`):** A `Vector2` pointing from the base `BC` toward point `A`.
+* **Base Alignment & Length:** Base `BC` is strictly perpendicular to `direction_of_node` with length `baseLength`.
+* **Height (`height`):** Perpendicular distance from base `BC` to apex point `A`.
+* **Direction Triplet:** Direction vectors follow a uniform rule computed from the node's **own** points triplet:
+* `I` = perpendicular to AB, pointing from the center toward edge AB
+* `J` = perpendicular to BC, pointing from the center toward edge BC
+* `K` = perpendicular to CA, pointing from the center toward edge CA
 
-The `direction_of_node` attribute describes the **orientation (winding) of the UV triplet**:
 
-- **NormalDirection:** A on top, B bottom-right, C bottom-left — I points up-right, J straight down, K up-left.
-- **RevertedDirection:** mirror image of NormalDirection (B and C swapped: B bottom-left, C bottom-right) — I points up-left, J straight down, K up-right.
-
-The choice between NormalDirection and RevertedDirection depends on the node's `direction_to_origin` value.
 
 ### Methods
 
-- `new(direction_of_node, center, origin, baseLength, name)` — Creates a node and initializes its geometry (see Constructor below).
-- `split()` — Splits the current node into four new nodes according to the geometric construction, direction set, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
+* `new(direction_of_node, center, origin, baseLength, height, name)` — Creates a node and initializes its geometry (see Constructor below).
+* `split()` — Splits the current node into four new nodes according to the geometric construction, direction rules, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
 
 ### Constructor
 
 **Signature**
 
 ```
-new(direction_of_node: DirectionSet, center: Point, origin: Vector, baseLength: Float, name: String)
+new(direction_of_node: Vector2, center: Point2, origin: Vector2, baseLength: Float, height: Float, name: String)
+
 ```
 
 **Parameters**
 
-- `direction_of_node` — Direction set of the node (`NormalDirection` or `RevertedDirection`).
-- `center` — Center point of the node.
-- `origin` — Position vector of the origin, used to orient the node.
-- `baseLength` — Length of the base edge BC of the node's triangle.
-- `name` — Unique name identifying the node. This value must be unique across all nodes.
+* `direction_of_node` — Direction `Vector2` for the isosceles triangle pointing toward point A (perpendicular to base BC).
+* `center` — Center `Point2` of the node.
+* `origin` — Position `Vector2` of the origin, used to orient the node.
+* `baseLength` — Length of the base edge BC of the node's triangle.
+* `height` — Height of the isosceles triangle from base BC to apex point A.
+* `name` — Unique name identifying the node. This value must be unique across all nodes.
 
 **Initialization**
 
-- Stores `direction_of_node` and `center`.
-- Stores the unique `name`.
-- Computes `direction_to_origin = origin - center`.
-- Builds the node's triangle from `center` and `baseLength` (BC) as an equilateral triangle whose centroid is `center`: A on top, base BC horizontal. NormalDirection places B bottom-right and C bottom-left; RevertedDirection mirrors the triangle (B bottom-left, C bottom-right). `uvs` (`[A, B, C]`) and `directions` (`[i, j, k]`) are then computed from that triangle.
-- `children` starts empty (no links).
-- `level` defaults to 0.
+* Stores `direction_of_node` (normalized), `center`, `baseLength`, and `height`.
+* Stores the unique `name`.
+* Computes `direction_to_origin = origin - center`.
+* Builds the isosceles triangle from `center`, `direction_of_node`, `baseLength` (BC), and `height` as an isosceles triangle whose centroid is `center`: base `BC` is perpendicular to `direction_of_node`, and apex point `A` is aligned with `direction_of_node` at distance `height` from base `BC`.
+* Computes `points` (`[A, B, C]`) and `directions` (`[i, j, k]`) from that triangle.
+* `children` starts empty (no links).
+* `level` defaults to 0.
 
 ### split() Method Specification
 
 #### Geometric Construction Rules
 
-All subdivision is computed from the node's UVs — a node stores no triangle vertices other than its UV triplet.
+All subdivision is computed from the node's points — a node stores no triangle points other than its `points` triplet.
 
-1. Compute UV Midpoints
+1. **Compute Point Midpoints**
+Let `pA`, `pB`, `pC` be the node's points triplet:
+* `pAB` = midpoint(pA, pB)
+* `pBC` = midpoint(pB, pC)
+* `pCA` = midpoint(pC, pA)
 
-Let `uvA`, `uvB`, `uvC` be the node's UV triplet:
-
-- uvAB = midpoint(uvA, uvB)
-- uvBC = midpoint(uvB, uvC)
-- uvCA = midpoint(uvC, uvA)
 
 These three midpoints form the center triangle.
+2. **Compute New Centers**
+Each new node gets a center computed from its points triplet:
+* `CenterI` = centroid(pA, pAB, pCA)
+* `CenterJ` = centroid(pB, pBC, pAB)
+* `CenterK` = centroid(pC, pCA, pBC)
+* `CenterMiddle` = centroid(pAB, pBC, pCA)
 
-2. Compute New Centers
 
-Each new node gets a center computed from its UV triplet, exactly like the parent:
+3. **Point Subdivision**
+Each new node receives its points triplet:
+* `NodeI` (corner point pA) — `[pA, pAB, pCA]`
+* `NodeJ` (corner point pB) — `[pAB, pB, pBC]`
+* `NodeK` (corner point pC) — `[pCA, pBC, pC]`
+* `NodeCenter` (middle) — `[pBC, pAB, pCA]`
 
-- CenterI = centroid(uvA, uvAB, uvCA)
-- CenterJ = centroid(uvB, uvBC, uvAB)
-- CenterK = centroid(uvC, uvCA, uvBC)
-- CenterMiddle = centroid(uvAB, uvBC, uvCA)
 
-3. UV Subdivision
+4. **Dimension Halving (Base Length & Height)**
+Each newly generated node receives half the base length and half the height of the parent triangle:
+* `new_baseLength = parent.baseLength / 2.0`
+* `new_height = parent.height / 2.0`
 
-Each new node receives its UV triplet. In each corner node the corner vertex keeps its letter and the midpoint toward a neighbor takes that neighbor's letter, so corner nodes keep the parent's orientation. The center node receives `[uvBC, uvAB, uvCA]` — the mirrored orientation:
 
-- NodeI (corner uvA) — `[uvA, uvAB, uvCA]`
-- NodeJ (corner uvB) — `[uvAB, uvB, uvBC]`
-- NodeK (corner uvC) — `[uvCA, uvBC, uvC]`
-- NodeCenter (middle) — `[uvBC, uvAB, uvCA]`
 
-#### Direction Set Rules
+#### Direction & Vector Propagation Rules
 
-1. Direction Set Inheritance
+1. **Node Direction Propagation (`direction_of_node`)**
+* Corner nodes (`NodeI`, `NodeJ`, `NodeK`) preserve the parent's pointing direction:
+* `NodeI.direction_of_node = parent.direction_of_node`
+* `NodeJ.direction_of_node = parent.direction_of_node`
+* `NodeK.direction_of_node = parent.direction_of_node`
 
-- Corner nodes (NodeI, NodeJ, NodeK) inherit the same direction set (NormalDirection or RevertedDirection) as the parent. Their UV assignment keeps the parent's orientation, so their direction vectors have the same global orientation as the parent's.
-- The center node always flips direction set (its UV triplet `[uvBC, uvAB, uvCA]` has the mirrored orientation):
-  - If parent uses NormalDirection, center uses RevertedDirection
-  - If parent uses RevertedDirection, center uses NormalDirection
 
-2. Direction Vector Recalculation
+* The center node (`NodeCenter`) is inverted relative to the parent triangle, so its pointing vector is flipped:
+* `NodeCenter.direction_of_node = -parent.direction_of_node`
 
+
+
+
+2. **Direction Vector Recalculation**
 For each new node:
+* Compute vector `V = center → origin` and store it as the node's `direction_to_origin`.
+* Apply the uniform direction rule to the new node's **own** points triplet:
+* `I` ⊥ AB, pointing from the center toward edge AB
+* `J` ⊥ BC, pointing from the center toward edge BC
+* `K` ⊥ CA, pointing from the center toward edge CA
 
-- Compute vector V = center → origin and store it as the node's `direction_to_origin`.
-- Apply the uniform direction rule to the new node's **own** UV triplet (never the parent's):
-  - I ⊥ AB, pointing from the center toward edge AB
-  - J ⊥ BC, pointing from the center toward edge BC
-  - K ⊥ CA, pointing from the center toward edge CA
+
+
+
 
 #### Topology Rules
 
-1. Internal Node Interconnection
+1. **Internal Node Interconnection**
+* `split()` produces exactly 4 nodes: `NodeCenter` and the corner nodes `NodeI`, `NodeJ`, `NodeK`.
+* Only `NodeCenter` is connected to the corner nodes through bidirectional `children` links:
+* `NodeCenter.children[0] = NodeI` and reciprocally `NodeI.children[2] = NodeCenter`
+* `NodeCenter.children[1] = NodeJ` and reciprocally `NodeJ.children[1] = NodeCenter`
+* `NodeCenter.children[2] = NodeK` and reciprocally `NodeK.children[0] = NodeCenter`
 
-- split() produces exactly 4 nodes: NodeCenter and the corner nodes NodeI, NodeJ, NodeK. Split does not recursively generate children.
-- Only NodeCenter is connected to the corner nodes, through bidirectional `children` links:
-  - `NodeCenter.children[0] = NodeI` and reciprocally `NodeI.children[2] = NodeCenter`
-  - `NodeCenter.children[1] = NodeJ` and reciprocally `NodeJ.children[1] = NodeCenter`
-  - `NodeCenter.children[2] = NodeK` and reciprocally `NodeK.children[0] = NodeCenter`
-- split() returns NodeCenter. The caller decides how to reattach the corner nodes to neighboring split nodes.
 
-2. No cross-connections
+* `split()` returns `NodeCenter`. The caller decides how to reattach the corner nodes to neighboring split nodes.
 
-- Split does not connect NodeI, NodeJ, NodeK to each other.
-- This avoids interfering with Plan/Planet generation rules.
+
+2. **No Cross-Connections**
+* Split does not connect `NodeI`, `NodeJ`, `NodeK` directly to each other.
+
+
 
 #### Node Identity Rules
 
 Each new node must store:
 
-- New UVs (the subdivided triplet)
-- New center
-- New `direction_to_origin`
-- New directions
-- Direction set type (NormalDirection/RevertedDirection)
-- `name` — derived from the parent's name with a suffix to stay unique: `<parent>.I`, `<parent>.J`, `<parent>.K` for the corner nodes, `<parent>.C` for the center node (e.g. splitting `root` yields `root.I`, `root.J`, `root.K`, `root.C`).
-- `level` — set to the parent's previous level + 1 (i.e. new_node.level = old_level + 1). The "old level" is the node's level before calling split().
+* New points
+* New center
+* New `direction_to_origin`
+* New directions (`[i, j, k]`)
+* Updated `direction_of_node` (`Vector2`)
+* New `baseLength` (`parent.baseLength / 2.0`)
+* New `height` (`parent.height / 2.0`)
+* `name` — derived with suffix: `<parent>.I`, `<parent>.J`, `<parent>.K`, `<parent>.C`
+* `level` — set to `parent.level + 1`
 
 #### Full Method Specification
 
@@ -169,22 +198,54 @@ Each new node must store:
 
 ```
 Node split()
+
 ```
 
 **Returns**
 
-- Center node connected to each corner node (NodeI, NodeJ, NodeK)
+* Center node connected to each corner node (`NodeI`, `NodeJ`, `NodeK`).
 
 **Steps**
 
-- Record old_level = this.level
-- Compute UV midpoints
-- Build the 4 new UV triplets
-- Compute centers
-- Compute V = center → origin and set each new node's `direction_to_origin`
-- Determine direction set for each
-- Compute perpendicular directions
-- Create nodes
-  - For each created node set node.level = old_level + 1
-- Establish internal interconnections (NodeCenter ↔ NodeI/J/K)
-- Return center node
+1. Record `old_level = this.level`.
+2. Compute point midpoints (`pAB`, `pBC`, `pCA`).
+3. Build the 4 new points triplets.
+4. Compute centers (`CenterI`, `CenterJ`, `CenterK`, `CenterMiddle`).
+5. Compute `V = center → origin` and set each new node's `direction_to_origin`.
+6. Propagate `direction_of_node` (corner nodes keep `parent.direction_of_node`; center node gets `-parent.direction_of_node`).
+7. Compute perpendicular directions `[i, j, k]` for all 4 new nodes.
+8. Set `baseLength = parent.baseLength / 2.0` and `height = parent.height / 2.0` for all 4 new nodes.
+9. Create nodes and set `node.level = old_level + 1`.
+10. Establish internal interconnections (`NodeCenter` ↔ `NodeI/J/K`).
+11. Return `NodeCenter`.
+
+
+## Summary of the update :
+
+
+Here is a summary of all modifications made to the `Node` class specification across our edits:
+
+* **Orientation Vector (`direction_of_node`)**
+* Replaced the directional enum (`NormalDirection` / `RevertedDirection`) with a `Vector2` pointing from base BC toward apex point A (with base BC perpendicular to it).
+* Updated `split()` propagation: corner nodes retain `parent.direction_of_node`, while the center node flips direction (`-parent.direction_of_node`).
+
+
+* **Type & Terminology Standardizations**
+* Replaced all UV and vertex terminology (`UV`, `uvs`, vertex, vertices) with `Point2` and `points`.
+* Updated spatial data types from generic `Vector` and `Point` to explicit `Vector2` and `Point2`.
+
+
+* **New Attribute (`height`)**
+* Added `height` (Float) to represent the perpendicular distance from base BC to apex point A.
+
+
+* **Subdivision Dimension Rules in `split()**`
+* Explicitly mandated that each split halves both geometric dimensions for all 4 newly created child nodes:
+* `new_baseLength = parent.baseLength / 2.0`
+* `new_height = parent.height / 2.0`
+
+
+
+
+* **Class Structure & Constructor Updates**
+* Updated the class property list, pseudocode definition, and `new(...)` constructor signature to explicitly include both `baseLength` and `height`.

@@ -31,9 +31,11 @@ A window opens showing the node visualization:
 For an optimized build: `cargo run --release`.
 
 The viewer displays, per node: triangle outline (colored by split level),
-direction arrows (I/J/K in red/green/blue), a dashed arrow toward the origin,
-child links, a center dot, and text labels (name, level, direction set, and
-A/B/C corner letters).
+direction arrows (I/J/K in red/green/blue), a `direction_of_node` arrow
+(purple), a dashed arrow toward the origin, child links, a center dot, and
+text labels (name/level and A/B/C corner letters). A checkbox panel
+(top-left) toggles each of these attributes: left-click a checkbox to turn
+the matching attribute on or off.
 
 ## Development
 

@@ -5,6 +5,10 @@
 //! and text labels — but as plain vertex data: colored line and triangle
 //! lists in a y-down world space, plus pixel-space text runs. The renderer
 //! only uploads the buffers and applies the two clip transforms.
+//!
+//! Each displayed node attribute can be toggled through [`DisplayOptions`];
+//! the scene also carries a pixel-space checkbox panel (geometry plus hit
+//! rectangles) that the viewer uses to flip them at runtime.
 
 use glam::Vec2;
 
@@ -25,19 +29,27 @@ const LEVEL_COLORS: [[f32; 3]; 8] = [
     hex_rgb("#7f7f7f"),
 ];
 
-const CHILD_LINK_COLOR: [f32; 3] = hex_rgb("#9e9e9e");
 const DIRECTION_COLORS: [[f32; 3]; 3] = [
     hex_rgb("#d32f2f"),
     hex_rgb("#388e3c"),
     hex_rgb("#1976d2"),
 ];
+const NODE_DIRECTION_COLOR: [f32; 3] = hex_rgb("#8e24aa");
 const ORIGIN_COLOR: [f32; 3] = hex_rgb("#424242");
 const LABEL_COLOR: [f32; 3] = hex_rgb("#212121");
 const CORNER_LABEL_COLOR: [f32; 3] = hex_rgb("#757575");
+const UI_COLOR: [f32; 3] = hex_rgb("#424242");
 
 const LABEL_SIZE_PX: f32 = 12.0;
 const CORNER_LABEL_SIZE_PX: f32 = 10.0;
 const DOT_SEGMENTS: usize = 16;
+
+/// Checkbox panel metrics (pixels, y-down); top-left anchored.
+const PANEL_PAD: f32 = 8.0;
+const CHECKBOX_SIZE: f32 = 12.0;
+const CHECKBOX_ROW_HEIGHT: f32 = 18.0;
+const CHECKBOX_LABEL_SIZE: f32 = 11.0;
+const CHECKBOX_LABEL_GAP: f32 = 6.0;
 
 /// One hex digit → value; invalid digits map to 0.
 const fn hex_channel(byte: u8) -> u8 {
@@ -62,6 +74,103 @@ const fn hex_rgb(color: &str) -> [f32; 3] {
 /// Level palette, cycled by `level % 8`.
 pub fn level_color(level: u32) -> [f32; 3] {
     LEVEL_COLORS[(level % 8) as usize]
+}
+
+/// One toggleable node attribute of the visualization; each variant has a
+/// checkbox in the display-options panel.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Attribute {
+    ChildLinks,
+    Outline,
+    Directions,
+    DirectionOfNode,
+    Origin,
+    CenterDot,
+    Labels,
+}
+
+/// Which node attributes the visualization displays. Toggled at runtime
+/// through the checkbox panel; everything is on by default.
+#[derive(Clone, Copy, Debug)]
+pub struct DisplayOptions {
+    pub child_links: bool,
+    pub outline: bool,
+    pub directions: bool,
+    pub direction_of_node: bool,
+    pub origin: bool,
+    pub center_dot: bool,
+    pub labels: bool,
+}
+
+impl Default for DisplayOptions {
+    fn default() -> Self {
+        Self {
+            child_links: true,
+            outline: true,
+            directions: true,
+            direction_of_node: true,
+            origin: true,
+            center_dot: true,
+            labels: true,
+        }
+    }
+}
+
+impl DisplayOptions {
+    /// Current display state of one attribute.
+    pub fn value(&self, attribute: Attribute) -> bool {
+        match attribute {
+            Attribute::ChildLinks => self.child_links,
+            Attribute::Outline => self.outline,
+            Attribute::Directions => self.directions,
+            Attribute::DirectionOfNode => self.direction_of_node,
+            Attribute::Origin => self.origin,
+            Attribute::CenterDot => self.center_dot,
+            Attribute::Labels => self.labels,
+        }
+    }
+
+    /// Flips one attribute (checkbox click).
+    pub fn toggle(&mut self, attribute: Attribute) {
+        match attribute {
+            Attribute::ChildLinks => self.child_links = !self.child_links,
+            Attribute::Outline => self.outline = !self.outline,
+            Attribute::Directions => self.directions = !self.directions,
+            Attribute::DirectionOfNode => self.direction_of_node = !self.direction_of_node,
+            Attribute::Origin => self.origin = !self.origin,
+            Attribute::CenterDot => self.center_dot = !self.center_dot,
+            Attribute::Labels => self.labels = !self.labels,
+        }
+    }
+}
+
+/// Checkboxes of the display-options panel, in display order.
+const ATTRIBUTES: [(Attribute, &str); 7] = [
+    (Attribute::ChildLinks, "child links"),
+    (Attribute::Outline, "outline"),
+    (Attribute::Directions, "directions ijk"),
+    (Attribute::DirectionOfNode, "direction of node"),
+    (Attribute::Origin, "origin arrow"),
+    (Attribute::CenterDot, "center dot"),
+    (Attribute::Labels, "labels"),
+];
+
+/// Clickable area of one checkbox (pixel space, y-down). The viewer
+/// hit-tests mouse clicks against these.
+#[derive(Clone, Copy, Debug)]
+pub struct Checkbox {
+    pub attribute: Attribute,
+    /// Top-left and bottom-right corners of the clickable rectangle (checkbox
+    /// box plus label), in pixels.
+    pub min: Vec2,
+    pub max: Vec2,
+}
+
+impl Checkbox {
+    /// Whether `point` (pixels, y-down) is inside the clickable rectangle.
+    pub fn contains(&self, point: Vec2) -> bool {
+        point.cmpge(self.min).all() && point.cmple(self.max).all()
+    }
 }
 
 /// Colored vertex in mapped world space (y-down).
@@ -95,20 +204,30 @@ pub struct SceneMesh {
     pub lines: Vec<Vertex>,
     /// Colored triangle list in mapped world space (arrowheads, center dots).
     pub triangles: Vec<Vertex>,
-    /// Text labels, anchored in pixel space.
+    /// Checkbox panel geometry in pixel space (drawn with `pixel_to_clip`).
+    pub ui_lines: Vec<Vertex>,
+    pub ui_triangles: Vec<Vertex>,
+    /// Text labels, anchored in pixel space (node labels and checkbox labels).
     pub texts: Vec<TextRun>,
+    /// Checkbox hit rectangles, same order as the panel rows.
+    pub checkboxes: Vec<Checkbox>,
     /// Maps `lines`/`triangles` positions to clip space.
     pub world_to_clip: ClipTransform,
-    /// Maps text pixel positions to clip space.
+    /// Maps text and UI pixel positions to clip space.
     pub pixel_to_clip: ClipTransform,
 }
 
-/// Builds the visualization of `nodes` fitted into `viewport` pixels.
-pub fn build_scene(nodes: &[NodeRef], viewport: Vec2) -> SceneMesh {
-    let mut builder = SceneBuilder::default();
+/// Builds the visualization of `nodes` fitted into `viewport` pixels,
+/// displaying the attributes enabled in `options`.
+pub fn build_scene(nodes: &[NodeRef], viewport: Vec2, options: &DisplayOptions) -> SceneMesh {
+    let mut builder = SceneBuilder {
+        options: *options,
+        ..Default::default()
+    };
     for node in nodes {
         builder.add_node(&node.borrow());
     }
+    builder.add_checkbox_panel();
     builder.finish(viewport)
 }
 
@@ -127,6 +246,13 @@ struct SceneBuilder {
     lines: Vec<Vertex>,
     triangles: Vec<Vertex>,
     labels: Vec<LabelRequest>,
+    /// Checkbox panel geometry in pixel space.
+    ui_lines: Vec<Vertex>,
+    ui_triangles: Vec<Vertex>,
+    /// Checkbox labels, already anchored in pixel space.
+    ui_labels: Vec<TextRun>,
+    checkboxes: Vec<Checkbox>,
+    options: DisplayOptions,
     min: Vec2,
     max: Vec2,
     has_content: bool,
@@ -155,6 +281,20 @@ impl SceneBuilder {
         self.lines.push(Vertex { pos: to, color });
     }
 
+    /// Appends a dashed line segment; endpoints are already mapped. The gap is
+    /// half the dash, like the SVG `stroke-dasharray="4 2"`.
+    fn dashed_line(&mut self, from: Vec2, to: Vec2, dash: f32, color: [f32; 3]) {
+        let gap = dash / 2.0;
+        let dir = (to - from).normalize();
+        let total = (to - from).length();
+        let mut d = 0.0;
+        while d < total {
+            let seg_end = (d + dash).min(total);
+            self.line(from + dir * d, from + dir * seg_end, color);
+            d += dash + gap;
+        }
+    }
+
     /// Appends one triangle; corners are already mapped.
     fn triangle(&mut self, a: Vec2, b: Vec2, c: Vec2, color: [f32; 3]) {
         for pos in [a, b, c] {
@@ -162,30 +302,61 @@ impl SceneBuilder {
         }
     }
 
-    /// Appends the visual representation of one node. Never alters the node.
-    fn add_node(&mut self, node: &Node) {
-        self.add_child_links(node);
-        self.add_triangle_outline(node);
-        let arrow_len = arrow_length(node);
-        self.add_direction_arrows(node, arrow_len);
-        self.add_origin_arrow(node, arrow_len);
-        self.add_center_dot(node, arrow_len);
-        self.add_labels(node);
+    /// Appends one pixel-space UI line segment (checkbox panel).
+    fn ui_line(&mut self, from: Vec2, to: Vec2, color: [f32; 3]) {
+        self.ui_lines.push(Vertex { pos: from, color });
+        self.ui_lines.push(Vertex { pos: to, color });
     }
 
-    /// Thin line from the node's center to each non-empty child's center.
-    fn add_child_links(&mut self, node: &Node) {
-        let from = self.map(node.center);
-        for child in node.children.iter().flatten() {
-            let to = self.map(child.borrow().center);
-            self.line(from, to, CHILD_LINK_COLOR);
+    /// Appends one pixel-space UI triangle (checkbox panel).
+    fn ui_triangle(&mut self, a: Vec2, b: Vec2, c: Vec2, color: [f32; 3]) {
+        for pos in [a, b, c] {
+            self.ui_triangles.push(Vertex { pos, color });
         }
     }
 
-    /// Triangle outline through the UV corners A → B → C → A, colored by level.
+    /// Appends the visual representation of one node, limited to the
+    /// attributes enabled in `options`. Never alters the node.
+    fn add_node(&mut self, node: &Node) {
+        let arrow_len = arrow_length(node);
+        if self.options.child_links {
+            self.add_child_links(node, arrow_len);
+        }
+        if self.options.outline {
+            self.add_triangle_outline(node);
+        }
+        if self.options.directions {
+            self.add_direction_arrows(node, arrow_len);
+        }
+        if self.options.direction_of_node {
+            self.add_direction_of_node_arrow(node, arrow_len);
+        }
+        if self.options.origin {
+            self.add_origin_arrow(node, arrow_len);
+        }
+        if self.options.center_dot {
+            self.add_center_dot(node, arrow_len);
+        }
+        if self.options.labels {
+            self.add_labels(node);
+        }
+    }
+
+    /// Medium dashed line from the node's center to each non-empty child's
+    /// center, colored with the direction color of the child slot (I/J/K).
+    fn add_child_links(&mut self, node: &Node, arrow_len: f32) {
+        let from = self.map(node.center);
+        for (index, child) in node.children.iter().enumerate() {
+            let Some(child) = child else { continue };
+            let to = self.map(child.borrow().center);
+            self.dashed_line(from, to, arrow_len / 6.0, DIRECTION_COLORS[index]);
+        }
+    }
+
+    /// Triangle outline through the corner points A → B → C → A, colored by level.
     fn add_triangle_outline(&mut self, node: &Node) {
         let color = level_color(node.level);
-        let [a, b, c] = node.uvs.map(|uv| self.map(uv));
+        let [a, b, c] = node.points.map(|point| self.map(point));
         self.line(a, b, color);
         self.line(b, c, color);
         self.line(c, a, color);
@@ -202,6 +373,20 @@ impl SceneBuilder {
         }
     }
 
+    /// One arrow along `direction_of_node` (base BC → apex A), starting at
+    /// the node's center.
+    fn add_direction_of_node_arrow(&mut self, node: &Node, arrow_len: f32) {
+        let start = self.map(node.center);
+        let end = self.map(node.center + node.direction_of_node * arrow_len);
+        self.line(start, end, NODE_DIRECTION_COLOR);
+        self.add_arrowhead(
+            end,
+            (end - start).normalize(),
+            arrow_len * 0.25,
+            NODE_DIRECTION_COLOR,
+        );
+    }
+
     /// Dashed arrow from the node's center along the normalized
     /// `direction_to_origin`. Skipped when the vector has zero length.
     fn add_origin_arrow(&mut self, node: &Node, arrow_len: f32) {
@@ -211,16 +396,7 @@ impl SceneBuilder {
         let start = self.map(node.center);
         let end = self.map(node.center + node.direction_to_origin.normalize() * arrow_len);
         let dir = (end - start).normalize();
-        // Dashed shaft, like the SVG `stroke-dasharray="4 2"`.
-        let dash = arrow_len / 6.0;
-        let gap = dash / 2.0;
-        let total = (end - start).length();
-        let mut d = 0.0;
-        while d < total {
-            let seg_end = (d + dash).min(total);
-            self.line(start + dir * d, start + dir * seg_end, ORIGIN_COLOR);
-            d += dash + gap;
-        }
+        self.dashed_line(start, end, arrow_len / 6.0, ORIGIN_COLOR);
         self.add_arrowhead(end, dir, arrow_len * 0.25, ORIGIN_COLOR);
     }
 
@@ -241,24 +417,19 @@ impl SceneBuilder {
         }
     }
 
-    /// Name/level/direction-set label near the center plus corner labels A, B, C.
+    /// Name/level label near the center plus corner labels A, B, C.
     fn add_labels(&mut self, node: &Node) {
         let center = self.map(node.center);
         self.labels.push(LabelRequest {
-            text: format!(
-                "{} L{} {}",
-                node.name,
-                node.level,
-                node.direction_of_node.label()
-            ),
+            text: format!("{} L{}", node.name, node.level),
             world_pos: center,
             offset_px: Vec2::new(6.0, -16.0),
             size_px: LABEL_SIZE_PX,
             color: LABEL_COLOR,
             centered: false,
         });
-        for (uv, corner_label) in node.uvs.iter().zip(['A', 'B', 'C']) {
-            let corner = self.map(*uv);
+        for (point, corner_label) in node.points.iter().zip(['A', 'B', 'C']) {
+            let corner = self.map(*point);
             let outward = (corner - center).normalize();
             self.labels.push(LabelRequest {
                 text: corner_label.to_string(),
@@ -278,6 +449,45 @@ impl SceneBuilder {
         self.triangle(tip, tip - back + side, tip - back - side, color);
     }
 
+    /// Checkbox panel (top-left, pixel space): one row per attribute — a box,
+    /// filled when the attribute is on, plus its label. Always generated so
+    /// the options stay reachable when every attribute is off.
+    fn add_checkbox_panel(&mut self) {
+        for (row, (attribute, label)) in ATTRIBUTES.iter().enumerate() {
+            let min = Vec2::new(PANEL_PAD, PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT);
+            let max = min + Vec2::splat(CHECKBOX_SIZE);
+            self.ui_line(min, Vec2::new(max.x, min.y), UI_COLOR);
+            self.ui_line(Vec2::new(max.x, min.y), max, UI_COLOR);
+            self.ui_line(max, Vec2::new(min.x, max.y), UI_COLOR);
+            self.ui_line(Vec2::new(min.x, max.y), min, UI_COLOR);
+            if self.options.value(*attribute) {
+                let fill_min = min + Vec2::splat(3.0);
+                let fill_max = max - Vec2::splat(3.0);
+                self.ui_triangle(fill_min, Vec2::new(fill_max.x, fill_min.y), fill_max, UI_COLOR);
+                self.ui_triangle(fill_min, fill_max, Vec2::new(fill_min.x, fill_max.y), UI_COLOR);
+            }
+            let anchor = Vec2::new(
+                max.x + CHECKBOX_LABEL_GAP,
+                min.y + (CHECKBOX_SIZE - CHECKBOX_LABEL_SIZE) / 2.0,
+            );
+            self.ui_labels.push(TextRun {
+                text: label.to_string(),
+                anchor,
+                size: CHECKBOX_LABEL_SIZE,
+                color: LABEL_COLOR,
+                centered: false,
+            });
+            // The clickable rectangle covers the box and the label (width
+            // estimated from the monospace advance).
+            let label_width = label.len() as f32 * CHECKBOX_LABEL_SIZE * 0.6;
+            self.checkboxes.push(Checkbox {
+                attribute: *attribute,
+                min,
+                max: Vec2::new(anchor.x + label_width, max.y),
+            });
+        }
+    }
+
     /// Computes the view fit (content bounds + 5% margin, aspect preserved)
     /// and resolves the label anchors to pixel positions.
     fn finish(self, viewport: Vec2) -> SceneMesh {
@@ -292,7 +502,7 @@ impl SceneBuilder {
         let pad = (viewport - content_size * scale_px) * 0.5;
         let world_to_pixel = |point: Vec2| (point - origin) * scale_px + pad;
 
-        let texts = self
+        let mut texts: Vec<TextRun> = self
             .labels
             .into_iter()
             .map(|label| TextRun {
@@ -303,11 +513,15 @@ impl SceneBuilder {
                 centered: label.centered,
             })
             .collect();
+        texts.extend(self.ui_labels);
 
         SceneMesh {
             lines: self.lines,
             triangles: self.triangles,
+            ui_lines: self.ui_lines,
+            ui_triangles: self.ui_triangles,
             texts,
+            checkboxes: self.checkboxes,
             world_to_clip: ClipTransform {
                 scale: Vec2::new(
                     scale_px * 2.0 / viewport.x,
@@ -330,9 +544,9 @@ impl SceneBuilder {
 /// repeated `split()` calls (same rule as the SVG viewer).
 fn arrow_length(node: &Node) -> f32 {
     let min_corner_distance = node
-        .uvs
+        .points
         .iter()
-        .map(|uv| (*uv - node.center).length())
+        .map(|point| (*point - node.center).length())
         .fold(f32::INFINITY, f32::min);
     ARROW_SCALE * min_corner_distance
 }
@@ -340,14 +554,15 @@ fn arrow_length(node: &Node) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::node::DirectionSet;
 
+    /// Equilateral test node (base 300, apex up, height = base * √3 / 2).
     fn test_node() -> NodeRef {
         Node::new(
-            DirectionSet::Normal,
+            Vec2::Y,
             Vec2::ZERO,
             Vec2::new(0.0, 1000.0),
             300.0,
+            300.0 * 3.0_f32.sqrt() / 2.0,
             "root",
         )
     }
@@ -355,33 +570,31 @@ mod tests {
     #[test]
     fn single_node_emits_all_element_kinds() {
         let node = test_node();
-        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0));
+        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
-        // 3 outline + 3 arrow shafts + at least one dashed origin segment.
-        assert!(mesh.lines.len() >= (3 + 3 + 1) * 2);
+        // 3 outline + 4 arrow shafts + at least one dashed origin segment.
+        assert!(mesh.lines.len() >= (3 + 4 + 1) * 2);
         assert_eq!(mesh.lines.len() % 2, 0);
-        // 4 arrowheads + 16 dot segments = 20 triangles.
-        assert_eq!(mesh.triangles.len(), 20 * 3);
-        // 1 name label + 3 corner labels.
-        assert_eq!(mesh.texts.len(), 4);
-        assert_eq!(mesh.texts[0].text, "root L0 N");
+        // 5 arrowheads + 16 dot segments = 21 triangles.
+        assert_eq!(mesh.triangles.len(), 21 * 3);
+        // 1 name label + 3 corner labels + 7 checkbox labels.
+        assert_eq!(mesh.texts.len(), 4 + ATTRIBUTES.len());
+        assert_eq!(mesh.texts[0].text, "root L0");
+        // One checkbox row per attribute, all ticked by default.
+        assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
+        assert_eq!(mesh.ui_lines.len(), ATTRIBUTES.len() * 4 * 2);
+        assert_eq!(mesh.ui_triangles.len(), ATTRIBUTES.len() * 2 * 3);
     }
 
     #[test]
     fn origin_arrow_is_skipped_when_node_is_at_origin() {
-        let node = Node::new(
-            DirectionSet::Normal,
-            Vec2::ZERO,
-            Vec2::ZERO,
-            300.0,
-            "at_origin",
-        );
-        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0));
+        let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "at_origin");
+        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
-        // Only outline + direction arrow shafts remain.
-        assert_eq!(mesh.lines.len(), (3 + 3) * 2);
-        // 3 arrowheads + dot segments.
-        assert_eq!(mesh.triangles.len(), (3 + DOT_SEGMENTS) * 3);
+        // Only outline + arrow shafts remain.
+        assert_eq!(mesh.lines.len(), (3 + 4) * 2);
+        // 4 arrowheads + dot segments.
+        assert_eq!(mesh.triangles.len(), (4 + DOT_SEGMENTS) * 3);
     }
 
     #[test]
@@ -392,16 +605,97 @@ mod tests {
         for corner in center.borrow().children.iter().flatten() {
             nodes.push(corner.clone());
         }
-        let mesh = build_scene(&nodes, Vec2::new(800.0, 800.0));
+        let mesh = build_scene(&nodes, Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
-        // 4 nodes × (3 outline + 3 shafts) + dashed origin segments +
+        // 4 nodes × (3 outline + 4 shafts) + dashed origin segments +
         // 6 child links (3 center→corner, 3 corner→center).
-        assert!(mesh.lines.len() >= (4 * 6 + 6) * 2);
-        // 4 nodes × (4 arrowheads + 16 dot segments).
-        assert_eq!(mesh.triangles.len(), 4 * 20 * 3);
-        // 4 nodes × (1 name label + 3 corner labels).
-        assert_eq!(mesh.texts.len(), 16);
-        assert_eq!(mesh.texts[0].text, "root.C L1 R");
+        assert!(mesh.lines.len() >= (4 * 7 + 6) * 2);
+        // 4 nodes × (5 arrowheads + 16 dot segments).
+        assert_eq!(mesh.triangles.len(), 4 * 21 * 3);
+        // 4 nodes × (1 name label + 3 corner labels) + 7 checkbox labels.
+        assert_eq!(mesh.texts.len(), 16 + ATTRIBUTES.len());
+        assert_eq!(mesh.texts[0].text, "root.C L1");
+    }
+
+    #[test]
+    fn child_links_are_dashed_and_colored_by_direction() {
+        let node = test_node();
+        let center = node.borrow().split();
+        // Child links only: every emitted line is part of a dashed link.
+        let options = DisplayOptions {
+            child_links: true,
+            outline: false,
+            directions: false,
+            direction_of_node: false,
+            origin: false,
+            center_dot: false,
+            labels: false,
+        };
+        let mesh = build_scene(&[center], Vec2::new(800.0, 800.0), &options);
+
+        // Dashed: the three links are split into more than one segment each.
+        assert!(mesh.lines.len() > 3 * 2);
+        assert_eq!(mesh.lines.len() % 2, 0);
+        // Every segment carries one of the I/J/K direction colors, and all
+        // three are used.
+        assert!(mesh
+            .lines
+            .iter()
+            .all(|vertex| DIRECTION_COLORS.contains(&vertex.color)));
+        for color in DIRECTION_COLORS {
+            assert!(mesh.lines.iter().any(|vertex| vertex.color == color));
+        }
+    }
+
+    #[test]
+    fn disabled_attributes_emit_no_geometry() {
+        let node = test_node();
+        let options = DisplayOptions {
+            child_links: false,
+            outline: false,
+            directions: false,
+            direction_of_node: false,
+            origin: false,
+            center_dot: false,
+            labels: false,
+        };
+        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &options);
+
+        // Only the checkbox panel remains, so options can be turned back on.
+        assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
+        assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
+        assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
+        // Unticked boxes: outlines but no fills.
+        assert_eq!(mesh.ui_lines.len(), ATTRIBUTES.len() * 4 * 2);
+        assert!(mesh.ui_triangles.is_empty());
+    }
+
+    #[test]
+    fn toggle_gates_each_attribute() {
+        let node = test_node();
+        let mut options = DisplayOptions::default();
+        options.toggle(Attribute::Directions);
+        options.toggle(Attribute::DirectionOfNode);
+        assert!(!options.value(Attribute::Directions));
+        assert!(!options.value(Attribute::DirectionOfNode));
+        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &options);
+
+        // No direction arrowheads left; only the origin arrowhead + dot.
+        assert_eq!(mesh.triangles.len(), (1 + DOT_SEGMENTS) * 3);
+        // Two of the seven checkboxes are unticked.
+        assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() - 2) * 2 * 3);
+    }
+
+    #[test]
+    fn checkbox_contains_hit_tests_rectangle() {
+        let node = test_node();
+        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
+
+        let checkbox = mesh.checkboxes[0];
+        let center = (checkbox.min + checkbox.max) / 2.0;
+        assert!(checkbox.contains(center));
+        assert!(!checkbox.contains(checkbox.min - Vec2::ONE));
+        assert!(!checkbox.contains(checkbox.max + Vec2::ONE));
     }
 
     #[test]
@@ -414,7 +708,7 @@ mod tests {
     #[test]
     fn clip_transform_maps_all_geometry_inside_clip_space() {
         let node = test_node();
-        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0));
+        let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
         for vertex in mesh.lines.iter().chain(&mesh.triangles) {
             let clip = vertex.pos * mesh.world_to_clip.scale + mesh.world_to_clip.offset;
@@ -425,8 +719,11 @@ mod tests {
 
     #[test]
     fn empty_scene_produces_identity_like_transform() {
-        let mesh = build_scene(&[], Vec2::new(800.0, 800.0));
-        assert!(mesh.lines.is_empty() && mesh.triangles.is_empty() && mesh.texts.is_empty());
+        let mesh = build_scene(&[], Vec2::new(800.0, 800.0), &DisplayOptions::default());
+        // No node geometry, but the checkbox panel is always generated.
+        assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
+        assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
+        assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
         assert_eq!(mesh.world_to_clip.scale, Vec2::new(2.0 / 800.0, -2.0 / 800.0));
     }
 

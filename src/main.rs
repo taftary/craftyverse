@@ -4,22 +4,18 @@ mod scene;
 mod text;
 
 use glam::Vec2;
-use node::{DirectionSet, Node};
+use node::Node;
 
 fn main() {
     let origin = Vec2::new(0.0, 1000.0);
+    // Equilateral triangles pointing up: height = base * √3 / 2.
+    let height = 300.0 * 3.0_f32.sqrt() / 2.0;
 
     // 1. One node, without split.
-    let no_split = vec![Node::new(
-        DirectionSet::Normal,
-        Vec2::ZERO,
-        origin,
-        300.0,
-        "root",
-    )];
+    let no_split = vec![Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "root")];
 
     // 2. One node with split — display only the split nodes.
-    let parent = Node::new(DirectionSet::Normal, Vec2::ZERO, origin, 300.0, "parent");
+    let parent = Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "parent");
     let center = parent.borrow().split();
     let mut split = vec![center.clone()];
     for corner in center.borrow().children.iter().flatten() {

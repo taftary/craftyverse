@@ -5,8 +5,10 @@
 //! Rendering model: one render pass, three pipelines — colored lines,
 //! colored triangles (arrowheads, center dots) and alpha-blended text quads
 //! sampled from the `text.rs` glyph atlas. World-space geometry is placed via
-//! a `scale`/`offset` push-constant transform computed by `scene.rs`; text is
-//! laid out in pixel space and mapped with a second transform.
+//! a `scale`/`offset` push-constant transform computed by `scene.rs`; text and
+//! the checkbox panel are laid out in pixel space and mapped with a second
+//! transform. Left-clicking a checkbox toggles the display of the matching
+//! node attribute.
 
 use std::sync::Arc;
 
@@ -57,13 +59,13 @@ use vulkano::swapchain::{
 use vulkano::sync::{self, GpuFuture};
 use vulkano::{Validated, VulkanError, VulkanLibrary};
 use winit::application::ApplicationHandler;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::node::NodeRef;
-use crate::scene::{self, SceneMesh};
+use crate::scene::{self, Checkbox, DisplayOptions, SceneMesh};
 use crate::text::TextAtlas;
 
 #[derive(BufferContents, Vertex, Clone, Copy)]
@@ -145,7 +147,8 @@ void main() {
 "#;
 
 /// Opens the viewer window and runs the event loop. Keys 1..N switch between
-/// the given scenarios; the window closes the loop.
+/// the given scenarios, left-clicking the checkbox panel toggles the display
+/// of each node attribute; the window closes the loop.
 pub fn run(scenarios: Vec<Vec<NodeRef>>) {
     let event_loop = EventLoop::new().expect("failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
@@ -167,6 +170,8 @@ pub fn run(scenarios: Vec<Vec<NodeRef>>) {
         instance,
         scenarios,
         current_scene: 0,
+        options: DisplayOptions::default(),
+        cursor: Vec2::ZERO,
         renderer: None,
     };
     event_loop.run_app(&mut viewer).expect("event loop error");
@@ -176,6 +181,10 @@ struct Viewer {
     instance: Arc<Instance>,
     scenarios: Vec<Vec<NodeRef>>,
     current_scene: usize,
+    /// Display state of the node attributes, toggled via the checkbox panel.
+    options: DisplayOptions,
+    /// Last cursor position, in physical pixels.
+    cursor: Vec2,
     renderer: Option<Renderer>,
 }
 
@@ -191,7 +200,7 @@ impl ApplicationHandler for Viewer {
                     .expect("failed to create window"),
             );
             let mut renderer = Renderer::new(self.instance.clone(), window);
-            renderer.set_scene(&self.scenarios[self.current_scene]);
+            renderer.set_scene(&self.scenarios[self.current_scene], &self.options);
             self.renderer = Some(renderer);
         }
         self.renderer.as_ref().unwrap().window.request_redraw();
@@ -207,6 +216,18 @@ impl ApplicationHandler for Viewer {
                 renderer.window_resized = true;
                 renderer.window.request_redraw();
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor = Vec2::new(position.x as f32, position.y as f32);
+            }
+            WindowEvent::MouseInput { state, button, .. }
+                if state == ElementState::Pressed && button == MouseButton::Left =>
+            {
+                if let Some(attribute) = renderer.checkbox_at(self.cursor) {
+                    self.options.toggle(attribute);
+                    renderer.set_scene(&self.scenarios[self.current_scene], &self.options);
+                    renderer.window.request_redraw();
+                }
+            }
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
@@ -219,12 +240,12 @@ impl ApplicationHandler for Viewer {
                     index.filter(|i| *i < self.scenarios.len() && *i != self.current_scene)
                 {
                     self.current_scene = index;
-                    renderer.set_scene(&self.scenarios[index]);
+                    renderer.set_scene(&self.scenarios[index], &self.options);
                     renderer.window.request_redraw();
                 }
             }
             WindowEvent::RedrawRequested => {
-                renderer.draw_frame(&self.scenarios[self.current_scene])
+                renderer.draw_frame(&self.scenarios[self.current_scene], &self.options)
             }
             _ => {}
         }
@@ -248,7 +269,11 @@ struct Renderer {
     atlas: TextAtlas,
     line_buffer: Option<Subbuffer<[GeomVertex]>>,
     tri_buffer: Option<Subbuffer<[GeomVertex]>>,
+    ui_line_buffer: Option<Subbuffer<[GeomVertex]>>,
+    ui_tri_buffer: Option<Subbuffer<[GeomVertex]>>,
     text_buffer: Option<Subbuffer<[TextVertexGpu]>>,
+    /// Checkbox hit rectangles of the current scene (pixel space).
+    checkboxes: Vec<Checkbox>,
     world_to_clip: PushTransform,
     pixel_to_clip: PushTransform,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
@@ -482,7 +507,10 @@ impl Renderer {
             atlas,
             line_buffer: None,
             tri_buffer: None,
+            ui_line_buffer: None,
+            ui_tri_buffer: None,
             text_buffer: None,
+            checkboxes: Vec::new(),
             world_to_clip: PushTransform {
                 scale: [1.0; 2],
                 offset: [0.0; 2],
@@ -497,11 +525,12 @@ impl Renderer {
     }
 
     /// Rebuilds the scene mesh for `scenario` and re-uploads all vertex
-    /// buffers. Cheap enough to run on scene switch and on resize.
-    fn set_scene(&mut self, scenario: &[NodeRef]) {
+    /// buffers. Cheap enough to run on scene switch, on resize and on
+    /// checkbox toggle.
+    fn set_scene(&mut self, scenario: &[NodeRef], options: &DisplayOptions) {
         let size = self.window.inner_size();
         let viewport = Vec2::new(size.width as f32, size.height as f32);
-        let mesh = scene::build_scene(scenario, viewport);
+        let mesh = scene::build_scene(scenario, viewport, options);
 
         let to_geom = |v: &scene::Vertex| GeomVertex {
             pos: v.pos.to_array(),
@@ -514,6 +543,14 @@ impl Renderer {
         self.tri_buffer = vertex_buffer(
             &self.memory_allocator,
             mesh.triangles.iter().map(to_geom).collect(),
+        );
+        self.ui_line_buffer = vertex_buffer(
+            &self.memory_allocator,
+            mesh.ui_lines.iter().map(to_geom).collect(),
+        );
+        self.ui_tri_buffer = vertex_buffer(
+            &self.memory_allocator,
+            mesh.ui_triangles.iter().map(to_geom).collect(),
         );
 
         let mut text_data = Vec::new();
@@ -541,8 +578,10 @@ impl Renderer {
         let SceneMesh {
             world_to_clip,
             pixel_to_clip,
+            checkboxes,
             ..
         } = mesh;
+        self.checkboxes = checkboxes;
         self.world_to_clip = PushTransform {
             scale: world_to_clip.scale.to_array(),
             offset: world_to_clip.offset.to_array(),
@@ -553,7 +592,15 @@ impl Renderer {
         };
     }
 
-    fn draw_frame(&mut self, scenario: &[NodeRef]) {
+    /// Attribute whose checkbox contains `point` (physical pixels), if any.
+    fn checkbox_at(&self, point: Vec2) -> Option<scene::Attribute> {
+        self.checkboxes
+            .iter()
+            .find(|checkbox| checkbox.contains(point))
+            .map(|checkbox| checkbox.attribute)
+    }
+
+    fn draw_frame(&mut self, scenario: &[NodeRef], options: &DisplayOptions) {
         let window_size = self.window.inner_size();
         if window_size.width == 0 || window_size.height == 0 {
             return;
@@ -562,7 +609,7 @@ impl Renderer {
             self.window_resized = false;
             self.recreate_swapchain();
             // The view fit and the text anchors depend on the viewport.
-            self.set_scene(scenario);
+            self.set_scene(scenario, options);
         }
         self.previous_frame_end.as_mut().unwrap().cleanup_finished();
 
@@ -633,6 +680,31 @@ impl Renderer {
             // SAFETY: pipeline, vertex buffer and push constants bound above
             // satisfy the draw's requirements.
             unsafe { builder.draw(triangles.len() as u32, 1, 0, 0) }.unwrap();
+        }
+        // Checkbox panel, in pixel space.
+        if let Some(ui_lines) = &self.ui_line_buffer {
+            builder
+                .bind_pipeline_graphics(self.line_pipeline.clone())
+                .unwrap()
+                .push_constants(self.line_pipeline.layout().clone(), 0, self.pixel_to_clip)
+                .unwrap()
+                .bind_vertex_buffers(0, ui_lines.clone())
+                .unwrap();
+            // SAFETY: pipeline, vertex buffer and push constants bound above
+            // satisfy the draw's requirements.
+            unsafe { builder.draw(ui_lines.len() as u32, 1, 0, 0) }.unwrap();
+        }
+        if let Some(ui_triangles) = &self.ui_tri_buffer {
+            builder
+                .bind_pipeline_graphics(self.tri_pipeline.clone())
+                .unwrap()
+                .push_constants(self.tri_pipeline.layout().clone(), 0, self.pixel_to_clip)
+                .unwrap()
+                .bind_vertex_buffers(0, ui_triangles.clone())
+                .unwrap();
+            // SAFETY: pipeline, vertex buffer and push constants bound above
+            // satisfy the draw's requirements.
+            unsafe { builder.draw(ui_triangles.len() as u32, 1, 0, 0) }.unwrap();
         }
         // …finally alpha-blended text in pixel space.
         if let Some(text) = &self.text_buffer {
