@@ -1091,4 +1091,214 @@ The implementation is complete when the following statements are true.
 
 ————————————-
 
-        
+        Plan Class Definition
+
+Overview
+
+The Plan class serves as the central structure of the system, encapsulating a primary node that organizes and manages the overall plan's components, height map rendering, and node generation. A complete icosahedron consists of 20 triangular faces: two 5-triangle pentagonal caps (North and South) and a 10-triangle antiprismatic middle belt.
+Structure
+
+Parameters
+node — An instance of the Node class representing the primary node of the plan.
+Pseudocode Representation
+
+plain
+
+class Plan {
+  Node node
+  void generateBase(Vector pentagonDirection)
+  void generate()
+  void split()
+}
+Methods
+
+generateBase(Vector pentagonDirection) — Creates one pentagonal cap (5 base triangles + 5 child J mirrored triangles = 10 triangles total) using the specified direction vector.
+generate() — Assembles the full icosahedron by generating both caps and linking them via the 10-triangle antiprismatic belt.
+split() — Subdivides triangles level-by-level, creating new center nodes and rewiring connections to grow the mesh.
+generateBase(Vector pentagonDirection) — Detailed Specification
+
+Overview
+
+Generates a single pentagonal cap consisting of 5 base triangles arranged radially around a central point, plus 5 child J triangles mirrored across each base triangle's base edge. Total: 10 triangles per cap.
+Geometric Construction
+
+Base Pentagon Triangles (5 nodes)
+Arrange 5 triangles radially so their bases form the sides of a regular pentagon.
+The apex of each triangle points toward the cap's pole (origin direction = pentagonDirection).
+Adjacent base triangles share edges and connect via their K vectors (blue).
+The circumradius of the pentagon equals the triangle side length (all edges on the unit sphere).
+Child J Mirrored Triangles (5 nodes)
+For each base triangle, create childNodeJ where the new triangle is the mirror of the current triangle across its base edge (BC).
+nodeJ always switches the direction set: if parent is NormalDirection, childJ uses RevertedDirection, and vice versa.
+Child I and Child K Triangles
+For each node, childNodeI is created as a mirrored cut through the triangle along the edge opposite to the I vector direction.
+childNodeK is created similarly along the edge opposite to the K vector direction.
+These fill in the gaps between base and childJ triangles, completing the cap topology.
+Direction Sets
+
+Two direction sets define the local I/J/K vector frame for each node:
+Table
+
+
+Direction Set	I Vector	J Vector	K Vector
+NormalDirection (S1)	Perpendicular to AB, pointing from center outward	Perpendicular to BC, pointing from center outward	Perpendicular to CA, pointing from center outward
+RevertedDirection (S2)	Perpendicular to CA, pointing from center outward	Perpendicular to BC, pointing from center outward	Perpendicular to AB, pointing from center outward
+Visual Convention: I = Red, J = Green, K = Blue
+Direction Set Selection Rules
+
+The direction set for a node is determined by:
+Cap polarity: North cap base triangles default to NormalDirection (S1); South cap base triangles default to RevertedDirection (S2) due to geometric inversion.
+Child inheritance:
+nodeJ always flips the direction set (S1 → S2, S2 → S1).
+nodeI and nodeK inherit the parent's direction set unchanged.
+Geometric check: Compute the dot product of the node's center-to-origin vector with the face normal. If positive → NormalDirection; if negative → RevertedDirection. This serves as the mathematical validation of rules 1–2.
+Child Node Target Relationships
+
+plain
+
+childNodeI.targetNodeK = currentNode
+childNodeK.targetNodeI = currentNode
+childNodeJ.targetNodeJ = currentNode
+This means:
+When traversing from node A via its I port, you arrive at a node whose K port points back to A.
+When traversing from node A via its K port, you arrive at a node whose I port points back to A.
+When traversing from node A via its J port, you arrive at a node whose J port points back to A (mirror symmetry).
+UV Coordinate Rules
+
+Triangle UVs (A, B, C) are assigned based on the triangle's center, direction set, and the vector from center to origin.
+If pentagonDirection is top (Vector(0, 1, 0)): Use normal UV order (A, B, C) → (0.26, 0.50, 0.74) mapped to vertex positions.
+If pentagonDirection is bottom (Vector(0, -1, 0)): Reverse the first and second UV coordinates to maintain consistent winding order for the inverted cap.
+UVs are shown in the image as barycentric-like coordinates relative to each triangle's vertex positions (e.g., 0.50,0.75 at the top apex, 0.35,0.30 and 0.65,0.30 at the base).
+Return Value
+
+Returns the last created node (typically the final child node in the generation sequence).
+generate() — Detailed Specification
+
+Core Principle: Dual-Pentagon Dual-Cap Assembly
+
+An icosahedron decomposes into:
+North Cap: 5 base triangles + 5 child triangles = 10 triangles (nodes #21–#30 in the image)
+South Cap: 5 base triangles + 5 child triangles = 10 triangles (nodes #31–#40 in the image)
+Middle Belt: 10 triangles connecting the two caps (not shown in the image's node labels, but implied by the full icosahedron geometry)
+plain
+
+       [ North Cap: 10 Triangles (5 base + 5 childJ) ]
+            /    |    |    |    \
+          (I)   (K)  (I)  (K)  (I)   <-- Unconnected Outer Ports
+           |     |    |    |     |
+          (K)   (I)  (K)  (I)  (K)   <-- Interlocking South Ports
+                 |    |    |    \
+       [ South Cap: 10 Triangles (5 base + 5 childJ) ]
+Algorithm
+
+Cap Generation
+Call this.generateBase(Vector(0, 1, 0)) → generates North cap (nodes #21–#30).
+Base nodes #21–#25 use NormalDirection (S1).
+Child J nodes #26–#30 use RevertedDirection (S2).
+Call this.generateBase(Vector(0, -1, 0)) → generates South cap (nodes #31–#40).
+Base nodes #31–#35 use RevertedDirection (S2) (inverted).
+Child J nodes #36–#40 use NormalDirection (S1).
+Both caps produce 10 triangles arranged circularly, linked internally via J (mirrored base) and adjacent K/I vectors.
+Interstitial Belt Linkage (North-to-South Alignment)
+Every North base node N_m (where m ∈ {0,1,2,3,4}) has two open directional slots (I and K) after cap generation. The South cap is inverted and rotated by π/5 (36°), causing its nodes to interlock with North nodes in an alternating zig-zag fashion.
+Link Rule A (Node I Connection):
+plain
+
+North[m].children[I] → South[m].node
+South[m].children[K] → North[m].node   // reciprocal
+Link Rule B (Node K Connection):
+plain
+
+North[m].children[K] → South[(m + 1) % 5].node
+South[(m + 1) % 5].children[I] → North[m].node   // reciprocal
+Direction & Alignment Inversion
+Vector Reversal: South plan directional vectors (I, J, K) invert their vertical orientation parameter relative to North.
+Direction Set Swap: If North[m] uses NormalDirection (S1), the corresponding mirrored connection entry on South[m] defaults to RevertedDirection (S2) to maintain consistent handedness across the belt.
+split() Method Specification
+
+Overview
+
+The Plan.split() method coordinates splitting across the north (and symmetric south) caps and reconnects the resulting split-centers to grow the antiprismatic belt between caps. Splits are performed level-by-level.
+What "split" means geometrically: Each triangle is subdivided (typically into 4 smaller triangles by connecting edge midpoints). A new center node is created at the centroid of the subdivided region. The split returns this new center node.
+Connection Rules
+
+When traversing and splitting, the algorithm follows nodeI links from a starting node, splitting the current node and its nodeI target, then connecting the new split-centers together.
+Pointer rewiring after each pair-split operation:
+plain
+
+nodeSplitedCenter.nexti.nexti = nodeTargetSplitedCenter.nextj.nextk
+nodeSplitedCenter.nextj.nexti = nodeTargetSplitedCenter.nextk.nextk
+The traversal progresses along nexti until it completes a loop back to the start; then it begins the same traversal starting from the start node's nodeJ and repeats. The routine terminates when all nodes are at the target depth.
+Signature
+
+plain
+
+void split()
+Algorithm (Pseudocode)
+
+plain
+
+// Start from a northern base node that begins the split traversal
+currentNode = nodeNorth
+
+// Initialize traversal pointers
+nextNode = currentNode.nexti.nexti
+targetNode = currentNode.nexti
+
+// Perform initial splits (split() returns the center node of the split)
+nodeSplitedCenter = currentNode.split()
+nodeTargetSplitedCenter = targetNode.split()
+
+// Loop until the traversal reaches nodes already at the next split level
+while not (
+    nextNode.nexti.level == currentNode.level and
+    nextNode.nextj.level == currentNode.level and
+    nextNode.nextk.level == currentNode.level
+):
+    // Rewire connections between freshly split centers
+    nodeSplitedCenter.nexti.nexti = nodeTargetSplitedCenter.nextj.nextk
+    nodeSplitedCenter.nextj.nexti = nodeTargetSplitedCenter.nextk.nextk
+
+    // Advance the window of traversal
+    currentNode = nodeSplitedCenter
+    nodeSplitedCenter = nodeTargetSplitedCenter
+
+    // Decide how to advance nextNode and ensure target split center exists
+    if nextNode.nexti.level != currentNode.level:
+        nodeTargetSplitedCenter = nextNode.split()
+        nextNode = nextNode.nexti
+    else if nextNode.nextj.level != currentNode.level:
+        nextNode = nextNode.nextj
+    else:
+        // Fallback: advance along nextk
+        nextNode = nextNode.nextk
+
+// After completing the nodeI loop, repeat from the original start node's nodeJ
+// Continue until all target areas have next-level references (nexti, nextj, nextk non-null)
+Reciprocity Rules for Pointer Assignments
+
+When setting any directional pointer, maintain bidirectional consistency where the topology demands it:
+Table
+
+
+If you set...	Then also set...	Reason
+A.nexti = B	B.nextk = A	I↔K reciprocity per child relationship rules
+A.nextk = B	B.nexti = A	K↔I reciprocity per child relationship rules
+A.nextj = B	B.nextj = A	J↔J mirror symmetry
+A.nexti.nexti = B	Verify B's reciprocal chain	Split rewiring creates indirect links
+Notes & Implementation Details
+
+split() on a Node returns the newly created center node (per Node.split() specification). Plan.split() must use those returned center nodes for rewiring.
+All level comparisons refer to node.level (split depth). Comparing levels detects whether a neighbor has already been processed to the same depth.
+Pointer assignments (nexti/nextj/nextk) must preserve reciprocity per the table above.
+Child index naming (I, J, K) maps to children[0..2] for implementation.
+The split process effectively "grows" the icosahedron by inserting new triangle layers between existing ones, increasing the mesh resolution while preserving the overall topology.
+Node Numbering Reference (Image Mapping)
+
+Table
+
+
+Cap	Base Nodes (S1/S2)	Child J Nodes (flipped)	Direction
+North	#21 S1, #22 S1, #23 S1, #24 S1, #25 S1	#26 S2, #27 S2, #28 S2, #29 S2, #30 S2	Top (+Y)
+South	#31 S2, #32 S2, #33 S2, #34 S2, #35 S2	#36 S1, #37 S1, #38 S1, #39 S1, #40 S1	Bottom (-Y)
+Note: The 10 middle belt triangles are not individually labeled in the image but exist between the caps, connected via the I/K interlock rules in generate().
