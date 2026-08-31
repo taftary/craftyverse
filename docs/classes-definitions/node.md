@@ -103,7 +103,7 @@ A child may also be a neighbor, but assigning a neighbor must **never** overwrit
 
 ### 4.1 Triangle Edges
 
-For a triangle with vertices A, B, and C:
+For a triangle with UVs A, B, and C:
 
 ```text
 AB = B - A
@@ -683,7 +683,7 @@ Run validation after `generate()` and after every complete `split()` level.
 ### 10.1 Required Checks
 
 1. Every node has a valid triangle
-2. Every triangle has valid A, B, and C vertices
+2. Every triangle has valid A, B, and C UVs
 3. Every node has a valid center
 4. Every node has a valid direction set
 5. Every intended reciprocal connection is symmetric
