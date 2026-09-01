@@ -1,12 +1,12 @@
 # Plan Class Specification
 
-> **Prerequisite:** This specification assumes the `Node` class is defined according to the *Node Class Definition* specification. The `Node` class manages individual triangle geometry (`points`, `center`, `directions`), directional vectors, and local topological links (`children`). This document specifies how the `Plan` class encapsulates the root node structure and orchestrates initial base generation.
+> **Prerequisite:** This specification assumes the `Node` class is defined according to the *Node Class Definition* specification. The `Node` class manages individual triangle geometry (`points`, `center`, `directions`), directional vectors, and local topological links (`children`). This document specifies how the `Plan` class encapsulates the root node structure and orchestrates initial base and dual-mesh generation.
 
 ---
 
 ## 1. Overview
 
-The `Plan` class is the central manager of the spatial hierarchy, encapsulating a primary root node that anchors and coordinates node generation across the system.
+The `Plan` class is the central manager of the spatial hierarchy, encapsulating a primary root node that anchors and coordinates node generation and global topological interlocking across the system.
 
 ---
 
@@ -18,7 +18,7 @@ public:
     Node* rootNode; // Reference to the primary base node
 
     /**
-     * Constructs a pentagonal base structure composed of 5 paired Node structures.
+     * Constructs a pentagonal base structure composed of 5 paired Node structures (10 nodes total).
      * 
      * @param sideLength        Length of each pentagon edge (float).
      * @param pentagonDirection Initial orientation vector (Vector2).
@@ -26,6 +26,24 @@ public:
      * @return                  Pointer/reference to the first generated base Node (firstNode).
      */
     Node* generateBase(float sideLength, Vector2 pentagonDirection, Point2 pentagonCenter);
+
+    /**
+     * Generates North and South pentagonal base structures using generateBase
+     * and connects North inner nodes to South inner nodes via remaining open ports.
+     * 
+     * @param sideLength        Length of each pentagon edge (float).
+     * @return                  Pointer/reference to the primary root node (North base root).
+     */
+    Node* generate(float sideLength);
+
+private:
+    /**
+     * Helper method to extract the 5 inner reverted_nodes in circular sequence.
+     * 
+     * @param rootBaseNode      Pointer to the first base node of a pentagonal structure.
+     * @return                  Array of 5 reverted_node pointers.
+     */
+    Node*[] getRevertedNodes(Node* rootBaseNode);
 };
 
 ```
@@ -38,7 +56,7 @@ public:
 
 The `generateBase` method constructs the initial root topology by building a 5-sided pentagonal base composed of 10 `Node` instances: 5 outward-pointing `base_node`s (brown outer ring) and 5 inward-pointing `reverted_node`s (blue inner core).
 
-It computes geometric positioning by offsetting node centers from side midpoints by one-third of the triangle height ($h/3$), links paired nodes across `children[1]`, and wires adjacent base nodes into a closed perimeter ring via `children[0]` and `children[2]`.
+Each `base_node`/`reverted_node` pair shares a common base edge coincident with a pentagon side. Because a `Node`'s `center` field represents its triangle *centroid*, each node's centroid is offset from the side midpoint by one-third of the triangle height ($c = h/3.0$). This ensures base edges land flush on the pentagon boundary while the inward apexes converge at `pentagonCenter`. The method links paired nodes across `children[1]` and wires adjacent base nodes into a closed circular perimeter ring via `children[0]` and `children[2]`.
 
 ### Parameters & Geometric Derivations
 
@@ -56,6 +74,10 @@ $$r = \frac{\text{sideLength}}{2 \tan(\pi / 5)} = \frac{\text{sideLength}}{2} \c
 
 $$h = r$$
 
+* **Centroid Offset ($c$):** Perpendicular displacement from the side midpoint to the triangle centroid:
+
+$$c = \frac{h}{3.0}$$
+
 ---
 
 ### Algorithm Steps
@@ -65,9 +87,10 @@ Algorithm generateBase(sideLength, pentagonDirection, pentagonCenter):
     1. Normalize direction:
        dir = normalize(pentagonDirection)
 
-    2. Calculate Apothem (r) and Height (height):
-       r = sideLength / (2.0 * tan(pi / 5.0))
+    2. Calculate Apothem (r), Height (height), and Centroid Offset (c):
+       r      = sideLength / (2.0 * tan(pi / 5.0))
        height = r
+       c      = height / 3.0
 
     3. Initialize Tracking Variables:
        firstNode = null
@@ -80,20 +103,20 @@ Algorithm generateBase(sideLength, pentagonDirection, pentagonCenter):
        b. Compute outward normal vector for side i:
           outward_normal = Vector2(cos(theta), sin(theta))
 
-       c. Calculate side midpoint B_i:
+       c. Calculate side midpoint B_i (shared base edge boundary):
           side_midpoint = pentagonCenter + (outward_normal * r)
 
        d. Calculate direction pointing to center:
           direction_to_center = normalize(pentagonCenter - side_midpoint)
 
-       e. Calculate offset centers (centroid sits h/3 along height from base):
-          base_center     = side_midpoint + (outward_normal * (height / 3.0))
-          reverted_center = side_midpoint + (direction_to_center * (height / 3.0))
+       e. Compute paired node CENTROIDS offset from side_midpoint by c:
+          base_centroid     = side_midpoint + (outward_normal * c)
+          reverted_centroid = side_midpoint + (direction_to_center * c)
 
        f. Instantiate base_node (outward pointing):
           base_node = Node.new(
               direction_of_node = outward_normal,
-              center            = base_center,
+              center            = base_centroid,
               origin            = pentagonCenter,
               baseLength        = sideLength,
               height            = height,
@@ -103,14 +126,14 @@ Algorithm generateBase(sideLength, pentagonDirection, pentagonCenter):
        g. Instantiate reverted_node (inward pointing):
           reverted_node = Node.new(
               direction_of_node = direction_to_center,
-              center            = reverted_center,
+              center            = reverted_centroid,
               origin            = pentagonCenter,
               baseLength        = sideLength,
               height            = height,
               name              = "reverted_node_" + i
           )
 
-       h. Establish Opposing Pair Link (Child Index 1):
+       h. Establish Opposing Pair Link (Child Index 1 / Vector J):
           base_node.children[1]     = reverted_node
           reverted_node.children[1] = base_node
 
@@ -147,15 +170,134 @@ Upon execution, the topology created by `generateBase` satisfies the following i
 
 ### Child Index Role Mapping
 
-* **`children[0]`**: Counter-clockwise perimeter link pointing to preceding adjacent `base_node`.
-* **`children[1]`**: Opposing partner link pointing across direction $J$ to paired node (`base_node` ↔ `reverted_node`).
-* **`children[2]`**: Clockwise perimeter link pointing to succeeding adjacent `base_node`.
+* **`children[0]`**: Counter-clockwise perimeter link pointing to preceding adjacent `base_node` (Direction $I$).
+* **`children[1]`**: Opposing partner link pointing across direction $J$ to paired node (`base_node` $\leftrightarrow$ `reverted_node`).
+* **`children[2]`**: Clockwise perimeter link pointing to succeeding adjacent `base_node` (Direction $K$).
 
-### Structural Invariants
+### Structural & Geometric Invariants
 
 * **Outward/Inward Parity:** Outer `base_node` instances point away from `pentagonCenter` (`outward_normal`), while inner `reverted_node` instances point directly toward `pentagonCenter` (`direction_to_center`).
 * **Origin Convergence:** Because $h = r$, all 5 inward `reverted_node` apex points converge precisely at `pentagonCenter`.
-* **Centroid Position Integrity:** Both `base_center` and `reverted_center` sit at distance $h/3$ perpendicular to the shared base edge midpoint (`side_midpoint`).
+* **Centroid Position Integrity:** Both `base_centroid` and `reverted_centroid` sit at distance $h/3$ perpendicular to the shared base edge midpoint (`side_midpoint`).
+* **Shared Base Edge Invariant:** For every side $i$, the base edge of `base_node[i]` coincides exactly with the base edge of `reverted_node[i]` on the pentagon boundary.
 * **Reciprocal Pair Invariant:** For every side $i \in [0, 4]$, `base_node[i].children[1] == reverted_node[i]` and `reverted_node[i].children[1] == base_node[i]`.
 * **Closed Circular Loop:** Traversing `node = node.children[2]` starting at `firstNode` visits all 5 `base_node` instances in circular sequence, returning to `firstNode` after exactly 5 hops.
 * **Root State:** All 10 generated nodes are initialized at `level = 0`.
+
+---
+
+## 5. `getRevertedNodes` Helper Specification
+
+### Description
+
+`getRevertedNodes` is a private traversal helper that extracts the 5 inner `reverted_node` instances belonging to a pentagonal base structure. Starting from a root `base_node`, it moves sequentially around the outer perimeter loop using `children[2]` and collects each inner partner linked across `children[1]`.
+
+### Signature
+
+```cpp
+Node*[] getRevertedNodes(Node* rootBaseNode);
+
+```
+
+### Algorithm Steps
+
+```text
+Algorithm getRevertedNodes(rootBaseNode):
+    1. Initialize revertedNodes array of size 5
+    2. currentNode = rootBaseNode
+
+    3. For i from 0 to 4:
+        a. Extract paired inner node:
+           revertedNodes[i] = currentNode.children[1]
+
+        b. Advance to next clockwise outer base node:
+           currentNode = currentNode.children[2]
+
+    4. Return revertedNodes
+
+```
+
+---
+
+## 6. `generate` Method Specification
+
+### Description
+
+The `generate` method constructs a dual-pentagon interlocked global mesh. It instantiates a **North** pentagonal base and a **South** pentagonal base (rotated $180^\circ$ and offset spatially along the Y-axis), extracts their inner core nodes using `getRevertedNodes`, and wires their open directional ports (`reverted_node.children[0]` and `reverted_node.children[2]`) in an interlocked reciprocal pattern.
+
+```text
+       [ North Base: 5 outer base_nodes ]
+                   \   |   /
+        (I)   (K)   (I)   (K)   (I)     <-- North reverted_nodes open ports
+         |     |     |     |     |
+        (K)   (I)   (K)   (I)   (K)     <-- South reverted_nodes open ports
+                   /   |   \
+       [ South Base: 5 outer base_nodes ]
+
+```
+
+### Parameters & Geometric Derivations
+
+* **`sideLength`** (*Float*): Length of each pentagon side.
+
+Geometric constants derived during execution:
+
+* **Pentagon Apothem ($r$):**
+
+$$r = \frac{\text{sideLength}}{2 \tan(\pi / 5)}$$
+
+
+* **South Base Center Offset:** Positioned along the global orientation vector to align the pentagons:
+
+$$\text{southCenter} = \text{northCenter} + \text{Vector2}(0, 2.0 \cdot r)$$
+
+
+
+---
+
+### Algorithm Steps
+
+```text
+Algorithm generate(sideLength):
+    1. Initialize Geometry Parameters:
+       northCenter    = Point2(sideLength * 3.0, sideLength * 3.0)
+       northDir       = Vector2(0, 1) // Pointing North
+       
+       r              = sideLength / (2.0 * tan(pi / 5.0))
+       southCenter    = northCenter + Vector2(0, 2.0 * r)
+       southDir       = -northDir     // Pointing South
+
+    2. Instantiate Base Structures:
+       northRoot = generateBase(sideLength, northDir, northCenter)
+       southRoot = generateBase(sideLength, southDir, southCenter)
+
+    3. Collect Open Inner Nodes (reverted_nodes):
+       northRevertedNodes = getRevertedNodes(northRoot) // 5 inner nodes [0..4]
+       southRevertedNodes = getRevertedNodes(southRoot) // 5 inner nodes [0..4]
+
+    4. Wire Interlocking Directional Ports (Reciprocal I <-> K links):
+       For i from 0 to 4:
+           northNode = northRevertedNodes[i]
+
+           // Connect North Port I (index 0) to South Port K (index 2)
+           targetSouthNodeK = southRevertedNodes[(i + 2) % 5]
+           northNode.children[0] = targetSouthNodeK
+           targetSouthNodeK.children[2] = northNode
+
+           // Connect North Port K (index 2) to South Port I (index 0)
+           targetSouthNodeI = southRevertedNodes[(i + 3) % 5]
+           northNode.children[2] = targetSouthNodeI
+           targetSouthNodeI.children[0] = northNode
+
+    5. Set rootNode = northRoot
+    6. Return northRoot
+
+```
+
+---
+
+### `generate` Topological Invariants
+
+* **Full Mesh Saturation:** Every `reverted_node` across both North and South bases has all 3 child ports (`children[0]`, `children[1]`, `children[2]`) fully connected after `generate()` completes.
+* **Port Reciprocity ($I \leftrightarrow K$):** Any connection `nodeA.children[0] == nodeB` strictly implies `nodeB.children[2] == nodeA`.
+* **Global Dual Anchor:** The returned `rootNode` anchors the entire North-South interlocked mesh hierarchy.
