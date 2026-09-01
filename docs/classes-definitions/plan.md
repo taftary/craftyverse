@@ -256,7 +256,7 @@ $$r = \frac{\text{sideLength}}{2 \tan(\pi / 5)}$$
 
 * **South Base Center Offset:** Positioned along the global orientation vector to align the pentagons:
 
-$$\text{southCenter} = \text{northCenter} + \text{Vector2}(0, 3.0 \cdot r)$$
+$$\text{southCenter} = \text{northCenter} + \text{Vector2}(0, 4.0 \cdot r)$$
 
 
 
@@ -271,7 +271,7 @@ Algorithm generate(sideLength):
        northDir       = Vector2(0, 1) // Pointing North
        
        r              = sideLength / (2.0 * tan(pi / 5.0))
-       southCenter    = northCenter + Vector2(0, 3.0 * r)
+       southCenter    = northCenter + Vector2(0, 4.0 * r)
        southDir       = -northDir     // Pointing South
 
     2. Instantiate Base Structures:
