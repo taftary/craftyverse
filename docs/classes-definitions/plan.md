@@ -54,12 +54,13 @@ private:
 
 ### Description
 
-The `generateBase` method constructs the initial root topology by building a 5-sided pentagonal base composed of 10 `Node` instances: 5 outward-pointing `base_node`s (brown outer ring) and 5 inward-pointing `reverted_node`s (blue inner core).
+The `generateBase` method constructs the initial root topology by building a 5-sided pentagonal base composed of 10 `Node` instances: 5 inward-pointing `base_node`s (brown inner ring) and 5 outward-pointing `reverted_node`s (blue outer core).
 
 Each `base_node`/`reverted_node` pair shares a common base edge coincident with a pentagon side. Because a `Node`'s `center` field represents its triangle *centroid*, each node's centroid is offset from the side midpoint by one-third of the triangle height ($c = h/3.0$). This ensures base edges land flush on the pentagon boundary while the inward apexes converge at `pentagonCenter`. The method links paired nodes across `children[1]` and wires adjacent base nodes into a closed circular perimeter ring via `children[0]` and `children[2]`.
 
 ### Parameters & Geometric Derivations
 
+* **`name`** (*String*): name of the base
 * **`sideLength`** (*Float*): Length of each pentagon side.
 * **`pentagonDirection`** (*Vector2*): Unit vector defining global orientation.
 * **`pentagonCenter`** (*Point2*): Central origin of the pentagon base.
@@ -83,7 +84,7 @@ $$c = \frac{h}{3.0}$$
 ### Algorithm Steps
 
 ```text
-Algorithm generateBase(sideLength, pentagonDirection, pentagonCenter):
+Algorithm generateBase(name, sideLength, pentagonDirection, pentagonCenter):
     1. Normalize direction:
        dir = normalize(pentagonDirection)
 
@@ -110,27 +111,27 @@ Algorithm generateBase(sideLength, pentagonDirection, pentagonCenter):
           direction_to_center = normalize(pentagonCenter - side_midpoint)
 
        e. Compute paired node CENTROIDS offset from side_midpoint by c:
-          base_centroid     = side_midpoint + (outward_normal * c)
-          reverted_centroid = side_midpoint + (direction_to_center * c)
+          base_centroid     = side_midpoint + (direction_to_center * c)
+          reverted_centroid = side_midpoint + (outward_normal * c)
 
        f. Instantiate base_node (outward pointing):
           base_node = Node.new(
-              direction_of_node = outward_normal,
+              direction_of_node = direction_to_center,
               center            = base_centroid,
               origin            = pentagonCenter,
               baseLength        = sideLength,
               height            = height,
-              name              = "base_node_" + i
+              name              = name + "base_node_" + i
           )
 
        g. Instantiate reverted_node (inward pointing):
           reverted_node = Node.new(
-              direction_of_node = direction_to_center,
+              direction_of_node = outward_normal,
               center            = reverted_centroid,
               origin            = pentagonCenter,
               baseLength        = sideLength,
               height            = height,
-              name              = "reverted_node_" + i
+              name              = name + "reverted_node_" + i
           )
 
        h. Establish Opposing Pair Link (Child Index 1 / Vector J):
@@ -208,7 +209,7 @@ Algorithm getRevertedNodes(rootBaseNode):
 
     3. For i from 0 to 4:
         a. Extract paired inner node:
-           revertedNodes[i] = currentNode
+           revertedNodes[i] = currentNode.children[1]
 
         b. Advance to next clockwise outer base node:
            currentNode = currentNode.children[2]
