@@ -190,7 +190,7 @@ Upon execution, the topology created by `generateBase` satisfies the following i
 
 ### Description
 
-`getRevertedNodes` is a private traversal helper that extracts the 5 inner `reverted_node` instances belonging to a pentagonal base structure. Starting from a root `base_node`, it moves sequentially around the outer perimeter loop using `children[2]` and collects each inner partner linked across `children[1]`.
+`getRevertedNodes` is a private traversal helper that extracts the 5 outer `base_node` instances belonging to a pentagonal base structure. Starting from a root `base_node`, it moves sequentially around the outer perimeter loop using `children[2]` and collects it
 
 ### Signature
 
@@ -208,7 +208,7 @@ Algorithm getRevertedNodes(rootBaseNode):
 
     3. For i from 0 to 4:
         a. Extract paired inner node:
-           revertedNodes[i] = currentNode.children[1]
+           revertedNodes[i] = currentNode
 
         b. Advance to next clockwise outer base node:
            currentNode = currentNode.children[2]
