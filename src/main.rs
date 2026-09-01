@@ -1,10 +1,12 @@
 mod node;
+mod plan;
 mod render;
 mod scene;
 mod text;
 
 use glam::Vec2;
 use node::Node;
+use plan::Plan;
 
 fn main() {
     let origin = Vec2::new(0.0, 1000.0);
@@ -22,6 +24,16 @@ fn main() {
         split.push(corner.clone());
     }
 
-    // Opens the Vulkan viewer window; key 1 selects scene 1, key 2 scene 2.
-    render::run(vec![no_split, split]);
+    // 3. One pentagonal base: 5 inward base nodes + 5 outward reverted nodes.
+    let mut base_plan = Plan::new();
+    let base_root = base_plan.generate_base("base_", 300.0, Vec2::Y, Vec2::ZERO);
+    let base = plan::collect_nodes(&base_root);
+
+    // 4. Full dual-pentagon interlocked mesh (North + South, 20 nodes).
+    let mut plan = Plan::new();
+    let root = plan.generate(300.0);
+    let dual_mesh = plan::collect_nodes(&root);
+
+    // Opens the Vulkan viewer window; keys 1..4 select the scene.
+    render::run(vec![no_split, split, base, dual_mesh]);
 }

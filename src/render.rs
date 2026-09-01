@@ -195,7 +195,7 @@ impl ApplicationHandler for Viewer {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title("PlanetCrafter node viewer — 1: no split, 2: split"),
+                            .with_title("PlanetCrafter node viewer — 1: node, 2: split, 3: base, 4: dual mesh"),
                     )
                     .expect("failed to create window"),
             );
@@ -234,6 +234,8 @@ impl ApplicationHandler for Viewer {
                 let index = match event.physical_key {
                     PhysicalKey::Code(KeyCode::Digit1) => Some(0),
                     PhysicalKey::Code(KeyCode::Digit2) => Some(1),
+                    PhysicalKey::Code(KeyCode::Digit3) => Some(2),
+                    PhysicalKey::Code(KeyCode::Digit4) => Some(3),
                     _ => None,
                 };
                 if let Some(index) =
