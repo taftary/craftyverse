@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use glam::Vec2;
 
-use crate::node::{Node, NodeRef};
+use crate::node::{Labeling, Node, NodeRef};
 
 /// Central manager of the node hierarchy. Holds a reference to the primary
 /// base node that anchors the generated mesh.
@@ -33,12 +33,15 @@ impl Plan {
     /// - `side_length` — length of each pentagon edge.
     /// - `pentagon_direction` — initial orientation vector.
     /// - `pentagon_center` — center coordinates of the pentagon.
+    /// - `labeling` — corner labeling convention for the `base_node`s;
+    ///   `reverted_node`s receive the opposite labeling.
     pub fn generate_base(
         &mut self,
         name: &str,
         side_length: f32,
         pentagon_direction: Vec2,
         pentagon_center: Vec2,
+        labeling: Labeling,
     ) -> NodeRef {
         let dir = pentagon_direction.normalize();
         // Apothem, node height (h = r) and centroid offset (c = h/3).
@@ -61,6 +64,11 @@ impl Plan {
             let base_centroid = side_midpoint + direction_to_center * c;
             let reverted_centroid = side_midpoint + outward_normal * c;
 
+            // The pair is built with opposite labelings: the reverted node is
+            // mirrored across the shared base edge (B/C, hence I/K, swapped)
+            // so both nodes label the same pentagon vertex with the same
+            // letter — the pair's I arrows point toward the same vertex, and
+            // so do the K arrows.
             let base_node = Node::new(
                 direction_to_center,
                 base_centroid,
@@ -68,6 +76,7 @@ impl Plan {
                 side_length,
                 height,
                 format!("{name}base_node_{i}"),
+                labeling,
             );
             let reverted_node = Node::new(
                 outward_normal,
@@ -76,16 +85,8 @@ impl Plan {
                 side_length,
                 height,
                 format!("{name}reverted_node_{i}"),
+                labeling.opposite(),
             );
-            // Mirror the reverted node across the shared base edge: swap B/C
-            // (hence I/K) so both nodes of a pair label the same pentagon
-            // vertex with the same letter — the pair's I arrows point toward
-            // the same vertex, and so do the K arrows.
-            {
-                let mut reverted = reverted_node.borrow_mut();
-                reverted.points.swap(1, 2);
-                reverted.directions.swap(0, 2);
-            }
 
             // Opposing pair link (child index 1 / direction J).
             base_node.borrow_mut().children[1] = Some(Rc::clone(&reverted_node));
@@ -116,8 +117,10 @@ impl Plan {
     /// Generates North and South pentagonal base structures and connects North
     /// inner nodes to South inner nodes via their remaining open ports
     /// (reciprocal I <-> K links). The South base is offset along the Y-axis
-    /// and keeps the same orientation as the North base. Returns the primary
-    /// root node (North base root).
+    /// and keeps the same orientation as the North base, but is generated with
+    /// mirrored labeling so every South node's I/K direction vectors are
+    /// swapped relative to the North convention. Returns the primary root
+    /// node (North base root).
     ///
     /// - `side_length` — length of each pentagon edge.
     pub fn generate(&mut self, side_length: f32) -> NodeRef {
@@ -126,8 +129,8 @@ impl Plan {
         let r = side_length / (2.0 * (PI / 5.0).tan());
         let south_center = north_center + Vec2::new(0.0, 4.0 * r);
 
-        let north_root = self.generate_base("north_", side_length, north_dir, north_center);
-        let south_root = self.generate_base("south_", side_length, north_dir, south_center);
+        let north_root = self.generate_base("north_", side_length, north_dir, north_center, Labeling::Normal);
+        let south_root = self.generate_base("south_", side_length, north_dir, south_center, Labeling::Mirrored);
 
         let north_reverted = Self::get_reverted_nodes(&north_root);
         let south_reverted = Self::get_reverted_nodes(&south_root);
@@ -227,7 +230,7 @@ mod tests {
     #[test]
     fn generate_base_creates_ten_level_zero_nodes() {
         let mut plan = Plan::new();
-        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO);
+        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO, Labeling::Normal);
 
         let nodes = collect_nodes(&root);
         assert_eq!(nodes.len(), 10);
@@ -251,7 +254,7 @@ mod tests {
     fn generate_base_base_apexes_converge_at_pentagon_center() {
         let center = Vec2::new(100.0, 200.0);
         let mut plan = Plan::new();
-        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::new(1.0, 1.0), center);
+        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::new(1.0, 1.0), center, Labeling::Normal);
 
         // h = r, so every inward base_node apex lands on the pentagon center
         // and its base midpoint sits exactly one apothem away from it.
@@ -266,7 +269,7 @@ mod tests {
     #[test]
     fn generate_base_pairs_share_base_edge_and_link_reciprocally() {
         let mut plan = Plan::new();
-        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO);
+        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO, Labeling::Normal);
 
         for base_node in perimeter_loop(&root) {
             let reverted = base_node.borrow().children[1]
@@ -290,7 +293,7 @@ mod tests {
     #[test]
     fn generate_base_reverted_nodes_have_mirrored_i_and_k() {
         let mut plan = Plan::new();
-        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO);
+        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO, Labeling::Normal);
 
         for base_node in perimeter_loop(&root) {
             let reverted = base_node.borrow().children[1].clone().unwrap();
@@ -322,7 +325,7 @@ mod tests {
     #[test]
     fn generate_base_perimeter_loop_closes_after_five_hops() {
         let mut plan = Plan::new();
-        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO);
+        let root = plan.generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO, Labeling::Normal);
 
         // children[2] visits 5 distinct base nodes, then returns to the start.
         let loop_nodes = perimeter_loop(&root);
@@ -343,7 +346,7 @@ mod tests {
     #[test]
     fn get_reverted_nodes_returns_inner_ring_in_circular_sequence() {
         let mut plan = Plan::new();
-        let root = plan.generate_base("north_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO);
+        let root = plan.generate_base("north_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO, Labeling::Normal);
 
         // The children[2] walk goes base_0 -> base_4 -> base_3 -> ..., so the
         // paired reverted nodes come out in the same rotated order.
@@ -413,7 +416,8 @@ mod tests {
             assert!(approx_eq(node.borrow().points[0], south_center));
         }
         // Same orientation for both bases: the south base is the north base
-        // translated by the (0, 4r) center offset.
+        // translated by the (0, 4r) center offset, but generated with mirrored
+        // labeling — B/C (hence I/K) are swapped on every south node.
         let offset = Vec2::new(0.0, 4.0 * apothem());
         for i in 0..5 {
             let north = nodes
@@ -426,9 +430,13 @@ mod tests {
                 .unwrap();
             let north_points = north.borrow().points;
             let south_points = south.borrow().points;
-            for (north_point, south_point) in north_points.iter().zip(south_points.iter()) {
-                assert!(approx_eq(*north_point + offset, *south_point));
-            }
+            assert!(approx_eq(north_points[0] + offset, south_points[0]));
+            assert!(approx_eq(north_points[1] + offset, south_points[2]));
+            assert!(approx_eq(north_points[2] + offset, south_points[1]));
+            let north_directions = north.borrow().directions;
+            let south_directions = south.borrow().directions;
+            assert!(approx_eq(north_directions[0], south_directions[2]));
+            assert!(approx_eq(north_directions[2], south_directions[0]));
         }
     }
 }

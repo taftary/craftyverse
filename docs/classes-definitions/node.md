@@ -65,7 +65,7 @@ The node represents an **isosceles triangle** defined by points `[A, B, C]`, whe
 
 ### Methods
 
-* `new(direction_of_node, center, origin, baseLength, height, name)` — Creates a node and initializes its geometry (see Constructor below).
+* `new(direction_of_node, center, origin, baseLength, height, name, labeling)` — Creates a node and initializes its geometry (see Constructor below).
 * `split()` — Splits the current node into four new nodes according to the geometric construction, direction rules, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
 
 ### Constructor
@@ -73,7 +73,7 @@ The node represents an **isosceles triangle** defined by points `[A, B, C]`, whe
 **Signature**
 
 ```
-new(direction_of_node: Vector2, center: Point2, origin: Vector2, baseLength: Float, height: Float, name: String)
+new(direction_of_node: Vector2, center: Point2, origin: Vector2, baseLength: Float, height: Float, name: String, labeling: Labeling)
 
 ```
 
@@ -85,16 +85,19 @@ new(direction_of_node: Vector2, center: Point2, origin: Vector2, baseLength: Flo
 * `baseLength` — Length of the base edge BC of the node's triangle.
 * `height` — Height of the isosceles triangle from base BC to apex point A.
 * `name` — Unique name identifying the node. This value must be unique across all nodes.
+* `labeling` — Corner labeling convention (`Labeling::Normal` or `Labeling::Mirrored`). `Mirrored` swaps the B/C corner assignment (which endpoint of the base edge is labeled B), and therefore swaps the I/K direction vectors.
 
 **Initialization**
 
 * Stores `direction_of_node` (normalized), `center`, `baseLength`, and `height`.
 * Stores the unique `name`.
 * Computes `direction_to_origin = origin - center`.
-* Builds the isosceles triangle from `center`, `direction_of_node`, `baseLength` (BC), and `height` as an isosceles triangle whose centroid is `center`: base `BC` is perpendicular to `direction_of_node`, and apex point `A` is aligned with `direction_of_node` at distance `height` from base `BC`.
+* Builds the isosceles triangle from `center`, `direction_of_node`, `baseLength` (BC), and `height` as an isosceles triangle whose centroid is `center`: base `BC` is perpendicular to `direction_of_node`, and apex point `A` is aligned with `direction_of_node` at distance `height` from base `BC`. The B/C corner assignment follows `labeling`.
 * Computes `points` (`[A, B, C]`) and `directions` (`[i, j, k]`) from that triangle.
 * `children` starts empty (no links).
 * `level` defaults to 0.
+
+`labeling` is a construction-time choice only — it is not stored. Afterwards it is implicit in the `points` triplet, and `split()` propagates it automatically through the child points triplets.
 
 ### split() Method Specification
 
@@ -249,3 +252,7 @@ Here is a summary of all modifications made to the `Node` class specification ac
 
 * **Class Structure & Constructor Updates**
 * Updated the class property list, pseudocode definition, and `new(...)` constructor signature to explicitly include both `baseLength` and `height`.
+
+
+* **New Constructor Attribute (`labeling`)**
+* Added a `labeling` constructor parameter (`Labeling::Normal` | `Labeling::Mirrored`) controlling the B/C corner assignment; `Mirrored` swaps B/C and therefore the I/K direction vectors. It is a construction-time choice only — not stored — and `split()` propagates it through the child points triplets.

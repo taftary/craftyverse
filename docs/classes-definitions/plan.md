@@ -24,9 +24,11 @@ public:
      * @param sideLength        Length of each pentagon edge (float).
      * @param pentagonDirection Initial orientation vector (Vector2).
      * @param pentagonCenter    Center coordinates of the pentagon (Point2).
+     * @param labeling          Corner labeling convention for the base_nodes (Labeling);
+     *                          reverted_nodes receive the opposite labeling.
      * @return                  Pointer/reference to the first generated base Node (firstNode).
      */
-    Node* generateBase(String name, float sideLength, Vector2 pentagonDirection, Point2 pentagonCenter);
+    Node* generateBase(String name, float sideLength, Vector2 pentagonDirection, Point2 pentagonCenter, Labeling labeling);
 
     /**
      * Generates North and South pentagonal base structures using generateBase
@@ -65,7 +67,7 @@ The `generateBase` method constructs the initial root topology by building a 5-s
 
 Each `base_node`/`reverted_node` pair shares a common base edge coincident with a pentagon side. Because a `Node`'s `center` field represents its triangle *centroid*, each node's centroid is offset from the side midpoint by one-third of the triangle height ($c = h/3.0$). This ensures base edges land flush on the pentagon boundary while the inward apexes converge at `pentagonCenter`. The method links paired nodes across `children[1]` and wires adjacent base nodes into a closed circular perimeter ring via `children[0]` and `children[2]`.
 
-Each `reverted_node` is mirrored relative to its `base_node` pair: its `B`/`C` corner labels (and therefore its `I`/`K` directions) are swapped, so both nodes of a pair label the same pentagon vertex with the same letter — the pair's `I` arrows point toward the same vertex, and so do the `K` arrows.
+The two nodes of each pair are constructed with opposite labelings: the `base_node` uses the `labeling` argument, the `reverted_node` its opposite. One's `B`/`C` corner labels (and therefore its `I`/`K` directions) are thus swapped relative to the other, so both nodes of a pair label the same pentagon vertex with the same letter — the pair's `I` arrows point toward the same vertex, and so do the `K` arrows.
 
 ### Parameters & Geometric Derivations
 
@@ -73,6 +75,7 @@ Each `reverted_node` is mirrored relative to its `base_node` pair: its `B`/`C` c
 * **`sideLength`** (*Float*): Length of each pentagon side.
 * **`pentagonDirection`** (*Vector2*): Unit vector defining global orientation.
 * **`pentagonCenter`** (*Point2*): Central origin of the pentagon base.
+* **`labeling`** (*Labeling*): Corner labeling convention applied to the `base_node`s; each `reverted_node` is constructed with the opposite labeling.
 
 Geometric constants derived during execution:
 
@@ -93,7 +96,7 @@ $$c = \frac{h}{3.0}$$
 ### Algorithm Steps
 
 ```text
-Algorithm generateBase(name, sideLength, pentagonDirection, pentagonCenter):
+Algorithm generateBase(name, sideLength, pentagonDirection, pentagonCenter, labeling):
     1. Normalize direction:
         dir = normalize(pentagonDirection)
 
@@ -130,7 +133,8 @@ Algorithm generateBase(name, sideLength, pentagonDirection, pentagonCenter):
                origin            = pentagonCenter,
                baseLength        = sideLength,
                height            = height,
-               name              = name + "base_node_" + i
+               name              = name + "base_node_" + i,
+               labeling          = labeling
            )
 
         g. Instantiate reverted_node (outward pointing):
@@ -140,7 +144,8 @@ Algorithm generateBase(name, sideLength, pentagonDirection, pentagonCenter):
                origin            = pentagonCenter,
                baseLength        = sideLength,
                height            = height,
-               name              = name + "reverted_node_" + i
+               name              = name + "reverted_node_" + i,
+               labeling          = opposite(labeling)
            )
 
         h. Establish Opposing Pair Link (Child Index 1 / Vector J):
@@ -190,7 +195,7 @@ Upon execution, the topology created by `generateBase` satisfies the following i
 * **Origin Convergence:** Because $h = r$, all 5 inward `base_node` apex points converge precisely at `pentagonCenter`.
 * **Centroid Position Integrity:** Both `base_centroid` and `reverted_centroid` sit at distance $h/3$ perpendicular to the shared base edge midpoint (`side_midpoint`).
 * **Shared Base Edge Invariant:** For every side $i$, the base edge of `base_node[i]` coincides exactly with the base edge of `reverted_node[i]` on the pentagon boundary, with matching corner letters (`base_node.B == reverted_node.B`, `base_node.C == reverted_node.C`).
-* **Mirrored Labeling Rule:** A `reverted_node`'s $B$/$C$ corner labels are swapped relative to the geometric default, so its edge $AB$ is the mirror image of its pair's edge $AB$ across the shared pentagon side (and likewise for $CA$). The uniform direction rule ($I \perp AB$, $K \perp CA$) still holds on its own points — the mirroring is in the labels, so both nodes of a pair point their $I$ arrows toward the same pentagon vertex (and $K$ toward the other).
+* **Mirrored Labeling Rule:** Within each pair, the two nodes carry opposite labelings (the `base_node` uses the `labeling` argument, the `reverted_node` its opposite), so a `reverted_node`'s edge $AB$ is the mirror image of its pair's edge $AB$ across the shared pentagon side (and likewise for $CA$). The uniform direction rule ($I \perp AB$, $K \perp CA$) still holds on each node's own points — the mirroring is in the labels, so both nodes of a pair point their $I$ arrows toward the same pentagon vertex (and $K$ toward the other).
 * **Reciprocal Pair Invariant:** For every side $i \in [0, 4]$, `base_node[i].children[1] == reverted_node[i]` and `reverted_node[i].children[1] == base_node[i]`.
 * **Closed Circular Loop:** Traversing `node = node.children[2]` starting at `firstNode` visits all 5 `base_node` instances in circular sequence, returning to `firstNode` after exactly 5 hops.
 * **Root State:** All 10 generated nodes are initialized at `level = 0`.
@@ -234,7 +239,7 @@ Algorithm getRevertedNodes(rootBaseNode):
 
 ### Description
 
-The `generate` method constructs a dual-pentagon interlocked global mesh. It instantiates a **North** pentagonal base and a **South** pentagonal base (same orientation as the North base, offset spatially along the Y-axis), extracts their inner core nodes using `getRevertedNodes`, and wires their open directional ports (`reverted_node.children[0]` and `reverted_node.children[2]`) in an interlocked reciprocal pattern.
+The `generate` method constructs a dual-pentagon interlocked global mesh. It instantiates a **North** pentagonal base and a **South** pentagonal base (same orientation as the North base, offset spatially along the Y-axis), extracts their inner core nodes using `getRevertedNodes`, and wires their open directional ports (`reverted_node.children[0]` and `reverted_node.children[2]`) in an interlocked reciprocal pattern. The North base is generated with `Labeling::Normal` and the South base with `Labeling::Mirrored`, so every South node has its $I$ and $K$ direction vectors switched relative to the North convention (equivalent to swapped $B$/$C$ corner labels). The interlocked port pairing itself is unchanged.
 
 ```text
        [ North Base: 5 outer base_nodes ]
@@ -274,13 +279,13 @@ Algorithm generate(sideLength):
        r              = sideLength / (2.0 * tan(pi / 5.0))
        southCenter    = northCenter + Vector2(0, 4.0 * r)
 
-    2. Instantiate Base Structures (same direction for both):
-       northRoot = generateBase(sideLength, northDir, northCenter)
-       southRoot = generateBase(sideLength, northDir, southCenter)
+    2. Instantiate Base Structures (same direction for both, opposite labelings):
+       northRoot = generateBase("north_", sideLength, northDir, northCenter, Normal)
+       southRoot = generateBase("south_", sideLength, northDir, southCenter, Mirrored)
 
     3. Collect Open Inner Nodes (reverted_nodes):
-       northRevertedNodes = getRevertedNodes(northRoot) // 5 inner nodes [0..4]
-       southRevertedNodes = getRevertedNodes(southRoot) // 5 inner nodes [0..4]
+       northRevertedNodes = getRevertedNodes(northRoot) // 5 outer nodes [0..4]
+       southRevertedNodes = getRevertedNodes(southRoot) // 5 outer nodes [0..4]
 
     4. Wire Interlocking Directional Ports (Reciprocal I <-> K links):
        For i from 0 to 4:
@@ -307,6 +312,7 @@ Algorithm generate(sideLength):
 
 * **Full Mesh Saturation:** Every `reverted_node` across both North and South bases has all 3 child ports (`children[0]`, `children[1]`, `children[2]`) fully connected after `generate()` completes.
 * **Port Reciprocity ($I \leftrightarrow K$):** Any connection `nodeA.children[0] == nodeB` strictly implies `nodeB.children[2] == nodeA`.
+* **Mirrored South Base:** The South base is generated with `Labeling::Mirrored` (the North base with `Labeling::Normal`), so every South node's $I$ and $K$ direction vectors are swapped relative to the North convention (its $I$ vector points along the direction a North-convention node would call $K$, and vice versa). Child port indices are unaffected, so the $I \leftrightarrow K$ port reciprocity above is preserved.
 * **Global Dual Anchor:** The returned `rootNode` anchors the entire North-South interlocked mesh hierarchy.
 
 ---

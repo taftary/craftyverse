@@ -5,7 +5,7 @@ mod scene;
 mod text;
 
 use glam::Vec2;
-use node::Node;
+use node::{Labeling, Node};
 use plan::Plan;
 
 fn main() {
@@ -14,10 +14,10 @@ fn main() {
     let height = 300.0 * 3.0_f32.sqrt() / 2.0;
 
     // 1. One node, without split.
-    let no_split = vec![Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "root")];
+    let no_split = vec![Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "root", Labeling::Normal)];
 
     // 2. One node with split — display only the split nodes.
-    let parent = Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "parent");
+    let parent = Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "parent", Labeling::Normal);
     let center = parent.borrow().split();
     let mut split = vec![center.clone()];
     for corner in center.borrow().children.iter().flatten() {
@@ -26,7 +26,7 @@ fn main() {
 
     // 3. One pentagonal base: 5 inward base nodes + 5 outward reverted nodes.
     let mut base_plan = Plan::new();
-    let base_root = base_plan.generate_base("base_", 300.0, Vec2::Y, Vec2::ZERO);
+    let base_root = base_plan.generate_base("base_", 300.0, Vec2::Y, Vec2::ZERO, Labeling::Normal);
     let base = plan::collect_nodes(&base_root);
 
     // 4. Full dual-pentagon interlocked mesh (North + South, 20 nodes).

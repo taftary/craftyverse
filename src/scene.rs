@@ -554,6 +554,7 @@ fn arrow_length(node: &Node) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::node::Labeling;
 
     /// Equilateral test node (base 300, apex up, height = base * √3 / 2).
     fn test_node() -> NodeRef {
@@ -564,6 +565,7 @@ mod tests {
             300.0,
             300.0 * 3.0_f32.sqrt() / 2.0,
             "root",
+            Labeling::Normal,
         )
     }
 
@@ -588,7 +590,7 @@ mod tests {
 
     #[test]
     fn origin_arrow_is_skipped_when_node_is_at_origin() {
-        let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "at_origin");
+        let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "at_origin", Labeling::Normal);
         let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
         // Only outline + arrow shafts remain.

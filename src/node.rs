@@ -6,6 +6,26 @@ use glam::Vec2;
 /// Shared, mutable link to a node. Used for the bidirectional `children` links.
 pub type NodeRef = Rc<RefCell<Node>>;
 
+/// Corner labeling convention for a node's triangle: `Normal` keeps the
+/// default B/C assignment, `Mirrored` swaps it (and therefore the I/K
+/// direction vectors). Construction-time only — afterwards the labeling is
+/// implicit in the stored `points` triplet and propagates through `split()`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Labeling {
+    Normal,
+    Mirrored,
+}
+
+impl Labeling {
+    /// The opposite labeling (used to mirror paired nodes).
+    pub fn opposite(self) -> Self {
+        match self {
+            Labeling::Normal => Labeling::Mirrored,
+            Labeling::Mirrored => Labeling::Normal,
+        }
+    }
+}
+
 /// A geometric node: isosceles triangle geometry, directional vectors and
 /// bidirectional links to adjacent nodes. See `docs/classes-definitions/node.md`.
 pub struct Node {
@@ -48,6 +68,8 @@ impl Node {
     /// - `base_length` — length of the base edge BC of the node's triangle.
     /// - `height` — height of the isosceles triangle from base BC to apex A.
     /// - `name` — unique name identifying the node.
+    /// - `labeling` — corner labeling convention; `Mirrored` swaps the B/C
+    ///   corner assignment and therefore the I/K direction vectors.
     pub fn new(
         direction_of_node: Vec2,
         center: Vec2,
@@ -55,15 +77,20 @@ impl Node {
         base_length: f32,
         height: f32,
         name: impl Into<String>,
+        labeling: Labeling,
     ) -> NodeRef {
         // Isosceles triangle whose centroid is `center`: base BC is
         // perpendicular to `direction_of_node` and apex A is aligned with it
         // at distance `height` from BC. The centroid sits at 1/3 of the height
-        // from the base (2/3 from the apex). B is placed on the side that
-        // preserves the historical winding (B right of the direction axis,
-        // C left, when the direction points up).
+        // from the base (2/3 from the apex). With `Labeling::Normal`, B is
+        // placed right of the direction axis and C left (when the direction
+        // points up); `Labeling::Mirrored` swaps the B/C assignment and
+        // therefore the I/K directions.
         let direction = direction_of_node.normalize();
-        let perpendicular = Vec2::new(-direction.y, direction.x);
+        let mut perpendicular = Vec2::new(-direction.y, direction.x);
+        if labeling == Labeling::Mirrored {
+            perpendicular = -perpendicular;
+        }
         let apex = center + direction * (2.0 * height / 3.0);
         let base_mid = center - direction * (height / 3.0);
         let points = [
@@ -228,6 +255,7 @@ mod tests {
             300.0,
             300.0 * 3.0_f32.sqrt() / 2.0,
             "root",
+            Labeling::Normal,
         )
     }
 
@@ -255,6 +283,7 @@ mod tests {
             300.0,
             200.0,
             "scaled",
+            Labeling::Normal,
         );
         assert!(approx_eq(node.borrow().direction_of_node, Vec2::Y));
     }
@@ -280,7 +309,7 @@ mod tests {
 
     #[test]
     fn new_builds_isosceles_triangle_from_direction_and_dimensions() {
-        let node = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "iso");
+        let node = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "iso", Labeling::Normal);
         let node = node.borrow();
         let [a, b, c] = node.points;
 
@@ -298,6 +327,23 @@ mod tests {
         // Isosceles: AB == AC, apex at distance `height` from base BC.
         assert!(((a - b).length() - (a - c).length()).abs() < EPSILON);
         assert!(((a - (b + c) / 2.0).length() - 200.0).abs() < EPSILON);
+    }
+
+    #[test]
+    fn new_mirrored_labeling_swaps_b_c_and_i_k() {
+        let normal = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "n", Labeling::Normal);
+        let mirrored = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "m", Labeling::Mirrored);
+        let normal = normal.borrow();
+        let mirrored = mirrored.borrow();
+
+        // Same triangle, swapped B/C labels — hence swapped I/K directions,
+        // with J (perpendicular to the unchanged base edge) preserved.
+        assert!(approx_eq(normal.points[0], mirrored.points[0]));
+        assert!(approx_eq(normal.points[1], mirrored.points[2]));
+        assert!(approx_eq(normal.points[2], mirrored.points[1]));
+        assert!(approx_eq(normal.directions[0], mirrored.directions[2]));
+        assert!(approx_eq(normal.directions[2], mirrored.directions[0]));
+        assert!(approx_eq(normal.directions[1], mirrored.directions[1]));
     }
 
     #[test]
