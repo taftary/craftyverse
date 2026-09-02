@@ -338,23 +338,35 @@ Algorithm generate(sideLength):
 
 ---
 
-## 7. `split` Method Specification
+## 7. `split` Method Specification (Revised)
 
-> **Status:** Not yet implemented. The traversal below needs revision before it can run: after `generate()` every port is saturated, so the `while` condition in step 4 is immediately true and the loop body never executes; the rewiring pattern also reads child slots that `Node.split()` leaves unset. Treat this section as design intent, not a runnable algorithm.
+
+**Status:** Ready for implementation.
 
 ### Overview
 
-The `Plan.split()` method coordinates splitting across a node and reconnects the resulting split-centers to grow the antiprismatic belt between caps. Splits are performed level-by-level across the topological grid.
+`Plan.split()` coordinates the subdivision of nodes to grow the antiprismatic belt between caps. The process is organized **level-by-level** and **ring-by-ring**. For each topological direction ($I$, $J$, $K$), nodes that form a closed ring at the current level are split simultaneously. The resulting **center nodes** (one per split) are then wired together to form the corresponding ring at the next level.
 
-### Connection Rules
+The method repeats until all nodes have reached the global target depth (`maxLevel`).
 
-* When traversing and splitting, the algorithm follows `node.children[0]` links from a starting node, splitting the current node and its `children[0]` target and connecting the new split-centers together.
-* The connection pattern between newly created centers uses the following pointer rewiring after each pair-split operation:
-* `nodeSplitedCenter.children[0].children[0] = nodeTargetSplitedCenter.children[1].children[2]`
-* `nodeSplitedCenter.children[1].children[0] = nodeTargetSplitedCenter.children[2].children[2]`
+### Prerequisites
 
+- `Node.split()` is assumed to be implemented as specified: it creates four new nodes (three corner nodes and one center), links the center to the corners via `children[0..2]`, and returns the center node. The corner nodes’ outward links remain unset and are the caller’s responsibility.
+- Before `Plan.split()` is invoked, the topological grid already contains **well-defined rings** at the current level. A ring is an ordered list of nodes $[n_0, n_1, \dots, n_{k-1}]$ such that for each $i$, $n_i$ and $n_{i+1 \pmod k}$ are adjacent along a specific direction (e.g., direction $I$). This ring information can be derived from existing `children` links or from a separate data structure maintained by the plan.
 
-* The traversal progresses along `children[0]` until it completes a loop back to the start; then it begins the same traversal starting from the start node's `children[1]` and repeats. The whole routine terminates when all nodes are at the target depth.
+### Connection Rules (Antiprismatic Wiring Pattern)
+
+After splitting all nodes in a ring, we obtain an array of center nodes `centers[]` in the same order as the original ring. The new ring at level $L+1$ is formed by connecting these centers in a twisted pattern. For each $i$:
+
+```text
+centers[i].children[d_i] = centers[(i+1) % k]
+centers[(i+1) % k].children[d_j] = centers[i]  (reciprocal)
+
+```
+
+where $d_i$ and $d_j$ are direction indices determined by the antiprismatic topology. Typically, for a belt between caps, the connection alternates between two of the three children slots (e.g., `children[0]` and `children[1]`). The exact indices should be derived from the geometric layout; for the implementation, they can be hardcoded per direction ring or determined by a lookup table.
+
+> **Important:** All pointer assignments must be bidirectional. If $A\text{.children}[x] = B$, then the corresponding reciprocal slot on $B$ must also point back to $A$ (the slot index may differ according to the direction convention).
 
 ### Signature
 
@@ -366,54 +378,87 @@ void split();
 ### Algorithm Steps
 
 ```text
-Algorithm split():
-    1. Identify Start Node:
-       currentNode = generated node
+Algorithm Plan.split():
+    Input:
+        - targetDepth (maxLevel) – the desired subdivision depth
+        - currentLevel – the level of nodes that are currently frontier
+        - rings[3] – three sets of rings, one for each direction (I, J, K)
+    Output:
+        - All nodes up to targetDepth are split and wired into the next level rings
 
-    2. Initialize Traversal Pointers:
-       nextNode = currentNode.children[0].children[0]
-       targetNode = currentNode.children[0]
+    Steps:
+    1. If currentLevel >= targetDepth:
+           return  // done
 
-    3. Perform Initial Splits (split() returns the center node of the split):
-       nodeSplitedCenter = currentNode.split()
-       nodeTargetSplitedCenter = targetNode.split()
+    2. For each direction dir in {I, J, K}:
+           ring = rings[dir]   // ordered list of nodes at currentLevel
+           If ring is empty:
+               continue
 
-    4. Loop until traversal reaches nodes already at the next split level:
-       while not (nextNode.children[0].level == currentNode.level and 
-                  nextNode.children[1].level == currentNode.level and 
-                  nextNode.children[2].level == currentNode.level):
-           
-           a. Rewire connections between freshly split centers:
-              nodeSplitedCenter.children[0].children[0] = nodeTargetSplitedCenter.children[1].children[2]
-              nodeSplitedCenter.children[1].children[0] = nodeTargetSplitedCenter.children[2].children[2]
+           // Phase A: Split all nodes in the ring and collect centers
+           centers = empty list
+           For each node n in ring:
+               center = n.split()   // returns the center node at currentLevel+1
+               centers.append(center)
 
-           b. Advance traversal window:
-              currentNode = nodeSplitedCenter
-              nodeSplitedCenter = nodeTargetSplitedCenter
+           // Phase B: Wire centers into a new ring at currentLevel+1
+           k = length(ring)
+           For i from 0 to k-1:
+               c1 = centers[i]
+               c2 = centers[(i+1) % k]
 
-           c. Decide advancement of nextNode & ensure target split center exists:
-              if nextNode.children[0].level != currentNode.level:
-                  nodeTargetSplitedCenter = nextNode.split()
-                  nextNode = nextNode.children[0]
-              else if nextNode.children[1].level != currentNode.level:
-                  nextNode = nextNode.children[1]
-              else:
-                  // Fallback: advance along children[2] if neither children[0] nor children[1] require a split
-                  nextNode = nextNode.children[2]
+               // Determine the correct child slot indices for this direction
+               // (These are constants based on the antiprismatic layout, e.g. for dir=I: slot1=0, slot2=1)
+               slot1 = directionSlotFor(dir, forward)
+               slot2 = directionSlotFor(dir, backward)
 
-    5. Repeat for Secondary Loops:
-       After completing the children[0] loop, repeat the same process starting 
-       from the original start node's children[1] and continue repeating until 
-       all target areas have next-level references (children[0], children[1], 
-       children[2] are non-null).
+               // Wire bidirectional connection
+               c1.children[slot1] = c2
+               c2.children[slot2] = c1
+
+           // Update the ring set for the next level
+           newRing = centers   // the centers now form the ring at currentLevel+1
+           rings[dir] = newRing
+
+    3. currentLevel = currentLevel + 1
+       Goto step 1
 
 ```
 
+### Termination
+
+The algorithm stops when `currentLevel` reaches `targetDepth`. At that point all nodes have been split exactly the required number of times, and every ring exists at every level up to the target.
+
 ### Notes & Implementation Details
 
-* **Center Node Usage:** Calling `split()` on a `Node` returns the newly created center node (per `Node.split()` specification). `Plan.split()` uses these returned center nodes for pointer rewiring.
-* **Level Comparisons:** All level comparisons refer to `node.level` (or split depth). Comparing levels allows the algorithm to detect whether a neighboring node has already been processed to the same depth.
-* **Reciprocal Pointer Assignments:** Pointer assignments across directions must preserve reciprocity where required by the topology (i.e., when setting `A.children[x] = B`, ensure the corresponding reciprocal pointer on `B` is set if the relationship is bidirectional).
+* **Ring Extraction:** The initial rings at `currentLevel = 0` must be provided or derivable from the generated topology. As splitting proceeds, the new rings are exactly the arrays of center nodes produced in Phase A. No traversal through `children` chains is needed after the initial ring setup.
+* **Center Node Usage:** `Node.split()` returns the center node, which is the only node that has its `children[0..2]` set (to the three corner nodes). All inter-node wiring at the next level is done **between center nodes**, not between corner nodes. This avoids reading or writing uninitialized children of children.
+* **Reciprocal Pointer Assignments:** Always set both directions of a link. The reciprocal slot index may differ (e.g., `c1.children[0] = c2` and `c2.children[1] = c1`). The mapping must be consistent across the entire ring.
+* **Multiple Directions:** The three direction rings are independent. Each is processed in the same way. The slot indices used for wiring may be different for each direction (e.g., direction $I$ uses slots 0 and 1, direction $J$ uses 1 and 2, direction $K$ uses 2 and 0). These mappings should be defined in a small helper function or constants table.
+* **Performance:** The algorithm runs in $O(N)$ per level, where $N$ is the number of nodes at that level. No repeated probing of child levels is needed.
+
+### Example for One Direction (Simplified)
+
+Assume a ring of four nodes `[A, B, C, D]` at level 0. Direction $I$ uses slots `[0, 1]` for forward/backward connections.
+
+1. **Split each:**
+`cA = A.split()`, `cB = B.split()`, `cC = C.split()`, `cD = D.split()`
+2. **Wire:**
+`cA.children[0] = cB`, `cB.children[1] = cA`
+`cB.children[0] = cC`, `cC.children[1] = cB`
+`cC.children[0] = cD`, `cD.children[1] = cC`
+`cD.children[0] = cA`, `cA.children[1] = cD`
+
+The new ring at level 1 is `[cA, cB, cC, cD]`.
+
+This process continues until the target depth is reached.
+
+
 
 ### Change note: 
 - Updated the Step 4 interlock formula from forward-skip offsets ((i+2)%5 / (i+3)%5) to reflection offsets ((2-i)%5 / (3-i)%5, with safe double-modulo), renamed the index variables to southIdx_I/southIdx_K for clarity, and added a resolved connection table. Geometry, base instantiation, labeling, and invariants are unchanged in substance.
+
+- split method revisions:
+* The original spec attempted to interleave splitting and wiring while traversing via `children[0]`. This led to uninitialized reads and an incorrect loop condition.
+* The revised spec splits all nodes first, then wires centers using explicit ring ordering. No traversal through partially built structure occurs.
+* The original rewiring pattern (`nodeSplitedCenter.children[0].children[0] = ...`) is replaced with direct center-to-center links, which are always valid because both center nodes are fully initialized after `split()`.
