@@ -1,10 +1,11 @@
 //! CPU-side scene generation for the Vulkan debug viewer.
 //!
 //! Generates the same visualization the SVG viewer produced — triangle
-//! outlines, direction arrows, dashed origin arrow, child links, center dots
-//! and text labels — but as plain vertex data: colored line and triangle
-//! lists in a y-down world space, plus pixel-space text runs. The renderer
-//! only uploads the buffers and applies the two clip transforms.
+//! outlines, direction arrows, dashed origin arrow, child links, open-port
+//! markers, center dots and text labels — but as plain vertex data: colored
+//! line and triangle lists in a y-down world space, plus pixel-space text
+//! runs. The renderer only uploads the buffers and applies the two clip
+//! transforms.
 //!
 //! Each displayed node attribute can be toggled through [`DisplayOptions`];
 //! the scene also carries a pixel-space checkbox panel (geometry plus hit
@@ -50,6 +51,7 @@ const CHECKBOX_SIZE: f32 = 12.0;
 const CHECKBOX_ROW_HEIGHT: f32 = 18.0;
 const CHECKBOX_LABEL_SIZE: f32 = 11.0;
 const CHECKBOX_LABEL_GAP: f32 = 6.0;
+const CHECKBOX_SUB_INDENT: f32 = 16.0;
 
 /// One hex digit → value; invalid digits map to 0.
 const fn hex_channel(byte: u8) -> u8 {
@@ -77,16 +79,33 @@ pub fn level_color(level: u32) -> [f32; 3] {
 }
 
 /// One toggleable node attribute of the visualization; each variant has a
-/// checkbox in the display-options panel.
+/// checkbox in the display-options panel. `ChildLinks`, `OpenPorts` and
+/// `Directions` are group masters gating their per-port sub-switches
+/// (`ChildLink(i)`, `OpenPort(i)`, `Direction(i)`; 0 = I, 1 = J, 2 = K): an
+/// element is drawn only when both the master and its per-port switch are on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Attribute {
     ChildLinks,
+    ChildLink(usize),
+    OpenPorts,
+    OpenPort(usize),
     Outline,
     Directions,
+    Direction(usize),
     DirectionOfNode,
     Origin,
     CenterDot,
     Labels,
+}
+
+impl Attribute {
+    /// Port index when the attribute is a per-port sub-switch of a group.
+    fn port(self) -> Option<usize> {
+        match self {
+            Attribute::ChildLink(i) | Attribute::OpenPort(i) | Attribute::Direction(i) => Some(i),
+            _ => None,
+        }
+    }
 }
 
 /// Which node attributes the visualization displays. Toggled at runtime
@@ -94,8 +113,12 @@ pub enum Attribute {
 #[derive(Clone, Copy, Debug)]
 pub struct DisplayOptions {
     pub child_links: bool,
+    pub child_links_ijk: [bool; 3],
+    pub open_ports: bool,
+    pub open_ports_ijk: [bool; 3],
     pub outline: bool,
     pub directions: bool,
+    pub directions_ijk: [bool; 3],
     pub direction_of_node: bool,
     pub origin: bool,
     pub center_dot: bool,
@@ -106,8 +129,12 @@ impl Default for DisplayOptions {
     fn default() -> Self {
         Self {
             child_links: true,
+            child_links_ijk: [true; 3],
+            open_ports: true,
+            open_ports_ijk: [true; 3],
             outline: true,
             directions: true,
+            directions_ijk: [true; 3],
             direction_of_node: true,
             origin: true,
             center_dot: true,
@@ -121,8 +148,12 @@ impl DisplayOptions {
     pub fn value(&self, attribute: Attribute) -> bool {
         match attribute {
             Attribute::ChildLinks => self.child_links,
+            Attribute::ChildLink(i) => self.child_links_ijk[i],
+            Attribute::OpenPorts => self.open_ports,
+            Attribute::OpenPort(i) => self.open_ports_ijk[i],
             Attribute::Outline => self.outline,
             Attribute::Directions => self.directions,
+            Attribute::Direction(i) => self.directions_ijk[i],
             Attribute::DirectionOfNode => self.direction_of_node,
             Attribute::Origin => self.origin,
             Attribute::CenterDot => self.center_dot,
@@ -134,8 +165,12 @@ impl DisplayOptions {
     pub fn toggle(&mut self, attribute: Attribute) {
         match attribute {
             Attribute::ChildLinks => self.child_links = !self.child_links,
+            Attribute::ChildLink(i) => self.child_links_ijk[i] = !self.child_links_ijk[i],
+            Attribute::OpenPorts => self.open_ports = !self.open_ports,
+            Attribute::OpenPort(i) => self.open_ports_ijk[i] = !self.open_ports_ijk[i],
             Attribute::Outline => self.outline = !self.outline,
             Attribute::Directions => self.directions = !self.directions,
+            Attribute::Direction(i) => self.directions_ijk[i] = !self.directions_ijk[i],
             Attribute::DirectionOfNode => self.direction_of_node = !self.direction_of_node,
             Attribute::Origin => self.origin = !self.origin,
             Attribute::CenterDot => self.center_dot = !self.center_dot,
@@ -144,11 +179,22 @@ impl DisplayOptions {
     }
 }
 
-/// Checkboxes of the display-options panel, in display order.
-const ATTRIBUTES: [(Attribute, &str); 7] = [
+/// Checkboxes of the display-options panel, in display order. Per-port
+/// sub-switches sit right under their group master.
+const ATTRIBUTES: [(Attribute, &str); 17] = [
     (Attribute::ChildLinks, "child links"),
+    (Attribute::ChildLink(0), "link I"),
+    (Attribute::ChildLink(1), "link J"),
+    (Attribute::ChildLink(2), "link K"),
+    (Attribute::OpenPorts, "open ports"),
+    (Attribute::OpenPort(0), "port I"),
+    (Attribute::OpenPort(1), "port J"),
+    (Attribute::OpenPort(2), "port K"),
     (Attribute::Outline, "outline"),
     (Attribute::Directions, "directions ijk"),
+    (Attribute::Direction(0), "dir I"),
+    (Attribute::Direction(1), "dir J"),
+    (Attribute::Direction(2), "dir K"),
     (Attribute::DirectionOfNode, "direction of node"),
     (Attribute::Origin, "origin arrow"),
     (Attribute::CenterDot, "center dot"),
@@ -322,6 +368,9 @@ impl SceneBuilder {
         if self.options.child_links {
             self.add_child_links(node, arrow_len);
         }
+        if self.options.open_ports {
+            self.add_open_port_markers(node, arrow_len);
+        }
         if self.options.outline {
             self.add_triangle_outline(node);
         }
@@ -344,12 +393,37 @@ impl SceneBuilder {
 
     /// Medium dashed line from the node's center to each non-empty child's
     /// center, colored with the direction color of the child slot (I/J/K).
+    /// Each port's link is gated by its own switch on top of the group master.
     fn add_child_links(&mut self, node: &Node, arrow_len: f32) {
         let from = self.map(node.center);
         for (index, child) in node.children.iter().enumerate() {
             let Some(child) = child else { continue };
+            if !self.options.child_links_ijk[index] {
+                continue;
+            }
             let to = self.map(child.borrow().center);
             self.dashed_line(from, to, arrow_len / 6.0, DIRECTION_COLORS[index]);
+        }
+    }
+
+    /// Bold filled disc just outside the edge of every open (null) port,
+    /// colored with the port's direction color. Open ports get a solid
+    /// marker — not a thin line — so they stand out instead of being the
+    /// mere absence of a child link. Port I/J/K faces edge AB/BC/CA.
+    fn add_open_port_markers(&mut self, node: &Node, arrow_len: f32) {
+        let [a, b, c] = node.points;
+        let edge_midpoints = [(a + b) / 2.0, (b + c) / 2.0, (c + a) / 2.0];
+        let radius = arrow_len * 0.18;
+        for (index, child) in node.children.iter().enumerate() {
+            if child.is_some() || !self.options.open_ports_ijk[index] {
+                continue;
+            }
+            let outward = node.directions[index];
+            let center = self.map(edge_midpoints[index] + outward * radius * 1.4);
+            // Extend the content bounds to the disc rim so the view fit never
+            // clips a marker.
+            self.map(edge_midpoints[index] + outward * radius * 2.4);
+            self.disc(center, radius, DIRECTION_COLORS[index]);
         }
     }
 
@@ -362,10 +436,14 @@ impl SceneBuilder {
         self.line(c, a, color);
     }
 
-    /// One arrow per direction vector, starting at the node's center.
+    /// One arrow per direction vector, starting at the node's center. Each
+    /// port's arrow is gated by its own switch on top of the group master.
     fn add_direction_arrows(&mut self, node: &Node, arrow_len: f32) {
         let start = self.map(node.center);
         for (index, direction) in node.directions.iter().enumerate() {
+            if !self.options.directions_ijk[index] {
+                continue;
+            }
             let end = self.map(node.center + direction.normalize() * arrow_len);
             let color = DIRECTION_COLORS[index];
             self.line(start, end, color);
@@ -403,8 +481,11 @@ impl SceneBuilder {
     /// Filled dot on top of all lines, colored by level.
     fn add_center_dot(&mut self, node: &Node, arrow_len: f32) {
         let center = self.map(node.center);
-        let radius = arrow_len * 0.08;
-        let color = level_color(node.level);
+        self.disc(center, arrow_len * 0.08, level_color(node.level));
+    }
+
+    /// Filled disc of `DOT_SEGMENTS` triangles; `center` is already mapped.
+    fn disc(&mut self, center: Vec2, radius: f32, color: [f32; 3]) {
         for i in 0..DOT_SEGMENTS {
             let a0 = i as f32 / DOT_SEGMENTS as f32 * std::f32::consts::TAU;
             let a1 = (i + 1) as f32 / DOT_SEGMENTS as f32 * std::f32::consts::TAU;
@@ -450,11 +531,15 @@ impl SceneBuilder {
     }
 
     /// Checkbox panel (top-left, pixel space): one row per attribute — a box,
-    /// filled when the attribute is on, plus its label. Always generated so
-    /// the options stay reachable when every attribute is off.
+    /// filled when the attribute is on, plus its label. Per-port sub-switches
+    /// are indented under their group master and labeled with the port's
+    /// direction color. Always generated so the options stay reachable when
+    /// every attribute is off.
     fn add_checkbox_panel(&mut self) {
         for (row, (attribute, label)) in ATTRIBUTES.iter().enumerate() {
-            let min = Vec2::new(PANEL_PAD, PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT);
+            let indent = attribute.port().map_or(0.0, |_| CHECKBOX_SUB_INDENT);
+            let label_color = attribute.port().map_or(LABEL_COLOR, |i| DIRECTION_COLORS[i]);
+            let min = Vec2::new(PANEL_PAD + indent, PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT);
             let max = min + Vec2::splat(CHECKBOX_SIZE);
             self.ui_line(min, Vec2::new(max.x, min.y), UI_COLOR);
             self.ui_line(Vec2::new(max.x, min.y), max, UI_COLOR);
@@ -474,7 +559,7 @@ impl SceneBuilder {
                 text: label.to_string(),
                 anchor,
                 size: CHECKBOX_LABEL_SIZE,
-                color: LABEL_COLOR,
+                color: label_color,
                 centered: false,
             });
             // The clickable rectangle covers the box and the label (width
@@ -577,9 +662,9 @@ mod tests {
         // 3 outline + 4 arrow shafts + at least one dashed origin segment.
         assert!(mesh.lines.len() >= (3 + 4 + 1) * 2);
         assert_eq!(mesh.lines.len() % 2, 0);
-        // 5 arrowheads + 16 dot segments = 21 triangles.
-        assert_eq!(mesh.triangles.len(), 21 * 3);
-        // 1 name label + 3 corner labels + 7 checkbox labels.
+        // 5 arrowheads + 16 dot segments + 3 open-port discs = 69 triangles.
+        assert_eq!(mesh.triangles.len(), 69 * 3);
+        // 1 name label + 3 corner labels + checkbox labels.
         assert_eq!(mesh.texts.len(), 4 + ATTRIBUTES.len());
         assert_eq!(mesh.texts[0].text, "root L0");
         // One checkbox row per attribute, all ticked by default.
@@ -595,8 +680,8 @@ mod tests {
 
         // Only outline + arrow shafts remain.
         assert_eq!(mesh.lines.len(), (3 + 4) * 2);
-        // 4 arrowheads + dot segments.
-        assert_eq!(mesh.triangles.len(), (4 + DOT_SEGMENTS) * 3);
+        // 4 arrowheads + dot segments + 3 open-port discs.
+        assert_eq!(mesh.triangles.len(), (4 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3);
     }
 
     #[test]
@@ -612,9 +697,10 @@ mod tests {
         // 4 nodes × (3 outline + 4 shafts) + dashed origin segments +
         // 6 child links (3 center→corner, 3 corner→center).
         assert!(mesh.lines.len() >= (4 * 7 + 6) * 2);
-        // 4 nodes × (5 arrowheads + 16 dot segments).
-        assert_eq!(mesh.triangles.len(), 4 * 21 * 3);
-        // 4 nodes × (1 name label + 3 corner labels) + 7 checkbox labels.
+        // 4 nodes × (5 arrowheads + 16 dot segments) + 6 open-port discs (two
+        // per corner node; the center node is fully linked).
+        assert_eq!(mesh.triangles.len(), (4 * 21 + 6 * DOT_SEGMENTS) * 3);
+        // 4 nodes × (1 name label + 3 corner labels) + checkbox labels.
         assert_eq!(mesh.texts.len(), 16 + ATTRIBUTES.len());
         assert_eq!(mesh.texts[0].text, "root.C L1");
     }
@@ -626,8 +712,12 @@ mod tests {
         // Child links only: every emitted line is part of a dashed link.
         let options = DisplayOptions {
             child_links: true,
+            child_links_ijk: [true; 3],
+            open_ports: false,
+            open_ports_ijk: [false; 3],
             outline: false,
             directions: false,
+            directions_ijk: [false; 3],
             direction_of_node: false,
             origin: false,
             center_dot: false,
@@ -650,12 +740,118 @@ mod tests {
     }
 
     #[test]
+    fn open_ports_emit_bold_disc_per_null_port() {
+        let node = test_node();
+        // Open ports only: every emitted triangle is part of a port marker.
+        let options = DisplayOptions {
+            child_links: false,
+            child_links_ijk: [false; 3],
+            open_ports: true,
+            open_ports_ijk: [true; 3],
+            outline: false,
+            directions: false,
+            directions_ijk: [false; 3],
+            direction_of_node: false,
+            origin: false,
+            center_dot: false,
+            labels: false,
+        };
+        let mesh = build_scene(&[node.clone()], Vec2::new(800.0, 800.0), &options);
+
+        // One disc per open port (all three are null), no lines.
+        assert_eq!(mesh.triangles.len(), 3 * DOT_SEGMENTS * 3);
+        assert!(mesh.lines.is_empty());
+        // Every disc carries the direction color of its port; all three used.
+        for color in DIRECTION_COLORS {
+            assert!(mesh.triangles.iter().any(|vertex| vertex.color == color));
+        }
+
+        // The split center node is fully linked: no markers.
+        let center = node.borrow().split();
+        let mesh = build_scene(&[center.clone()], Vec2::new(800.0, 800.0), &options);
+        assert!(mesh.triangles.is_empty());
+
+        // Each corner node has two open ports: two discs.
+        let node_i = center.borrow().children[0].clone().unwrap();
+        let mesh = build_scene(&[node_i], Vec2::new(800.0, 800.0), &options);
+        assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
+    }
+
+    #[test]
+    fn per_port_switches_gate_each_group() {
+        let node = test_node();
+        let mut options = DisplayOptions {
+            child_links: false,
+            child_links_ijk: [false; 3],
+            open_ports: true,
+            open_ports_ijk: [true; 3],
+            outline: false,
+            directions: false,
+            directions_ijk: [false; 3],
+            direction_of_node: false,
+            origin: false,
+            center_dot: false,
+            labels: false,
+        };
+
+        // One port off: two discs remain, none in the disabled port's color.
+        options.toggle(Attribute::OpenPort(1));
+        let mesh = build_scene(&[node.clone()], Vec2::new(800.0, 800.0), &options);
+        assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
+        assert!(mesh
+            .triangles
+            .iter()
+            .all(|vertex| vertex.color != DIRECTION_COLORS[1]));
+
+        // The master gates the whole group without touching the per-port
+        // switches: no markers while off, the same selection returns when on.
+        options.toggle(Attribute::OpenPorts);
+        let mesh = build_scene(&[node.clone()], Vec2::new(800.0, 800.0), &options);
+        assert!(mesh.triangles.is_empty());
+        options.toggle(Attribute::OpenPorts);
+        let mesh = build_scene(&[node.clone()], Vec2::new(800.0, 800.0), &options);
+        assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
+
+        // Directions: only port I enabled — one shaft and one arrowhead, red.
+        options.open_ports = false;
+        options.directions = true;
+        options.directions_ijk = [true, false, false];
+        let mesh = build_scene(&[node.clone()], Vec2::new(800.0, 800.0), &options);
+        assert_eq!(mesh.lines.len(), 2);
+        assert_eq!(mesh.triangles.len(), 3);
+        assert!(mesh
+            .lines
+            .iter()
+            .chain(&mesh.triangles)
+            .all(|vertex| vertex.color == DIRECTION_COLORS[0]));
+
+        // Child links: the split center has three links; keep only I and K.
+        let center = node.borrow().split();
+        options.directions = false;
+        options.child_links = true;
+        options.child_links_ijk = [true, false, true];
+        let mesh = build_scene(&[center], Vec2::new(800.0, 800.0), &options);
+        assert!(!mesh.lines.is_empty());
+        assert!(mesh
+            .lines
+            .iter()
+            .all(|vertex| vertex.color != DIRECTION_COLORS[1]));
+        for color in [DIRECTION_COLORS[0], DIRECTION_COLORS[2]] {
+            assert!(mesh.lines.iter().any(|vertex| vertex.color == color));
+        }
+    }
+
+    #[test]
     fn disabled_attributes_emit_no_geometry() {
         let node = test_node();
         let options = DisplayOptions {
             child_links: false,
+            child_links_ijk: [false; 3],
+            open_ports: false,
+            open_ports_ijk: [false; 3],
             outline: false,
             directions: false,
+            directions_ijk: [false; 3],
             direction_of_node: false,
             origin: false,
             center_dot: false,
@@ -682,9 +878,10 @@ mod tests {
         assert!(!options.value(Attribute::DirectionOfNode));
         let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &options);
 
-        // No direction arrowheads left; only the origin arrowhead + dot.
-        assert_eq!(mesh.triangles.len(), (1 + DOT_SEGMENTS) * 3);
-        // Two of the seven checkboxes are unticked.
+        // No direction arrowheads left; only the origin arrowhead + dot + the
+        // three open-port discs.
+        assert_eq!(mesh.triangles.len(), (1 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3);
+        // Two of the checkboxes are unticked.
         assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() - 2) * 2 * 3);
     }
 

@@ -40,8 +40,9 @@ public:
     Node* generate(float sideLength);
 
     /**
-     * Coordinates splitting across nodes level-by-level and reconnects the resulting
-     * split-centers to grow the antiprismatic belt between caps.
+     * Subdivides the whole mesh one level: splits every node of the current level
+     * once, reconnects the resulting split-centers across the subdivided edges,
+     * and destroys the old nodes as the traversal window advances.
      */
     void split();
 
@@ -331,77 +332,133 @@ Algorithm generate(sideLength):
 
 ## 7. `split` Method Specification
 
-> **Status:** Not yet implemented. The traversal below needs revision before it can run: after `generate()` every port is saturated, so the `while` condition in step 4 is immediately true and the loop body never executes; the rewiring pattern also reads child slots that `Node.split()` leaves unset. Treat this section as design intent, not a runnable algorithm.
+> **Status:** Algorithm confirmed, implemented in Rust. Replaces the single-pass traversal sketch: that walk only covered the `generate()` mesh shape — at level 1 the corner-node strands form their own rings that a `children[0]` chain with `children[1]` pivots can never enter (a second split left 5 of 80 nodes unvisited). The two passes below are level-agnostic, and full port saturation is now measured after one, two and three consecutive splits (see the check results at the end of this section).
 
 ### Overview
 
-The `Plan.split()` method coordinates splitting across a node and reconnects the resulting split-centers to grow the antiprismatic belt between caps. Splits are performed level-by-level across the topological grid.
+`Plan.split()` subdivides the whole mesh one level: every node of the current level is split once (`Node.split()` returns the new center node), the fresh corner nodes are interconnected across every subdivided edge, and the old nodes are destroyed at the end. The method makes two passes over the old level, which every old node survives until the destroy step:
 
-### Connection Rules
+1. **Split pass** — collect every node reachable from `rootNode` (breadth-first), split each one, and index the returned center node by its parent.
+2. **Wiring pass** — enumerate the old edges and wire the fresh corner nodes across each of them, then re-anchor `rootNode` on the old root's center and destroy every old node.
 
-* When traversing and splitting, the algorithm follows `node.children[0]` links from a starting node, splitting the current node and its `children[0]` target and connecting the new split-centers together.
-* The connection pattern between newly created centers uses the following pointer rewiring after each pair-split operation:
-* `nodeSplitedCenter.children[0].children[0] = nodeTargetSplitedCenter.children[1].children[2]`
-* `nodeSplitedCenter.children[1].children[0] = nodeTargetSplitedCenter.children[2].children[2]`
+Because the mesh convention is reciprocal (`0 <-> 2`, `1 <-> 1`), each old edge appears exactly twice in the enumeration — once per endpoint. Each edge is wired exactly once by canonicalizing the side that writes it: `0 <-> 2` edges are wired from their port-0 side (`wire_chain_edge`), `1 <-> 1` edges from one canonical side (`wire_pair_edge`).
 
+### Corner-to-edge incidence
 
-* The traversal progresses along `children[0]` until it completes a loop back to the start; then it begins the same traversal starting from the start node's `children[1]` and repeats. The whole routine terminates when all nodes are at the target depth.
+`Node.split()` wires each center to its own three corners. The remaining corner ports face the parent's edges, two corner ports per parent edge:
+
+| Parent edge | Link ports | Corner ports on the edge |
+|---|---|---|
+| AB | `children[0]` (I) | `nodeI.children[0]` (near A), `nodeJ.children[0]` (near B) |
+| BC | `children[1]` (J) | `nodeJ.children[1]` (near B), `nodeK.children[1]` (near C) |
+| CA | `children[2]` (K) | `nodeK.children[2]` (near C), `nodeI.children[2]` (near A) |
+
+So every old edge carries exactly two new reciprocal links — one per half of the subdivided edge — pairing the corner nodes that sit at the same endpoint.
+
+### The two pairing cases (`0 <-> 2` edges)
+
+For an edge written as `P.children[0] == Q` (reciprocally `Q.children[2] == P`), the endpoint correspondence between the two triangles decides the pairing:
+
+* **Straight (coincident edge):** the parents share a geometric edge and the corner letters coincide (`P.A = Q.A`, `P.B = Q.C`). The halves wire `nodeI[0] <-> nodeI[2]` and `nodeJ[0] <-> nodeK[2]`. This is the case for the pentagon perimeter edges.
+* **Crosswise (gap edge):** the corner letters pair crossed (`P.A = Q.C`, `P.B = Q.A`), so the halves wire `nodeI[0] <-> nodeK[2]` and `nodeJ[0] <-> nodeI[2]`. This is the case for the belt edges bridging the interlock gap between the two pentagons — the mesh is a topological icosahedron, and each belt edge joins an upper-ring vertex to a lower-ring vertex, so `P.A` (a lower-ring apex) corresponds to `Q.C`, not `Q.A` — and for the internal center–corner edges that appear from level 1 on.
+
+The implementation tells the cases apart geometrically: it compares the midpoints of the facing half-edges of the two corner nodes I. When they coincide (within a tolerance relative to the corner's base length, `0.01` — the two halves of one edge sit a quarter edge apart, belt edges the whole interlock gap apart), the pairing is straight; otherwise crosswise.
+
+### Pair edges (`1 <-> 1` edges)
+
+The paired nodes of a pentagon share their base edge with matching corner letters (`P.B = Q.B`, `P.C = Q.C`), so the halves always wire straight: `nodeJ[1] <-> nodeJ[1]` and `nodeK[1] <-> nodeK[1]`. The same holds for the internal center–corner `1 <-> 1` edges at deeper levels, so no case distinction is needed here.
+
+### Variables
+
+* `oldNodes` — every node reachable from `rootNode` before the split (the old level).
+* `centers` — map from old node to the center node returned by its `split()`.
 
 ### Signature
 
 ```cpp
 void split();
-
 ```
 
 ### Algorithm Steps
 
 ```text
 Algorithm split():
-    1. Identify Start Node:
-       currentNode = generated node
+    1. Collect the old level:
+       oldNodes = breadth-first walk from rootNode following child links
 
-    2. Initialize Traversal Pointers:
-       nextNode = currentNode.children[0].children[0]
-       targetNode = currentNode.children[0]
+    2. Split pass — one split per node, centers indexed by parent:
+       for node in oldNodes:
+           centers[node] = node.split()
 
-    3. Perform Initial Splits (split() returns the center node of the split):
-       nodeSplitedCenter = currentNode.split()
-       nodeTargetSplitedCenter = targetNode.split()
+    3. Wiring pass — wire the fresh corner nodes across every old edge:
+       for node in oldNodes:
+           for index in {0, 1, 2}:
+               neighbor = node.children[index]
+               if neighbor is null: continue
 
-    4. Loop until traversal reaches nodes already at the next split level:
-       while not (nextNode.children[0].level == currentNode.level and 
-                  nextNode.children[1].level == currentNode.level and 
-                  nextNode.children[2].level == currentNode.level):
-           
-           a. Rewire connections between freshly split centers:
-              nodeSplitedCenter.children[0].children[0] = nodeTargetSplitedCenter.children[1].children[2]
-              nodeSplitedCenter.children[1].children[0] = nodeTargetSplitedCenter.children[2].children[2]
+               if index == 0:
+                   // 0 <-> 2 edge, wired from its port-0 side.
+                   wireChainEdge(centers[node], centers[neighbor])
 
-           b. Advance traversal window:
-              currentNode = nodeSplitedCenter
-              nodeSplitedCenter = nodeTargetSplitedCenter
+               if index == 1 and node is the canonical side:
+                   // 1 <-> 1 edge, wired once (any consistent tie-break,
+                   // e.g. pointer order).
+                   wirePairEdge(centers[node], centers[neighbor])
 
-           c. Decide advancement of nextNode & ensure target split center exists:
-              if nextNode.children[0].level != currentNode.level:
-                  nodeTargetSplitedCenter = nextNode.split()
-                  nextNode = nextNode.children[0]
-              else if nextNode.children[1].level != currentNode.level:
-                  nextNode = nextNode.children[1]
-              else:
-                  // Fallback: advance along children[2] if neither children[0] nor children[1] require a split
-                  nextNode = nextNode.children[2]
-
-    5. Repeat for Secondary Loops:
-       After completing the children[0] loop, repeat the same process starting 
-       from the original start node's children[1] and continue repeating until 
-       all target areas have next-level references (children[0], children[1], 
-       children[2] are non-null).
-
+    4. Re-anchor and release the old level:
+       rootNode = centers[old rootNode]
+       for node in oldNodes:
+           node.destroy()
 ```
+
+Where:
+
+```text
+wireChainEdge(pCenter, qCenter):
+    pI = pCenter.children[1]   // corner node I of the port-0 side
+    pJ = pCenter.children[0]   // corner node J of the port-0 side
+    qI = qCenter.children[1]   // corner node I of the port-2 side
+    qK = qCenter.children[2]   // corner node K of the port-2 side
+
+    if edgeMidpoint(pI, port I) ≈ edgeMidpoint(qI, port K):
+        // coincident edge: straight pairing
+        pI.children[0] <-> qI.children[2]
+        pJ.children[0] <-> qK.children[2]
+    else:
+        // gap edge: crosswise pairing
+        pI.children[0] <-> qK.children[2]
+        pJ.children[0] <-> qI.children[2]
+
+wirePairEdge(pCenter, qCenter):
+    pJ = pCenter.children[0]   // corner node J
+    pK = pCenter.children[2]   // corner node K
+    qJ = qCenter.children[0]
+    qK = qCenter.children[2]
+
+    pJ.children[1] <-> qJ.children[1]
+    pK.children[1] <-> qK.children[1]
+```
+
+### Port accounting
+
+The old level has 30 edges (10 pentagon perimeter, 10 pentagon pair, 10 belt), each wired once into 2 reciprocal links: 120 corner-port writes. The 20 centers contribute 3 internal links each through `Node.split()`: another 120 port writes. Total 240 ports = 80 nodes × 3 ports — full saturation with no collisions, at every level.
 
 ### Notes & Implementation Details
 
-* **Center Node Usage:** Calling `split()` on a `Node` returns the newly created center node (per `Node.split()` specification). `Plan.split()` uses these returned center nodes for pointer rewiring.
-* **Level Comparisons:** All level comparisons refer to `node.level` (or split depth). Comparing levels allows the algorithm to detect whether a neighboring node has already been processed to the same depth.
-* **Reciprocal Pointer Assignments:** Pointer assignments across directions must preserve reciprocity where required by the topology (i.e., when setting `A.children[x] = B`, ensure the corresponding reciprocal pointer on `B` is set if the relationship is bidirectional).
+* **Wiring pairs are reciprocal corner-to-corner links.** Every wiring rule writes both sides of each link (`cornerA.children[y] = cornerB` and `cornerB.children[w] = cornerA`), preserving the mesh-wide reciprocity convention (`0 <-> 2`, `1 <-> 1`).
+* **Old nodes survive until the destroy step**, so their links are all readable during the wiring pass and the center map keys (the old nodes' addresses) stay stable. `destroy()` only touches old-level links; the new level is fully wired by then.
+* **Level-agnostic by construction.** The wiring rules depend only on the local geometry of each old edge (which corner ports face it, and whether the facing halves coincide), never on the global mesh shape — so the same code subdivides the `generate()` mesh, its subdivisions, and the single-pentagon base (open ports are simply skipped).
+* **Why the single-pass traversal was dropped.** The previous sketch walked `children[0]` chains with `children[1]` pivots, destroying nodes behind it. That covers the `generate()` mesh, but at level 1 the corner nodes that sit at the old A corners form their own closed strands, reachable only through `children[1]` links of nodes whose `children[0]` is still alive — no dead end ever fires a pivot onto them, and the walk terminates with those nodes unvisited.
+
+### Resolved Known Issues
+
+The first traversal implementation measured 10 open ports and 4 one-way links after one split (the gaps that fragmented the mesh on the second split). Both are fixed:
+
+1. **Loop-close slot collision** — gone with the traversal: every edge now has exactly one writer, so no write is ever overwritten.
+2. **Coverage of untraversed edges** — gone with the canonical enumeration: every old edge is wired exactly once, including the ring closes and the off-chain pair edges the walk could not see.
+
+### Implementation Check Results
+
+Measured on the current Rust implementation: one split produces 80 level-1 nodes re-anchored on `north_base_node_0.C`, with **0 open ports and 0 one-way links** over the 240 ports. The same holds after a second split (320 level-2 nodes, 960 ports) and a third (1280 level-3 nodes), with every node reachable from the root — the mesh stays connected.
+
+These numbers are pinned by the tests `plan::tests::split_wires_every_port_reciprocally`, `plan::tests::split_wires_corner_pairs_across_each_edge_kind` (per-edge-kind anchor checks, including the ring closes) and `plan::tests::repeated_splits_keep_mesh_fully_wired_and_connected`.

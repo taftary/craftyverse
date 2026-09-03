@@ -2,7 +2,8 @@
 //! primary root node and orchestrates pentagonal base generation and the
 //! dual-pentagon interlocked mesh. See `docs/classes-definitions/plan.md`.
 
-use std::collections::{HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::f32::consts::PI;
 use std::rc::Rc;
 
@@ -159,6 +160,56 @@ impl Plan {
         north_root
     }
 
+    /// Subdivides the whole mesh one level: splits every node of the current
+    /// level once, reconnects the resulting split-centers across the
+    /// subdivided edges, and destroys the old nodes. See
+    /// `docs/classes-definitions/plan.md` section 7.
+    ///
+    /// Two passes over the old level, which every node of survives until the
+    /// end: first split every node and index the centers by parent, then wire
+    /// the fresh corner nodes across every old edge exactly once — `0 <-> 2`
+    /// edges from their port-0 side (`wire_chain_edge`), `1 <-> 1` edges from
+    /// one canonical side (`wire_pair_edge`). `root_node` is re-anchored on
+    /// the old root's center before the old nodes are destroyed.
+    pub fn split(&mut self) {
+        let root = self
+            .root_node
+            .clone()
+            .expect("split() requires a generated mesh (root_node is None)");
+        let old_nodes = collect_nodes(&root);
+
+        // Split every node once, indexing the new center by parent. Old nodes
+        // stay alive (and their addresses stable) until the destroy pass.
+        let mut centers: HashMap<*const RefCell<Node>, NodeRef> = HashMap::with_capacity(old_nodes.len());
+        for node in &old_nodes {
+            centers.insert(Rc::as_ptr(node), node.borrow().split());
+        }
+
+        // Wire the new corner nodes across every old edge. Each edge appears
+        // twice in the enumeration (once per endpoint); reciprocity (0 <-> 2,
+        // 1 <-> 1) guarantees the canonicalization wires it exactly once.
+        for node in &old_nodes {
+            for index in 0..3 {
+                let Some(neighbor) = child(node, index) else { continue };
+                match index {
+                    // 0 <-> 2 edges are wired from their port-0 side.
+                    0 => wire_chain_edge(&centers[&Rc::as_ptr(node)], &centers[&Rc::as_ptr(&neighbor)]),
+                    // 1 <-> 1 edges are wired from one canonical side.
+                    1 if Rc::as_ptr(node) < Rc::as_ptr(&neighbor) => {
+                        wire_pair_edge(&centers[&Rc::as_ptr(node)], &centers[&Rc::as_ptr(&neighbor)])
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        // Re-anchor on the old root's center and release the old level.
+        self.root_node = Some(Rc::clone(&centers[&Rc::as_ptr(&root)]));
+        for node in &old_nodes {
+            node.borrow_mut().destroy();
+        }
+    }
+
     /// Extracts the 5 inner `reverted_node`s in circular sequence: walks the
     /// outer perimeter loop via `children[2]` from `root_base_node` and
     /// collects each paired inner node via `children[1]`.
@@ -180,6 +231,76 @@ impl Plan {
             .try_into()
             .unwrap_or_else(|_| panic!("the loop always collects 5 nodes"))
     }
+}
+
+/// Clone of the link at `index` on `node` (`None` when the port is open).
+fn child(node: &NodeRef, index: usize) -> Option<NodeRef> {
+    node.borrow().children[index].clone()
+}
+
+/// Sets the link at `index` on `node` to `new_link`.
+fn set_child(node: &NodeRef, index: usize, new_link: NodeRef) {
+    node.borrow_mut().children[index] = Some(new_link);
+}
+
+/// Tolerance for the edge-midpoint coincidence test, relative to the corner
+/// node's base length. The two halves of a subdivided edge sit a quarter of
+/// the parent edge apart; belt edges sit the whole interlock gap apart, so
+/// any value well below 0.25 classifies correctly at every level.
+const COINCIDENCE_TOLERANCE: f32 = 0.01;
+
+/// Midpoint of the edge faced by port `index` (I ⊥ AB, J ⊥ BC, K ⊥ CA).
+fn edge_midpoint(node: &NodeRef, index: usize) -> Vec2 {
+    let points = node.borrow().points;
+    let (a, b) = match index {
+        0 => (points[0], points[1]),
+        1 => (points[1], points[2]),
+        _ => (points[2], points[0]),
+    };
+    (a + b) / 2.0
+}
+
+/// Wires the two reciprocal corner-to-corner links across the edge two split
+/// parents shared via `p_center`'s parent port I (`children[0]`) and
+/// `q_center`'s parent port K (`children[2]`). Each half of the shared edge
+/// carries one corner port: corner nodes I (near A) and J (near B) on the `p`
+/// side, I (near A) and K (near C) on the `q` side.
+///
+/// When the corner nodes I of both sides sit at the same endpoint of the
+/// shared edge (their facing edge midpoints coincide), the corner letters
+/// match straight (`p.A = q.A`, `p.B = q.C`) and the halves wire `I<->I`,
+/// `J<->K`. Otherwise — belt edges bridging the interlock gap between the two
+/// pentagons, and internal center–corner edges from level 1 on — the letters
+/// pair crosswise (`p.A = q.C`, `p.B = q.A`) and the halves wire `I<->K`,
+/// `J<->I`, keeping every mesh vertex on its own side of the link.
+fn wire_chain_edge(p_center: &NodeRef, q_center: &NodeRef) {
+    let p_i = child(p_center, 1).expect("corner node I");
+    let p_j = child(p_center, 0).expect("corner node J");
+    let q_i = child(q_center, 1).expect("corner node I");
+    let q_k = child(q_center, 2).expect("corner node K");
+
+    let coincident = edge_midpoint(&p_i, 0).distance(edge_midpoint(&q_i, 2))
+        < p_i.borrow().base_length * COINCIDENCE_TOLERANCE;
+    let (q_near_a, q_near_b) = if coincident { (&q_i, &q_k) } else { (&q_k, &q_i) };
+    set_child(&p_i, 0, Rc::clone(q_near_a));
+    set_child(q_near_a, 2, Rc::clone(&p_i));
+    set_child(&p_j, 0, Rc::clone(q_near_b));
+    set_child(q_near_b, 2, Rc::clone(&p_j));
+}
+
+/// Wires the two reciprocal corner-to-corner links across the pair edge two
+/// split parents shared via their J ports (`children[1]`). The shared base
+/// edge has matching corner letters (`p.B = q.B`, `p.C = q.C`), so the corner
+/// nodes J (near B) and K (near C) wire straight across.
+fn wire_pair_edge(p_center: &NodeRef, q_center: &NodeRef) {
+    let p_j = child(p_center, 0).expect("corner node J");
+    let p_k = child(p_center, 2).expect("corner node K");
+    let q_j = child(q_center, 0).expect("corner node J");
+    let q_k = child(q_center, 2).expect("corner node K");
+    set_child(&p_j, 1, Rc::clone(&q_j));
+    set_child(&q_j, 1, Rc::clone(&p_j));
+    set_child(&p_k, 1, Rc::clone(&q_k));
+    set_child(&q_k, 1, Rc::clone(&p_k));
 }
 
 /// Collects every node reachable from `root` by following child links
@@ -473,5 +594,169 @@ mod tests {
             assert!(approx_eq(north_directions[0], south_directions[2]));
             assert!(approx_eq(north_directions[2], south_directions[0]));
         }
+    }
+
+    #[test]
+    fn split_subdivides_all_twenty_nodes_into_level_one_nodes() {
+        let mut plan = Plan::new();
+        plan.generate(SIDE_LENGTH);
+        plan.split();
+
+        // 20 old nodes x 4 new nodes each; the old nodes are destroyed.
+        let nodes = collect_nodes(plan.root_node.as_ref().unwrap());
+        assert_eq!(nodes.len(), 80);
+        for node in &nodes {
+            assert_eq!(node.borrow().level, 1);
+        }
+
+        // The traversal visited every node exactly once: each original name
+        // produced its three corner nodes (.I/.J/.K) and its center (.C).
+        for prefix in [
+            "north_base_node_",
+            "north_reverted_node_",
+            "south_base_node_",
+            "south_reverted_node_",
+        ] {
+            for i in 0..5 {
+                for suffix in [".I", ".J", ".K", ".C"] {
+                    let name = format!("{prefix}{i}{suffix}");
+                    assert!(
+                        nodes.iter().any(|node| node.borrow().name == name),
+                        "missing {name}"
+                    );
+                }
+            }
+        }
+
+        // root_node is re-anchored on the first split center.
+        assert_eq!(
+            plan.root_node.as_ref().unwrap().borrow().name,
+            "north_base_node_0.C"
+        );
+    }
+
+    /// After a full run, every port of every node of the new level is
+    /// connected exactly once, with port reciprocity (0 <-> 2, 1 <-> 1).
+    #[test]
+    fn split_wires_every_port_reciprocally() {
+        let mut plan = Plan::new();
+        plan.generate(SIDE_LENGTH);
+        plan.split();
+        let (open, one_way) = wiring_gaps(plan.root_node.as_ref().unwrap());
+        assert!(
+            open.is_empty() && one_way.is_empty(),
+            "open ports ({}): {:?}; one-way links ({}): {:?}",
+            open.len(),
+            open,
+            one_way.len(),
+            one_way,
+        );
+    }
+
+    /// Anchor checks for the three edge kinds: perimeter edges wire straight
+    /// (matching corner letters), pair edges wire straight across the J
+    /// ports, and belt edges wire crosswise across the interlock gap.
+    #[test]
+    fn split_wires_corner_pairs_across_each_edge_kind() {
+        let mut plan = Plan::new();
+        plan.generate(SIDE_LENGTH);
+        plan.split();
+        let nodes = collect_nodes(plan.root_node.as_ref().unwrap());
+        let by_name = |name: &str| {
+            nodes
+                .iter()
+                .find(|node| node.borrow().name == name)
+                .cloned()
+                .unwrap_or_else(|| panic!("missing {name}"))
+        };
+        let assert_linked = |a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize| {
+            let forward = child(a, port_a).unwrap_or_else(|| panic!("{}[{port_a}] is open", a.borrow().name));
+            assert!(
+                Rc::ptr_eq(&forward, b),
+                "{}[{port_a}] does not link to {}",
+                a.borrow().name,
+                b.borrow().name
+            );
+            let back = child(b, port_b).unwrap_or_else(|| panic!("{}[{port_b}] is open", b.borrow().name));
+            assert!(
+                Rc::ptr_eq(&back, a),
+                "{}[{port_b}] does not link back to {}",
+                b.borrow().name,
+                a.borrow().name
+            );
+        };
+
+        // Perimeter edge north_base_node_0 -> north_base_node_1 (coincident,
+        // straight pairing I<->I, J<->K).
+        assert_linked(&by_name("north_base_node_0.I"), 0, &by_name("north_base_node_1.I"), 2);
+        assert_linked(&by_name("north_base_node_0.J"), 0, &by_name("north_base_node_1.K"), 2);
+
+        // Pair edge north_base_node_0 <-> north_reverted_node_0 (straight
+        // pairing J<->J, K<->K across the shared base edge).
+        assert_linked(&by_name("north_base_node_0.J"), 1, &by_name("north_reverted_node_0.J"), 1);
+        assert_linked(&by_name("north_base_node_0.K"), 1, &by_name("north_reverted_node_0.K"), 1);
+
+        // Belt edge north_reverted_node_4 -> south_reverted_node_4 (crosswise
+        // pairing I<->K, J<->I across the interlock gap).
+        assert_linked(&by_name("north_reverted_node_4.I"), 0, &by_name("south_reverted_node_4.K"), 2);
+        assert_linked(&by_name("north_reverted_node_4.J"), 0, &by_name("south_reverted_node_4.I"), 2);
+
+        // Ring closes: north cap (straight) and belt (crosswise).
+        assert_linked(&by_name("north_base_node_4.I"), 0, &by_name("north_base_node_0.I"), 2);
+        assert_linked(&by_name("north_base_node_4.J"), 0, &by_name("north_base_node_0.K"), 2);
+        assert_linked(&by_name("south_reverted_node_3.I"), 0, &by_name("north_reverted_node_4.K"), 2);
+        assert_linked(&by_name("south_reverted_node_3.J"), 0, &by_name("north_reverted_node_4.I"), 2);
+    }
+
+    /// Repeated subdivision keeps the mesh fully wired and connected: at each
+    /// level every node is reachable from the root and every port is
+    /// reciprocally connected.
+    #[test]
+    fn repeated_splits_keep_mesh_fully_wired_and_connected() {
+        let mut plan = Plan::new();
+        plan.generate(SIDE_LENGTH);
+        for level in 1..=3 {
+            plan.split();
+            let nodes = collect_nodes(plan.root_node.as_ref().unwrap());
+            assert_eq!(nodes.len(), 20 * 4_usize.pow(level));
+            for node in &nodes {
+                assert_eq!(node.borrow().level, level);
+            }
+            let (open, one_way) = wiring_gaps(plan.root_node.as_ref().unwrap());
+            assert!(
+                open.is_empty() && one_way.is_empty(),
+                "level {level}: open ports ({}): {:?}; one-way links ({}): {:?}",
+                open.len(),
+                open,
+                one_way.len(),
+                one_way,
+            );
+        }
+    }
+
+    /// Counts open ports and one-way (non-reciprocal) links across the whole
+    /// mesh reachable from `root`, reported as `"<name>[<port>]"` strings.
+    fn wiring_gaps(root: &NodeRef) -> (Vec<String>, Vec<String>) {
+        let mut open = Vec::new();
+        let mut one_way = Vec::new();
+        for node in collect_nodes(root) {
+            for index in 0..3 {
+                let slot = node.borrow().children[index].clone();
+                let Some(target) = slot else {
+                    open.push(format!("{}[{index}]", node.borrow().name));
+                    continue;
+                };
+                let back_index = match index {
+                    0 => 2,
+                    1 => 1,
+                    _ => 0,
+                };
+                let reciprocal = target.borrow().children[back_index].clone();
+                if !reciprocal.is_some_and(|r| Rc::ptr_eq(&r, &node)) {
+                    one_way.push(format!("{}[{index}]", node.borrow().name));
+                }
+            }
+        }
+        (open, one_way)
     }
 }

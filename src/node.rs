@@ -196,12 +196,16 @@ impl Node {
             format!("{}.C", self.name),
         )));
 
-        // 4. Internal interconnection (bidirectional).
-        node_center.borrow_mut().children[0] = Some(Rc::clone(&node_i));
-        node_i.borrow_mut().children[2] = Some(Rc::clone(&node_center));
+        // 4. Internal interconnection (bidirectional). Each center port is
+        // linked to the corner node across its edge: center I (⊥ pBC–pAB)
+        // faces node J, center J (⊥ pAB–pCA) faces node I, center K
+        // (⊥ pCA–pBC) faces node K; the reciprocal corner port faces the
+        // center the same way.
+        node_center.borrow_mut().children[0] = Some(Rc::clone(&node_j));
+        node_j.borrow_mut().children[2] = Some(Rc::clone(&node_center));
 
-        node_center.borrow_mut().children[1] = Some(Rc::clone(&node_j));
-        node_j.borrow_mut().children[1] = Some(Rc::clone(&node_center));
+        node_center.borrow_mut().children[1] = Some(Rc::clone(&node_i));
+        node_i.borrow_mut().children[1] = Some(Rc::clone(&node_center));
 
         node_center.borrow_mut().children[2] = Some(Rc::clone(&node_k));
         node_k.borrow_mut().children[0] = Some(Rc::clone(&node_center));
@@ -407,16 +411,18 @@ mod tests {
         let center = node.borrow().split();
         let center_ref = center.borrow();
 
-        let node_i = center_ref.children[0].as_ref().expect("node I");
-        let node_j = center_ref.children[1].as_ref().expect("node J");
+        // Each center port faces the corner across its edge: I -> node J,
+        // J -> node I, K -> node K.
+        let node_j = center_ref.children[0].as_ref().expect("node J");
+        let node_i = center_ref.children[1].as_ref().expect("node I");
         let node_k = center_ref.children[2].as_ref().expect("node K");
 
         assert!(Rc::ptr_eq(
-            node_i.borrow().children[2].as_ref().unwrap(),
+            node_j.borrow().children[2].as_ref().unwrap(),
             &center
         ));
         assert!(Rc::ptr_eq(
-            node_j.borrow().children[1].as_ref().unwrap(),
+            node_i.borrow().children[1].as_ref().unwrap(),
             &center
         ));
         assert!(Rc::ptr_eq(
@@ -433,9 +439,17 @@ mod tests {
             assert_eq!(corner.level, 1);
         }
 
-        // No cross-connections between corner nodes.
-        assert!(node_i.borrow().children[0].is_none());
-        assert!(node_i.borrow().children[1].is_none());
+        // No cross-connections between corner nodes: only the port facing the
+        // center node is linked.
+        for (corner, linked) in [(node_i, 1), (node_j, 2), (node_k, 0)] {
+            for index in 0..3 {
+                let corner = corner.borrow();
+                match index == linked {
+                    true => assert!(corner.children[index].is_some()),
+                    false => assert!(corner.children[index].is_none()),
+                }
+            }
+        }
     }
 
     #[test]
@@ -455,11 +469,11 @@ mod tests {
         }
         // Corner nodes: the corner point keeps its letter, the midpoint toward
         // a neighbor takes that neighbor's letter.
-        let node_i = center_ref.children[0].as_ref().unwrap().borrow();
+        let node_i = center_ref.children[1].as_ref().unwrap().borrow();
         for (actual, expected) in node_i.points.iter().zip([p_a, p_ab, p_ca]) {
             assert!(approx_eq(*actual, expected));
         }
-        let node_j = center_ref.children[1].as_ref().unwrap().borrow();
+        let node_j = center_ref.children[0].as_ref().unwrap().borrow();
         for (actual, expected) in node_j.points.iter().zip([p_ab, p_b, p_bc]) {
             assert!(approx_eq(*actual, expected));
         }
@@ -562,7 +576,7 @@ mod tests {
     fn destroy_severs_all_bidirectional_links() {
         let node = test_node();
         let center = node.borrow().split();
-        let (node_i, node_j, node_k) = {
+        let (node_j, node_i, node_k) = {
             let center_ref = center.borrow();
             (
                 Rc::clone(center_ref.children[0].as_ref().unwrap()),
@@ -576,8 +590,8 @@ mod tests {
         // All of the center node's links are cleared.
         assert!(center.borrow().children.iter().all(|slot| slot.is_none()));
         // Each corner node's reciprocal back-link is cleared too.
-        assert!(node_i.borrow().children[2].is_none());
-        assert!(node_j.borrow().children[1].is_none());
+        assert!(node_j.borrow().children[2].is_none());
+        assert!(node_i.borrow().children[1].is_none());
         assert!(node_k.borrow().children[0].is_none());
         // With the links gone, only the test's own references keep the corner
         // nodes alive.

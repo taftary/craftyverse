@@ -65,6 +65,7 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 use crate::node::NodeRef;
+use crate::plan::{collect_nodes, Plan};
 use crate::scene::{self, Checkbox, DisplayOptions, SceneMesh};
 use crate::text::TextAtlas;
 
@@ -146,10 +147,34 @@ void main() {
 }
 "#;
 
+/// A viewer scenario: a fixed node list, or a live plan that can be
+/// subdivided interactively.
+pub enum Scenario {
+    /// Fixed node list (not splittable).
+    Static(Vec<NodeRef>),
+    /// Live plan: `Plan::split()` subdivides it one level, `rebuild`
+    /// regenerates its initial mesh.
+    Plan { plan: Plan, rebuild: fn() -> Plan },
+}
+
+impl Scenario {
+    /// Current node list to display (collected fresh from the plan when
+    /// plan-backed).
+    fn nodes(&self) -> Vec<NodeRef> {
+        match self {
+            Scenario::Static(nodes) => nodes.clone(),
+            Scenario::Plan { plan, .. } => {
+                collect_nodes(plan.root_node.as_ref().expect("generated plan"))
+            }
+        }
+    }
+}
+
 /// Opens the viewer window and runs the event loop. Keys 1..N switch between
-/// the given scenarios, left-clicking the checkbox panel toggles the display
-/// of each node attribute; the window closes the loop.
-pub fn run(scenarios: Vec<Vec<NodeRef>>) {
+/// the given scenarios, S subdivides the current plan-backed scenario one
+/// level and R regenerates its initial mesh; left-clicking the checkbox panel
+/// toggles the display of each node attribute; the window closes the loop.
+pub fn run(scenarios: Vec<Scenario>) {
     let event_loop = EventLoop::new().expect("failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
 
@@ -179,7 +204,7 @@ pub fn run(scenarios: Vec<Vec<NodeRef>>) {
 
 struct Viewer {
     instance: Arc<Instance>,
-    scenarios: Vec<Vec<NodeRef>>,
+    scenarios: Vec<Scenario>,
     current_scene: usize,
     /// Display state of the node attributes, toggled via the checkbox panel.
     options: DisplayOptions,
@@ -195,12 +220,12 @@ impl ApplicationHandler for Viewer {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title("PlanetCrafter node viewer — 1: node, 2: split, 3: base, 4: dual mesh"),
+                            .with_title("PlanetCrafter node viewer — 1-4: scenes, S: split level, R: reset"),
                     )
                     .expect("failed to create window"),
             );
             let mut renderer = Renderer::new(self.instance.clone(), window);
-            renderer.set_scene(&self.scenarios[self.current_scene], &self.options);
+            renderer.set_scene(&self.scenarios[self.current_scene].nodes(), &self.options);
             self.renderer = Some(renderer);
         }
         self.renderer.as_ref().unwrap().window.request_redraw();
@@ -224,30 +249,57 @@ impl ApplicationHandler for Viewer {
             {
                 if let Some(attribute) = renderer.checkbox_at(self.cursor) {
                     self.options.toggle(attribute);
-                    renderer.set_scene(&self.scenarios[self.current_scene], &self.options);
+                    renderer.set_scene(&self.scenarios[self.current_scene].nodes(), &self.options);
                     renderer.window.request_redraw();
                 }
             }
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
-                let index = match event.physical_key {
-                    PhysicalKey::Code(KeyCode::Digit1) => Some(0),
-                    PhysicalKey::Code(KeyCode::Digit2) => Some(1),
-                    PhysicalKey::Code(KeyCode::Digit3) => Some(2),
-                    PhysicalKey::Code(KeyCode::Digit4) => Some(3),
-                    _ => None,
-                };
-                if let Some(index) =
-                    index.filter(|i| *i < self.scenarios.len() && *i != self.current_scene)
-                {
-                    self.current_scene = index;
-                    renderer.set_scene(&self.scenarios[index], &self.options);
-                    renderer.window.request_redraw();
+                match event.physical_key {
+                    // S: subdivide the current plan one level (Plan::split).
+                    PhysicalKey::Code(KeyCode::KeyS) => {
+                        if let Scenario::Plan { plan, .. } =
+                            &mut self.scenarios[self.current_scene]
+                        {
+                            plan.split();
+                            let nodes = self.scenarios[self.current_scene].nodes();
+                            renderer.set_scene(&nodes, &self.options);
+                            renderer.window.request_redraw();
+                        }
+                    }
+                    // R: regenerate the current plan's initial mesh.
+                    PhysicalKey::Code(KeyCode::KeyR) => {
+                        if let Scenario::Plan { plan, rebuild } =
+                            &mut self.scenarios[self.current_scene]
+                        {
+                            *plan = rebuild();
+                            let nodes = self.scenarios[self.current_scene].nodes();
+                            renderer.set_scene(&nodes, &self.options);
+                            renderer.window.request_redraw();
+                        }
+                    }
+                    key => {
+                        let index = match key {
+                            PhysicalKey::Code(KeyCode::Digit1) => Some(0),
+                            PhysicalKey::Code(KeyCode::Digit2) => Some(1),
+                            PhysicalKey::Code(KeyCode::Digit3) => Some(2),
+                            PhysicalKey::Code(KeyCode::Digit4) => Some(3),
+                            _ => None,
+                        };
+                        if let Some(index) = index
+                            .filter(|i| *i < self.scenarios.len() && *i != self.current_scene)
+                        {
+                            self.current_scene = index;
+                            let nodes = self.scenarios[index].nodes();
+                            renderer.set_scene(&nodes, &self.options);
+                            renderer.window.request_redraw();
+                        }
+                    }
                 }
             }
             WindowEvent::RedrawRequested => {
-                renderer.draw_frame(&self.scenarios[self.current_scene], &self.options)
+                renderer.draw_frame(&self.scenarios[self.current_scene].nodes(), &self.options)
             }
             _ => {}
         }

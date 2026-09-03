@@ -168,9 +168,9 @@ For each new node:
 
 1. **Internal Node Interconnection**
 * `split()` produces exactly 4 nodes: `NodeCenter` and the corner nodes `NodeI`, `NodeJ`, `NodeK`.
-* Only `NodeCenter` is connected to the corner nodes through bidirectional `children` links:
-* `NodeCenter.children[0] = NodeI` and reciprocally `NodeI.children[2] = NodeCenter`
-* `NodeCenter.children[1] = NodeJ` and reciprocally `NodeJ.children[1] = NodeCenter`
+* Only `NodeCenter` is connected to the corner nodes through bidirectional `children` links. Each center port is linked to the corner node across its edge — center `I` ⊥ `pBC–pAB` faces `NodeJ`, center `J` ⊥ `pAB–pCA` faces `NodeI`, center `K` ⊥ `pCA–pBC` faces `NodeK`:
+* `NodeCenter.children[0] = NodeJ` and reciprocally `NodeJ.children[2] = NodeCenter`
+* `NodeCenter.children[1] = NodeI` and reciprocally `NodeI.children[1] = NodeCenter`
 * `NodeCenter.children[2] = NodeK` and reciprocally `NodeK.children[0] = NodeCenter`
 
 
