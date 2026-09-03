@@ -462,3 +462,11 @@ The first traversal implementation measured 10 open ports and 4 one-way links af
 Measured on the current Rust implementation: one split produces 80 level-1 nodes re-anchored on `north_base_node_0.C`, with **0 open ports and 0 one-way links** over the 240 ports. The same holds after a second split (320 level-2 nodes, 960 ports) and a third (1280 level-3 nodes), with every node reachable from the root — the mesh stays connected.
 
 These numbers are pinned by the tests `plan::tests::split_wires_every_port_reciprocally`, `plan::tests::split_wires_corner_pairs_across_each_edge_kind` (per-edge-kind anchor checks, including the ring closes) and `plan::tests::repeated_splits_keep_mesh_fully_wired_and_connected`.
+
+### Files (Rust implementation)
+
+Folder module `src/plan/`:
+
+- **`mod.rs`** — `Plan` and the `generate()` orchestration.
+- **`pentagon.rs`** — base generation as free functions: `generate_base` (no longer a `Plan` method — it returns the root and the caller anchors it), `apothem`, `PENTAGON_SIDES`, `walk_perimeter`, `reverted_nodes` (the spec's `getRevertedNodes`, renamed per Rust API guidelines) and `wire_interlock` (the `generate()` step-4 loop).
+- **`subdivide.rs`** — `Plan::split()` and the edge-wiring machinery (`edge_midpoint`, `wire_chain_edge`, `wire_pair_edge`, `COINCIDENCE_TOLERANCE`).

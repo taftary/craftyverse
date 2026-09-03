@@ -11,14 +11,14 @@ use render::Scenario;
 
 /// Pentagonal base scenario: 5 inward base nodes + 5 outward reverted nodes.
 fn base_plan() -> Plan {
-    let mut plan = Plan::new();
-    plan.generate_base("base_", 300.0, Vec2::Y, Vec2::ZERO, Labeling::Normal);
+    let mut plan = Plan::default();
+    plan.root_node = Some(plan::generate_base("base_", 300.0, Vec2::Y, Vec2::ZERO, Labeling::Normal));
     plan
 }
 
 /// Full dual-pentagon interlocked mesh scenario (North + South, 20 nodes).
 fn dual_mesh_plan() -> Plan {
-    let mut plan = Plan::new();
+    let mut plan = Plan::default();
     plan.generate(300.0);
     plan
 }

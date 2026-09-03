@@ -5,15 +5,25 @@
 //! textured quads in pixel space. The renderer uploads `pixels` as a texture
 //! and draws the quads with alpha blending.
 
+mod packing;
+
+#[cfg(test)]
+mod tests;
+
 use std::collections::HashMap;
 
 use fontdue::{Font, FontSettings};
 use glam::Vec2;
 
+use packing::{blit, uv_rect, ShelfPacker};
+
 /// Glyph rasterization size in the atlas; layouts scale quads down from it.
 const ATLAS_SIZE: f32 = 48.0;
+/// Width of the glyph atlas texture in pixels.
 const ATLAS_WIDTH: usize = 512;
+/// Height of the glyph atlas texture in pixels.
 const ATLAS_HEIGHT: usize = 512;
+/// Padding in pixels reserved around each packed glyph rectangle.
 const GLYPH_PADDING: usize = 2;
 
 /// Vertex of a text quad, positioned in pixels (y-down).
@@ -59,9 +69,7 @@ impl TextAtlas {
 
         let mut pixels = vec![0u8; ATLAS_WIDTH * ATLAS_HEIGHT];
         let mut glyphs = HashMap::new();
-        let mut x = GLYPH_PADDING;
-        let mut y = GLYPH_PADDING;
-        let mut row_height = 0usize;
+        let mut packer = ShelfPacker::new();
         for ch in ' '..='~' {
             let (metrics, bitmap) = font.rasterize(ch, ATLAS_SIZE);
             if metrics.width == 0 || metrics.height == 0 {
@@ -75,28 +83,11 @@ impl TextAtlas {
                 );
                 continue;
             }
-            if x + metrics.width + GLYPH_PADDING > ATLAS_WIDTH {
-                x = GLYPH_PADDING;
-                y += row_height + GLYPH_PADDING;
-                row_height = 0;
-            }
-            if y + metrics.height + GLYPH_PADDING > ATLAS_HEIGHT {
-                return Err("text atlas overflow".to_string());
-            }
-            for row in 0..metrics.height {
-                let dst = (y + row) * ATLAS_WIDTH + x;
-                pixels[dst..dst + metrics.width]
-                    .copy_from_slice(&bitmap[row * metrics.width..(row + 1) * metrics.width]);
-            }
-            // Half-texel inset avoids bleeding between glyphs.
-            let uv_min = Vec2::new(
-                (x as f32 + 0.5) / ATLAS_WIDTH as f32,
-                (y as f32 + 0.5) / ATLAS_HEIGHT as f32,
-            );
-            let uv_max = Vec2::new(
-                ((x + metrics.width) as f32 - 0.5) / ATLAS_WIDTH as f32,
-                ((y + metrics.height) as f32 - 0.5) / ATLAS_HEIGHT as f32,
-            );
+            let (x, y) = packer
+                .reserve(metrics.width, metrics.height)
+                .ok_or("text atlas overflow")?;
+            blit(&mut pixels, ATLAS_WIDTH, x, y, &bitmap, metrics.width, metrics.height);
+            let (uv_min, uv_max) = uv_rect(x, y, metrics.width, metrics.height);
             glyphs.insert(
                 ch,
                 Glyph {
@@ -108,8 +99,6 @@ impl TextAtlas {
                     has_bitmap: true,
                 },
             );
-            x += metrics.width + GLYPH_PADDING;
-            row_height = row_height.max(metrics.height);
         }
 
         Ok(TextAtlas {
@@ -129,6 +118,11 @@ impl TextAtlas {
             .unwrap_or_default()
     }
 
+    /// Total advance width of `text` at `scale`, used to center a text run.
+    fn measure(&self, text: &str, scale: f32) -> f32 {
+        text.chars().map(|ch| self.glyph(ch).advance * scale).sum()
+    }
+
     /// Lays out `text` at `size` px into two triangles per glyph. `anchor` is
     /// the top-left of the text block (top-center when `centered`), in pixels.
     pub fn layout(
@@ -140,7 +134,7 @@ impl TextAtlas {
         centered: bool,
     ) -> Vec<TextVertex> {
         let scale = size / ATLAS_SIZE;
-        let width: f32 = text.chars().map(|ch| self.glyph(ch).advance * scale).sum();
+        let width = self.measure(text, scale);
         let mut pen_x = anchor.x - if centered { width / 2.0 } else { 0.0 };
         let baseline = anchor.y + self.ascent * scale;
 
@@ -152,16 +146,17 @@ impl TextAtlas {
                 let y0 = baseline - (glyph.bearing.y + glyph.size.y) * scale;
                 let x1 = x0 + glyph.size.x * scale;
                 let y1 = y0 + glyph.size.y * scale;
-                let corners = [
-                    (Vec2::new(x0, y0), Vec2::new(glyph.uv_min.x, glyph.uv_min.y)),
-                    (Vec2::new(x1, y0), Vec2::new(glyph.uv_max.x, glyph.uv_min.y)),
-                    (Vec2::new(x1, y1), Vec2::new(glyph.uv_max.x, glyph.uv_max.y)),
-                    (Vec2::new(x0, y1), Vec2::new(glyph.uv_min.x, glyph.uv_max.y)),
-                ];
-                for index in [0usize, 1, 2, 0, 2, 3] {
-                    let (pos, uv) = corners[index];
-                    vertices.push(TextVertex { pos, uv, color });
-                }
+                push_quad(
+                    &mut vertices,
+                    [
+                        Vec2::new(x0, y0),
+                        Vec2::new(x1, y0),
+                        Vec2::new(x1, y1),
+                        Vec2::new(x0, y1),
+                    ],
+                    (glyph.uv_min, glyph.uv_max),
+                    color,
+                );
             }
             pen_x += glyph.advance * scale;
         }
@@ -169,57 +164,19 @@ impl TextAtlas {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    const FONT_BYTES: &[u8] = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
-
-    fn test_atlas() -> TextAtlas {
-        TextAtlas::new(FONT_BYTES).expect("load bundled font")
-    }
-
-    #[test]
-    fn atlas_contains_rasterized_glyphs() {
-        let atlas = test_atlas();
-        assert!(atlas.pixels.iter().any(|&px| px > 0));
-        let glyph = atlas.glyph('A');
-        assert!(glyph.has_bitmap && glyph.advance > 0.0);
-        // Every stored UV stays inside the atlas.
-        assert!(glyph.uv_min.cmpge(Vec2::ZERO).all());
-        assert!(glyph.uv_max.cmple(Vec2::ONE).all());
-    }
-
-    #[test]
-    fn layout_emits_two_triangles_per_glyph() {
-        let atlas = test_atlas();
-        let vertices = atlas.layout("AB", Vec2::new(10.0, 20.0), 12.0, [0.0; 3], false);
-
-        assert_eq!(vertices.len(), 2 * 6);
-        for vertex in &vertices {
-            assert!(vertex.uv.cmpge(Vec2::ZERO).all());
-            assert!(vertex.uv.cmple(Vec2::ONE).all());
-            assert!(vertex.pos.x >= 10.0);
-            assert!(vertex.pos.y >= 20.0);
-        }
-    }
-
-    #[test]
-    fn layout_skips_whitespace_quads() {
-        let atlas = test_atlas();
-        assert!(atlas.layout(" ", Vec2::ZERO, 12.0, [0.0; 3], false).is_empty());
-    }
-
-    #[test]
-    fn centered_layout_is_symmetric_around_anchor() {
-        let atlas = test_atlas();
-        let vertices = atlas.layout("AA", Vec2::new(100.0, 0.0), 12.0, [0.0; 3], true);
-
-        let min_x = vertices.iter().map(|v| v.pos.x).fold(f32::INFINITY, f32::min);
-        let max_x = vertices
-            .iter()
-            .map(|v| v.pos.x)
-            .fold(f32::NEG_INFINITY, f32::max);
-        assert!(((min_x + max_x) / 2.0 - 100.0).abs() < 0.5);
+/// Pushes the two triangles (indices [0,1,2,0,2,3]) of a glyph quad from its
+/// position corners (top-left, top-right, bottom-right, bottom-left) and its
+/// UV rect.
+fn push_quad(out: &mut Vec<TextVertex>, corners: [Vec2; 4], uvs: (Vec2, Vec2), color: [f32; 3]) {
+    let (uv_min, uv_max) = uvs;
+    let corners = [
+        (corners[0], Vec2::new(uv_min.x, uv_min.y)),
+        (corners[1], Vec2::new(uv_max.x, uv_min.y)),
+        (corners[2], Vec2::new(uv_max.x, uv_max.y)),
+        (corners[3], Vec2::new(uv_min.x, uv_max.y)),
+    ];
+    for index in [0usize, 1, 2, 0, 2, 3] {
+        let (pos, uv) = corners[index];
+        out.push(TextVertex { pos, uv, color });
     }
 }

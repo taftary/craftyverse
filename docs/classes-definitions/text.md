@@ -1,4 +1,4 @@
-## Text Module Definition (`src/text.rs`)
+## Text Module Definition (`src/text/`)
 
 ### Overview
 
@@ -47,3 +47,12 @@ with alpha blending. The module contains no GPU code.
   linear sampling keeps small labels readable.
 - All positions are raw pixels; the world→pixel mapping of label anchors is the
   caller's job (see `scene` module).
+
+### Files
+
+Folder module `src/text/`:
+
+- **`mod.rs`** — `TextAtlas`, `TextVertex`, `Glyph`, the atlas constants and
+  `layout()`; `TextAtlas::new()` orchestrates the packing helpers.
+- **`packing.rs`** — atlas-construction internals: `ShelfPacker` (shelf
+  packing), `blit()` (bitmap copy) and `uv_rect()` (half-texel UV inset).

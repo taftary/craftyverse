@@ -240,3 +240,11 @@ For each link, clear the neighbor's reciprocal back-link first, then the link it
 3. If `children[2]` is set: `children[2].children[0] = null`, then `children[2] = null`.
 4. The node destroys itself. In the Rust implementation there is no explicit self-destruction: the node is freed automatically once its last `Rc` reference is dropped.
 
+### Files (Rust implementation)
+
+Folder module `src/node/`:
+
+- **`mod.rs`** — `Node`, `NodeRef`, `Labeling` and the `new`/`split`/`destroy` methods.
+- **`geometry.rs`** — pure triangle-geometry helpers (`triangle_points`, `midpoint`, `perpendicular_toward`, `compute_directions`, `child_node`).
+- **`topology.rs`** — the child-link conventions in one place: `reciprocal_index` (the `0 <-> 2`, `1 <-> 1` mapping), `link` (reciprocal link setter) and `collect_nodes` (breadth-first traversal, deduplicated by pointer identity).
+

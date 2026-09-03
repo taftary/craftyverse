@@ -40,7 +40,7 @@ the matching attribute on or off.
 ## Development
 
 ```
-cargo test              # unit tests (node geometry, scene generation, text layout)
+cargo test              # unit tests (node geometry, plan wiring, scene generation, text layout, shader compilation)
 cargo clippy            # lint
 ```
 
@@ -49,10 +49,11 @@ cargo clippy            # lint
 ```
 src/
   main.rs     — entry point: builds the demo scenarios, runs the viewer
-  node.rs     — geometric node: triangle geometry, directions, split(), links
-  scene.rs    — CPU scene generation for the viewer (GPU-independent)
-  text.rs     — fontdue glyph atlas + text layout (GPU-independent)
-  render.rs   — Vulkan/winit viewer (all GPU code)
+  node/       — geometric node: triangle geometry, directions, split(), links
+  plan/       — pentagonal base generation and whole-mesh subdivision
+  scene/      — CPU scene generation for the viewer (GPU-independent)
+  text/       — fontdue glyph atlas + text layout (GPU-independent)
+  render/     — Vulkan/winit viewer (all GPU code)
 assets/
   fonts/      — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/

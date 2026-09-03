@@ -1,4 +1,4 @@
-## Scene Module Definition (`src/scene.rs`)
+## Scene Module Definition (`src/scene/`)
 
 ### Overview
 
@@ -53,8 +53,12 @@ never mutates nodes and contains no GPU code, so it is fully unit-testable.
 - `build_scene(nodes: &[NodeRef], viewport: Vec2, options: &DisplayOptions) -> SceneMesh`
   — generates the visualization of `nodes` fitted into `viewport` pixels,
   displaying the attributes enabled in `options`.
-- `level_color(level: u32) -> [f32; 3]` — level palette, cycled by `level % 8`
-  (same colors as the former SVG viewer).
+- `level_color(level: u32) -> [f32; 3]` (crate-internal) — level palette,
+  cycled by `level % 8` (same colors as the former SVG viewer).
+
+The module is a folder module: public types and `build_scene` in `mod.rs`,
+colors in `colors.rs`, display options in `options.rs`, the per-node geometry
+builders in `geometry.rs`, the checkbox panel in `panel.rs`.
 
 ### Generated Elements (per node, each gated by its `DisplayOptions` flag)
 

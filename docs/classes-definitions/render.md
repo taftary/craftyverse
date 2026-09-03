@@ -1,4 +1,4 @@
-## Render Module Definition (`src/render.rs`)
+## Render Module Definition (`src/render/`)
 
 ### Overview
 
@@ -11,11 +11,13 @@ of the crate stays GPU-independent.
 Entry point:
 
 ```
-run(scenarios: Vec<Vec<NodeRef>>)
+run(scenarios: Vec<Scenario>)
 ```
 
 `scenarios` are the scenes to display; number keys **1..N** switch between
-them. Left-clicking a checkbox of the display-options panel (top-left) toggles
+them. A `Scenario` is either a fixed node list (`Scenario::Static`) or a live
+plan (`Scenario::Plan`) that can be subdivided and regenerated at runtime.
+Left-clicking a checkbox of the display-options panel (top-left) toggles
 the display of the matching node attribute. The function returns when the
 window closes.
 
@@ -46,6 +48,9 @@ One render pass, three graphics pipelines, drawn in order:
 ### Interaction
 
 - **Number keys 1..N** — switch scenario.
+- **S** — split the current `Scenario::Plan` one level (no effect on static
+  scenarios).
+- **R** — regenerate the current `Scenario::Plan` via its `rebuild` function.
 - **Left click** — the cursor position (physical pixels, tracked from
   `CursorMoved` events) is hit-tested against the scene's `Checkbox`
   rectangles; on a hit the matching `DisplayOptions` flag is toggled and the
@@ -95,10 +100,24 @@ One render pass, three graphics pipelines, drawn in order:
 
 ### Structure
 
-- **`Viewer`** — winit `ApplicationHandler`: owns the instance, the scenarios,
-  the current scene index, the `DisplayOptions` and the cursor position;
-  creates the window in `resumed()`; routes resize, mouse, keyboard and
-  redraw events.
-- **`Renderer`** — owns all Vulkan objects (device, swapchain, pipelines,
-  buffers, descriptor sets) and the current checkbox hit rectangles; exposes
-  `set_scene()`, `draw_frame()`, `checkbox_at()` and swapchain recreation.
+Folder module `src/render/`:
+
+- **`mod.rs`** — `Scenario` (fixed node list or live plan) and the `run()`
+  entry point.
+- **`viewer.rs`** — **`Viewer`**, the winit `ApplicationHandler`: owns the
+  instance, the scenarios, the current scene index, the `DisplayOptions` and
+  the cursor position; creates the window in `resumed()`; routes resize,
+  mouse, keyboard and redraw events.
+- **`renderer.rs`** — **`Renderer`**: owns all Vulkan objects (device,
+  swapchain, pipelines, buffers, descriptor sets) and the current checkbox
+  hit rectangles; exposes `set_scene()`, `draw_frame()`, `checkbox_at()` and
+  swapchain recreation. All five draw batches go through one `record_draw()`
+  helper.
+- **`setup.rs`** — Vulkan object setup as free functions (instance, device
+  pick, swapchain, render pass, framebuffers, pipelines, atlas upload,
+  vertex-buffer upload) orchestrated by `Renderer::new()`.
+- **`shaders.rs`** — the four GLSL sources and their runtime compilation to
+  SPIR-V (`compile_spirv()`, headless and unit-tested; `load_shader()` adds
+  the device-side `ShaderModule`).
+- **`vertices.rs`** — GPU vertex layouts (`GeomVertex`, `TextVertexGpu`) and
+  the `PushTransform` push-constant transform.
