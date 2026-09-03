@@ -208,6 +208,20 @@ impl Node {
 
         node_center
     }
+
+    /// Destroys the node by severing all bidirectional `children` links: for
+    /// each linked neighbor, the reciprocal back-link is cleared first, then
+    /// the link itself. The node is freed automatically once its last `Rc`
+    /// reference is dropped — there is no explicit self-destruction in Rust.
+    pub fn destroy(&mut self) {
+        // (link index on self, reciprocal back-link index on the neighbor),
+        // mirroring the interconnections established by `split()`.
+        for (index, back_index) in [(0, 2), (1, 1), (2, 0)] {
+            if let Some(child) = self.children[index].take() {
+                child.borrow_mut().children[back_index] = None;
+            }
+        }
+    }
 }
 
 /// Unit perpendicular of an edge, pointing from `center` toward the edge.
@@ -542,5 +556,40 @@ mod tests {
         assert!(!Rc::ptr_eq(&first, &second));
         assert_eq!(first.borrow().level, 1);
         assert_eq!(second.borrow().level, 1);
+    }
+
+    #[test]
+    fn destroy_severs_all_bidirectional_links() {
+        let node = test_node();
+        let center = node.borrow().split();
+        let (node_i, node_j, node_k) = {
+            let center_ref = center.borrow();
+            (
+                Rc::clone(center_ref.children[0].as_ref().unwrap()),
+                Rc::clone(center_ref.children[1].as_ref().unwrap()),
+                Rc::clone(center_ref.children[2].as_ref().unwrap()),
+            )
+        };
+
+        center.borrow_mut().destroy();
+
+        // All of the center node's links are cleared.
+        assert!(center.borrow().children.iter().all(|slot| slot.is_none()));
+        // Each corner node's reciprocal back-link is cleared too.
+        assert!(node_i.borrow().children[2].is_none());
+        assert!(node_j.borrow().children[1].is_none());
+        assert!(node_k.borrow().children[0].is_none());
+        // With the links gone, only the test's own references keep the corner
+        // nodes alive.
+        assert_eq!(Rc::strong_count(&node_i), 1);
+        assert_eq!(Rc::strong_count(&node_j), 1);
+        assert_eq!(Rc::strong_count(&node_k), 1);
+    }
+
+    #[test]
+    fn destroy_without_links_is_noop() {
+        let node = test_node();
+        node.borrow_mut().destroy();
+        assert!(node.borrow().children.iter().all(|slot| slot.is_none()));
     }
 }

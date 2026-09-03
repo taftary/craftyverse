@@ -67,6 +67,7 @@ The node represents an **isosceles triangle** defined by points `[A, B, C]`, whe
 
 * `new(direction_of_node, center, origin, baseLength, height, name, labeling)` — Creates a node and initializes its geometry (see Constructor below).
 * `split()` — Splits the current node into four new nodes according to the geometric construction, direction rules, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
+* `destroy()` — Severs all bidirectional `children` links so the node can be freed (see destroy() specification below).
 
 ### Constructor
 
@@ -221,4 +222,21 @@ Node split()
 9. Create nodes and set `node.level = old_level + 1`.
 10. Establish internal interconnections (`NodeCenter` ↔ `NodeI/J/K`).
 11. Return `NodeCenter`.
+
+### destroy() Method Specification
+
+**Signature**
+
+```
+void destroy()
+```
+
+**Steps**
+
+For each link, clear the neighbor's reciprocal back-link first, then the link itself (mirroring the interconnections established by `split()`):
+
+1. If `children[0]` is set: `children[0].children[2] = null`, then `children[0] = null`.
+2. If `children[1]` is set: `children[1].children[1] = null`, then `children[1] = null`.
+3. If `children[2]` is set: `children[2].children[0] = null`, then `children[2] = null`.
+4. The node destroys itself. In the Rust implementation there is no explicit self-destruction: the node is freed automatically once its last `Rc` reference is dropped.
 
