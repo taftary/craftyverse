@@ -239,7 +239,7 @@ Algorithm getRevertedNodes(rootBaseNode):
 
 ### Description
 
-The `generate` method constructs a dual-pentagon interlocked global mesh. It instantiates a **North** pentagonal base and a **South** pentagonal base (same orientation as the North base, offset spatially along the Y-axis), extracts their inner core nodes using `getRevertedNodes`, and wires their open directional ports (`reverted_node.children[0]` and `reverted_node.children[2]`) in an interlocked reciprocal pattern. The North base is generated with `Labeling::Normal` and the South base with `Labeling::Mirrored`, so every South node has its $I$ and $K$ direction vectors switched relative to the North convention (equivalent to swapped $B$/$C$ corner labels). The interlocked port pairing itself is unchanged.
+The `generate` method constructs a dual-pentagon interlocked global mesh. It instantiates a **North** pentagonal base and a **South** pentagonal base (same orientation as the North base, offset spatially along the Y-axis), extracts their inner core nodes using `getRevertedNodes`, and wires their open directional ports (`reverted_node.children[0]` and `reverted_node.children[2]`) in an interlocked reciprocal pattern. The North base is generated with `Labeling::Normal` and the South base with `Labeling::Mirrored`, so every South node has its $I$ and $K$ direction vectors switched relative to the North convention (equivalent to swapped $B$/$C$ corner labels). The interlocked port pairing itself is unaffected by this labeling difference — it operates purely on port indices.
 
 ```text
        [ North Base: 5 outer base_nodes ]
@@ -292,12 +292,14 @@ Algorithm generate(sideLength):
            northNode = northRevertedNodes[i]
 
            // Connect North Port I (index 0) to South Port K (index 2)
-           targetSouthNodeK = southRevertedNodes[(i + 2) % 5]
+           southIdx_I = ((2 - i) % 5 + 5) % 5
+           targetSouthNodeK = southRevertedNodes[southIdx_I]
            northNode.children[0] = targetSouthNodeK
            targetSouthNodeK.children[2] = northNode
 
            // Connect North Port K (index 2) to South Port I (index 0)
-           targetSouthNodeI = southRevertedNodes[(i + 3) % 5]
+           southIdx_K = ((3 - i) % 5 + 5) % 5
+           targetSouthNodeI = southRevertedNodes[southIdx_K]
            northNode.children[2] = targetSouthNodeI
            targetSouthNodeI.children[0] = northNode
 
@@ -306,12 +308,22 @@ Algorithm generate(sideLength):
 
 ```
 
+### Resolved Connection Table
+
+| North node `i` | `children[0]` ($I$) → | `children[2]` ($K$) → |
+|---|---|---|
+| n0 | s2 | s3 |
+| n1 | s1 | s2 |
+| n2 | s0 | s1 |
+| n3 | s4 | s0 |
+| n4 | s3 | s4 |
+
 ---
 
 ### `generate` Topological Invariants
 
-* **Full Mesh Saturation:** Every `reverted_node` across both North and South bases has all 3 child ports (`children[0]`, `children[1]`, `children[2]`) fully connected after `generate()` completes.
-* **Port Reciprocity ($I \leftrightarrow K$):** Any connection `nodeA.children[0] == nodeB` strictly implies `nodeB.children[2] == nodeA`.
+* **Full Mesh Saturation:** Every `reverted_node` across both North and South bases has all 3 child ports (`children[0]`, `children[1]`, `children[2]`) fully connected after `generate()` completes. `children[1]` is set by `generateBase`; `children[0]`/`children[2]` are each set exactly once by Step 4, since $i \mapsto (2-i) \bmod 5$ and $i \mapsto (3-i) \bmod 5$ are both bijections over $\{0..4\}$.
+* **Port Reciprocity ($I \leftrightarrow K$):** Any connection `nodeA.children[0] == nodeB` strictly implies `nodeB.children[2] == nodeA`. This holds because both index functions are involutions — $2-(2-i)=i$ and $3-(3-i)=i$ — so each forward write's reciprocal write lands back on the originating node with no conflicts.
 * **Mirrored South Base:** The South base is generated with `Labeling::Mirrored` (the North base with `Labeling::Normal`), so every South node's $I$ and $K$ direction vectors are swapped relative to the North convention (its $I$ vector points along the direction a North-convention node would call $K$, and vice versa). Child port indices are unaffected, so the $I \leftrightarrow K$ port reciprocity above is preserved.
 * **Global Dual Anchor:** The returned `rootNode` anchors the entire North-South interlocked mesh hierarchy.
 

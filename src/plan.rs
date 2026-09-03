@@ -139,13 +139,18 @@ impl Plan {
         for i in 0..5 {
             let north_node = &north_reverted[i];
 
-            // North port I (index 0) to South port K (index 2).
-            let target_south_node_k = &south_reverted[(i + 2) % 5];
+            // North port I (index 0) to South port K (index 2), reflection
+            // offset southIdx_I = (2 - i) mod 5 (the +5 keeps the unsigned
+            // arithmetic non-negative).
+            let south_idx_i = (2 + 5 - i) % 5;
+            let target_south_node_k = &south_reverted[south_idx_i];
             north_node.borrow_mut().children[0] = Some(Rc::clone(target_south_node_k));
             target_south_node_k.borrow_mut().children[2] = Some(Rc::clone(north_node));
 
-            // North port K (index 2) to South port I (index 0).
-            let target_south_node_i = &south_reverted[(i + 3) % 5];
+            // North port K (index 2) to South port I (index 0), reflection
+            // offset southIdx_K = (3 - i) mod 5.
+            let south_idx_k = (3 + 5 - i) % 5;
+            let target_south_node_i = &south_reverted[south_idx_k];
             north_node.borrow_mut().children[2] = Some(Rc::clone(target_south_node_i));
             target_south_node_i.borrow_mut().children[0] = Some(Rc::clone(north_node));
         }
@@ -398,6 +403,36 @@ mod tests {
                     node_ref.name
                 );
             }
+        }
+    }
+
+    #[test]
+    fn generate_wires_interlock_ports_per_connection_table() {
+        let mut plan = Plan::new();
+        let root = plan.generate(SIDE_LENGTH);
+        let nodes = collect_nodes(&root);
+
+        // Resolved connection table from the spec, indexed by getRevertedNodes
+        // walk order (reverted_node_{0,4,3,2,1}): north node i connects port I
+        // (children[0]) to south node (2 - i) mod 5 and port K (children[2])
+        // to south node (3 - i) mod 5.
+        let order = [0, 4, 3, 2, 1];
+        let table = [(2, 3), (1, 2), (0, 1), (4, 0), (3, 4)];
+        for (i, &(port_i, port_k)) in table.iter().enumerate() {
+            let north = nodes
+                .iter()
+                .find(|node| node.borrow().name == format!("north_reverted_node_{}", order[i]))
+                .unwrap();
+            let child_i = north.borrow().children[0].clone().unwrap();
+            let child_k = north.borrow().children[2].clone().unwrap();
+            assert_eq!(
+                child_i.borrow().name,
+                format!("south_reverted_node_{}", order[port_i])
+            );
+            assert_eq!(
+                child_k.borrow().name,
+                format!("south_reverted_node_{}", order[port_k])
+            );
         }
     }
 
