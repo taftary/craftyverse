@@ -1214,6 +1214,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "planet-crafter-examples"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "planet-crafter-engine",
+]
+
+[[package]]
 name = "planet-crafter-tools"
 version = "0.1.0"
 dependencies = [

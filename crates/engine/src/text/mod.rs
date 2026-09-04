@@ -83,7 +83,7 @@ impl TextAtlas {
     /// Rasterizes printable ASCII into a shelf-packed atlas.
     ///
     /// Parses `font_bytes` with `fontdue`, then rasterizes every printable
-    /// ASCII character (`' '..='~'`) at [`ATLAS_SIZE`] into a 512×512 R8 atlas.
+    /// ASCII character (`' '..='~'`) at `ATLAS_SIZE` into a 512×512 R8 atlas.
     ///
     /// # Errors
     ///

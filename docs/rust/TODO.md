@@ -12,7 +12,7 @@ Review status (after uncommitted-change review):
   `docs/rust/book/specs/` and are part of the mdBook.
 - Source changes include module-level and public-API rustdoc for `node`,
   `plan`, `scene`, `text`, and `render`.
-- `cargo fmt --check`, `cargo test --workspace`, `cargo doc --no-deps`, and
+- `cargo fmt --check`, `cargo test --workspace --examples`, `cargo doc --no-deps`, and
   `docs/rust/scripts/check-book.sh` all pass locally.
 
 ## High priority
@@ -62,11 +62,21 @@ Review status (after uncommitted-change review):
         examples, references).
 - [x] Link `REVIEW_CHECKLIST.md` from `CONTRIBUTING.md` and require reviewers to
   use it for architecture and practice changes.
-- [ ] Add the first headless, compile-tested examples listed in
+- [x] Add the first headless, compile-tested examples listed in
   `docs/rust/examples/README.md`, then link each example to the architecture
   rule it demonstrates.
-- [ ] Define how GPU and platform-specific documentation tests are separated
+  - [x] Created `docs/rust/examples/` workspace crate with `engine_api`,
+        `validated_resource`, `state_transitions`, `message_flow`, and
+        `renderer_neutral_scene` examples.
+  - [x] Each example links to the relevant architecture rule in its module docs.
+  - [x] Examples are compile-tested through `cargo test --workspace --examples`.
+- [x] Define how GPU and platform-specific documentation tests are separated
   from headless documentation checks in CI.
+  - [x] Added a `gpu` feature and `viewer` example gated with
+        `required-features` in `docs/rust/examples/Cargo.toml`.
+  - [x] Documented the separation in `docs/rust/book/practices/testing.md`.
+  - [x] Split `.github/workflows/docs.yml` into `headless-docs` and
+        `gpu-and-platform` jobs.
 - [x] Add a short documentation index to the root `README.md` that points to the
   Rust book, contribution guidelines, style guide, and review checklist.
 
@@ -84,7 +94,7 @@ Review status (after uncommitted-change review):
 
 ```text
 cargo fmt --check
-cargo test --workspace
+cargo test --workspace --all-targets
 cargo doc --no-deps
 docs/rust/scripts/check-book.sh
 ```
@@ -93,4 +103,11 @@ For CI linting, also run:
 
 ```text
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+The `gpu` example is excluded from the headless command because it requires a
+Vulkan-capable display. Compile-check it separately with:
+
+```text
+cargo check --example viewer -p planet-crafter-examples --features gpu
 ```

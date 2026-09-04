@@ -4,17 +4,19 @@ on:
   push:
     branches: [main, master]
     paths:
+      - "crates/**"
       - "docs/rust/**"
       - ".github/workflows/docs.yml"
       - "README.md"
   pull_request:
     paths:
+      - "crates/**"
       - "docs/rust/**"
       - ".github/workflows/docs.yml"
       - "README.md"
 
 jobs:
-  build-and-check:
+  headless-docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,5 +36,24 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --check
 
-      - name: Run workspace tests
-        run: cargo test --workspace
+      - name: Run clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Run workspace tests and headless examples
+        run: cargo test --workspace --all-targets
+
+  gpu-and-platform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Compile-check GPU example
+        run: cargo check --example viewer -p planet-crafter-examples --features gpu
+
+      # Running the viewer requires a Vulkan-capable display. Add this step on a
+      # runner that provides one, or replace the job with a self-hosted GPU runner.
+      # - name: Run GPU example
+      #   run: cargo run --example viewer -p planet-crafter-examples --features gpu

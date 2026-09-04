@@ -1,3 +1,8 @@
 [workspace]
-members = ["crates/engine", "crates/game", "crates/tools"]
+members = [
+    "crates/engine",
+    "crates/game",
+    "crates/tools",
+    "docs/rust/examples",
+]
 resolver = "3"

@@ -38,6 +38,14 @@ Rust source changes must also pass the standard checks:
 ```text
 cargo fmt --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
+cargo test --workspace --all-targets
 cargo test --doc
+```
+
+`cargo test --workspace --all-targets` runs headless examples and skips the
+`viewer` example, which is gated behind the `gpu` feature. Compile-check the
+GPU example separately with:
+
+```text
+cargo check --example viewer -p planet-crafter-examples --features gpu
 ```
