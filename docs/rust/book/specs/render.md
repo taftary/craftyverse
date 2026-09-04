@@ -1,4 +1,4 @@
-## Render Module Definition (`src/render/`)
+## Render Module Definition (`crates/engine/src/render/`)
 
 ### Overview
 
@@ -100,7 +100,7 @@ One render pass, three graphics pipelines, drawn in order:
 
 ### Structure
 
-Folder module `src/render/`:
+Folder module `crates/engine/src/render/`:
 
 - **`mod.rs`** — `Scenario` (fixed node list or live plan) and the `run()`
   entry point.
@@ -124,7 +124,7 @@ Folder module `src/render/`:
 
 ### Rules
 
-- All Vulkan and windowing code lives in `src/render/`; the rest of the crate
+- All Vulkan and windowing code lives in `crates/engine/src/render/`; the rest of the crate
   stays GPU-independent.
 - World-space geometry uses a push-constant transform; UI and text use a
   separate pixel-space transform.

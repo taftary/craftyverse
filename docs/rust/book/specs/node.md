@@ -242,7 +242,7 @@ For each link, clear the neighbor's reciprocal back-link first, then the link it
 
 ### Files (Rust implementation)
 
-Folder module `src/node/`:
+Folder module `crates/engine/src/node/`:
 
 - **`mod.rs`** — `Node`, `NodeRef`, `Labeling` and the `new`/`split`/`destroy` methods.
 - **`geometry.rs`** — pure triangle-geometry helpers (`triangle_points`, `midpoint`, `perpendicular_toward`, `compute_directions`, `child_node`).

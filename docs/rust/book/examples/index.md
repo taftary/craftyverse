@@ -23,14 +23,14 @@ records.
 Headless examples live in `docs/rust/examples` and are compiled by
 `cargo test --workspace --examples`:
 
-- `engine_api` — game code consumes engine contracts without backend details.  
+- `engine_api` — game code consumes engine contracts without backend details.
   Demonstrates [crate boundaries](../architecture/crate-boundaries.md).
 - `validated_resource` — resource construction validates input and reports
   errors explicitly. Demonstrates [error handling](../practices/error-handling.md)
   and [type-driven design](../principles/type-driven-design.md).
 - `state_transitions` — a plan is generated and subdivided, re-anchoring the
   root node. Demonstrates the [`Plan` specification](../specs/plan.md).
-- `message_flow` — domain events cross an ownership boundary through a channel.  
+- `message_flow` — domain events cross an ownership boundary through a channel.
   Demonstrates the [events pattern](../patterns/events.md).
 - `renderer_neutral_scene` — nodes become GPU-independent vertex data without
   opening a window. Demonstrates the [`scene` specification](../specs/scene.md)

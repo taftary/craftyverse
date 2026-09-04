@@ -1,4 +1,4 @@
-## Scene Module Definition (`src/scene/`)
+## Scene Module Definition (`crates/engine/src/scene/`)
 
 ### Overview
 

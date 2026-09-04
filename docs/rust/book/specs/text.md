@@ -1,4 +1,4 @@
-## Text Module Definition (`src/text/`)
+## Text Module Definition (`crates/engine/src/text/`)
 
 ### Overview
 
@@ -50,7 +50,7 @@ with alpha blending. The module contains no GPU code.
 
 ### Files
 
-Folder module `src/text/`:
+Folder module `crates/engine/src/text/`:
 
 - **`mod.rs`** — `TextAtlas`, `TextVertex`, `Glyph`, the atlas constants and
   `layout()`; `TextAtlas::new()` orchestrates the packing helpers.

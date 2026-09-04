@@ -2,7 +2,8 @@
 
 ## Overview
 
-These pages describe the **current implementation modules** in `src/`. They are
+These pages describe the **current implementation modules** in
+`crates/engine/src/`. They are
 written against the code that exists today and are distinct from the
 [target-architecture chapters](../architecture/workspace.md), which describe the
 workspace and crate boundaries the project is migrating toward.
