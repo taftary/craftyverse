@@ -21,7 +21,7 @@ records.
 ## Current examples
 
 Headless examples live in `docs/rust/examples` and are compiled by
-`cargo test --workspace --examples`:
+`cargo test --workspace --all-targets`:
 
 - `engine_api` — game code consumes engine contracts without backend details.
   Demonstrates [crate boundaries](../architecture/crate-boundaries.md).

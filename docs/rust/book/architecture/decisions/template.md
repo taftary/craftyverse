@@ -1,6 +1,6 @@
-# ADR-NNNN: Title
+# ADR: Title
 
-**Status:** Open | Proposed | Accepted | Deprecated | Superseded by ADR-NNNN
+**Status:** Open | Proposed | Accepted | Deprecated | Superseded
 
 **Deciders:**
 

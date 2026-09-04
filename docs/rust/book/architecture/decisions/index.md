@@ -1,6 +1,6 @@
 # Architecture decision records
 
-This section records the significant design decisions that shape the migrated
+This section records the significant design decisions that shape the
 workspace. Each decision starts as an open question in
 [Technology targets](../technology.md) and becomes an ADR once the project has
 enough context to commit to a direction.
@@ -11,8 +11,6 @@ Use the [ADR template](template.md) when proposing a new decision.
 
 | Decision | Status | Related technology area |
 | --- | --- | --- |
-| [Vulkan crate and ownership model](vulkan-crate.md) | Open | Rendering |
-| [Platform window lifecycle](window-lifecycle.md) | Open | Platform integration |
 | [ECS adoption](ecs-adoption.md) | Open | Runtime systems |
 | [Physics strategy](physics-strategy.md) | Open | Runtime systems |
 | [Audio strategy](audio-strategy.md) | Open | Runtime systems |
@@ -22,8 +20,8 @@ Use the [ADR template](template.md) when proposing a new decision.
 
 ## Context
 
-The target workspace has several technology and boundary decisions that cannot
-be committed until requirements, constraints, or alternatives are understood.
+The workspace has several technology and boundary decisions that cannot be
+committed until requirements, constraints, or alternatives are understood.
 Without a central place to track these decisions, implementation choices risk
 being made ad hoc and becoming hard to reverse.
 
@@ -41,7 +39,12 @@ related work.
 - Accepted ADRs become part of the handbook and are updated or superseded when
   the project learns more.
 
-## Closed decisions
+## Accepted and closed decisions
 
-None yet. Accepted ADRs will be listed here with their status and supersession
+| Decision | Status | Related technology area |
+| --- | --- | --- |
+| [Vulkan crate and ownership model](vulkan-crate.md) | Accepted | Rendering |
+| [Platform window lifecycle](window-lifecycle.md) | Accepted | Platform integration |
+
+Deprecated or superseded ADRs will be listed here with their supersession
 links.

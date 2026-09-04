@@ -24,6 +24,10 @@ A window opens showing the node visualization:
 
 - **1** — one node, no split
 - **2** — split node (center + 3 corner nodes)
+- **3** — pentagonal base plan (live)
+- **4** — dual-mesh interlocked plan (live)
+- **S** — subdivide the current plan one level (live scenes)
+- **R** — regenerate the current plan
 - Close the window to exit
 
 For an optimized build: `cargo run --release`.
@@ -38,23 +42,22 @@ the matching attribute on or off.
 ## Development
 
 ```
-cargo test              # unit tests (node geometry, plan wiring, scene generation, text layout, shader compilation)
-cargo clippy            # lint
+cargo test --workspace    # unit tests (node geometry, plan wiring, scene generation, text layout, shader compilation)
+cargo clippy --workspace  # lint
 ```
 
 ## Project structure
 
 ```
 Cargo.toml
- crates/
-   engine/   — reusable geometry, topology, scene data, text, Vulkan viewer
-   game/     — application binary and content policy
-   tools/    — asset/developer tooling (e.g. mesh-validator)
+crates/
+  engine/   — reusable geometry, topology, scene data, text, Vulkan viewer
+  game/     — application binary and content policy
+  tools/    — asset/developer tooling (e.g. mesh-validator)
 assets/
-  fonts/      — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
+  fonts/    — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/
-  rust/       — target architecture, migration, and Rust standards
-  rust/book/specs/               — per-module specifications
+  rust/     — target architecture, handbook, and per-module specifications
 ```
 
 ## Documentation

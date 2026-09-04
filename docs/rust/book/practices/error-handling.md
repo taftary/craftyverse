@@ -18,11 +18,6 @@ cause for diagnostics.
 
 ## Boundary policy
 
-- Engine errors describe resource, device, validation, and lifecycle failures.
-- Game errors describe content and state-transition failures.
-- Tools errors identify invalid input paths, formats, and reproducibility failures.
-- `panic!` is reserved for violated internal invariants or unrecoverable startup conditions.
-
 Choose an error crate only after the workspace's library/application boundary is
 clear. Library APIs should expose meaningful typed errors; application code may
 attach context and decide how to report or terminate.

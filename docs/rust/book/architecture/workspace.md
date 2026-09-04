@@ -2,12 +2,11 @@
 
 ## Summary
 
-The project migrates toward a Cargo workspace with three responsibilities:
-an `engine` library, a `game` binary, and `tools` for asset and developer
-workflows. Dependencies always point toward the engine.
+The project is a Cargo workspace with three responsibilities: an `engine`
+library, a `game` binary, and `tools` for asset and developer workflows.
+Dependencies always point toward the engine.
 
-The destination layout is a Cargo workspace with separate engine, game, and
-tools responsibilities:
+The workspace layout is:
 
 ```text
 Cargo.toml
@@ -16,8 +15,7 @@ crates/
   game/         application and game content binary
   tools/        asset and developer tooling
 assets/         source and processed asset inputs
-tests/          cross-crate integration tests
-docs/rust/      architecture and engineering handbook
+docs/rust/      architecture and engineering handbook, examples crate
 ```
 
 The engine is the reusable foundation. The game owns content and application
@@ -38,5 +36,4 @@ crates/game  ──> engine APIs
 crates/engine ──> platform adapters and low-level dependencies
 ```
 
-The engine never imports game or tools code. A dependency-direction exception
-requires an architecture decision record.
+The engine never imports game or tools code.

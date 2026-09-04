@@ -19,12 +19,12 @@ the documentation restructuring.
 | `docs/project-structure-and-best-practices/07-dependency-management.md` | `docs/rust/book/practices/dependencies.md` | Dependency guidance moved here. |
 | `docs/project-structure-and-best-practices/08-example-scalable-project.md` | `docs/rust/book/architecture/workspace.md` | Scalable-project example replaced by the target workspace. |
 | `docs/project-structure-and-best-practices/README.md` | `docs/rust/book/index.md` and `docs/rust/CONTRIBUTING.md` | Entry-level guidance moved to the book introduction and contribution guide. |
-| `docs/classes-definitions/node.md` | `docs/rust/book/specs/node.md` | Moved verbatim; internal links updated to mdBook-relative paths. |
-| `docs/classes-definitions/plan.md` | `docs/rust/book/specs/plan.md` | Moved verbatim; internal links updated to mdBook-relative paths. |
-| `docs/classes-definitions/scene.md` | `docs/rust/book/specs/scene.md` | Moved verbatim; internal links updated to mdBook-relative paths. |
-| `docs/classes-definitions/text.md` | `docs/rust/book/specs/text.md` | Moved verbatim; internal links updated to mdBook-relative paths. |
-| `docs/classes-definitions/render.md` | `docs/rust/book/specs/render.md` | Moved verbatim; internal links updated to mdBook-relative paths. |
-| `docs/classes-definitions/ARCHITECTURE.md` | Retired | Its generic workspace/crate breakdown was superseded by `docs/rust/book/architecture/`. Future-extension ideas (networking, scripting, editor GUI, hot-reload, plugins) are represented by the open ADRs in `docs/rust/book/architecture/decisions/`. |
+| `docs/classes-definitions/node.md` | `docs/rust/book/specs/node.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
+| `docs/classes-definitions/plan.md` | `docs/rust/book/specs/plan.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
+| `docs/classes-definitions/scene.md` | `docs/rust/book/specs/scene.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
+| `docs/classes-definitions/text.md` | `docs/rust/book/specs/text.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
+| `docs/classes-definitions/render.md` | `docs/rust/book/specs/render.md` | Substantially rewritten for the extracted `crates/engine` renderer and the `Scenario` API. |
+| `docs/classes-definitions/ARCHITECTURE.md` | Retired | Its generic workspace/crate breakdown was superseded by `docs/rust/book/architecture/`. Of its future-extension ideas, networking is captured by an open ADR in `docs/rust/book/architecture/decisions/`; scripting, editor GUI, hot-reload, and plugins were intentionally dropped until requirements exist. |
 
 ## What was intentionally dropped
 

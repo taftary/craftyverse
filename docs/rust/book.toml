@@ -9,4 +9,4 @@ src = "book"
 build-dir = "book-output"
 
 [output.html]
-# git-repository-url = "https://github.com/<owner>/<repo>"
+git-repository-url = "https://github.com/taftary/craftyverse"

@@ -11,19 +11,16 @@ that needs it.
 ## Key points
 
 - Add dependencies for concrete capabilities, not speculative reuse.
-- Keep shared versions and common lints in the workspace manifest.
-- Do not add tools-only dependencies to runtime crates.
-- Treat feature flags as compile-time API and size decisions.
-- Record dependency-direction exceptions in an architecture decision record.
-
-## Workspace rules
-
-- Keep shared versions and common lints in the workspace manifest.
+- Keep shared versions in the workspace manifest. Adopt `[workspace.lints]`
+  as the workspace grows; CI's `-D warnings` is the current enforcement.
 - Keep crate manifests focused on direct dependencies.
 - Do not add tools-only dependencies to runtime crates.
 - Treat feature flags as compile-time API and size decisions.
 - Commit the application workspace lockfile for reproducible builds.
 - Audit dependencies and remove unused crates regularly.
+- Record dependency-direction exceptions in an architecture decision record.
+
+## Workspace rules
 
 ```toml
 [workspace.dependencies]

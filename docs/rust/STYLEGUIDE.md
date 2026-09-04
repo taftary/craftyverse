@@ -15,9 +15,12 @@ planned crate, dependency, platform, or workflow as implemented.
 
 ## Page structure
 
-Guidance pages should contain a summary, use/avoid guidance, key points, a
-minimal example, pitfalls, tests, and authoritative references. Examples must be
-small enough to compile and review.
+`docs/rust/scripts/check-sections.py` enforces the minimum page structure by
+category: every guidance page needs a summary (or overview) and a key-points
+(or rules/use/avoid) section; pattern pages also need an example; decision
+records need context, decision, and consequences. Beyond that minimum, pages
+should add pitfalls, tests, and authoritative references where they help.
+Examples must be small enough to compile and review.
 
 ## Validation commands
 

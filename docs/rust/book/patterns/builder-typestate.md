@@ -75,11 +75,3 @@ impl RenderConfigBuilder<Configured> {
     }
 }
 ```
-
-## Trade-offs
-
-Builders improve call-site readability but add API surface. Typestate prevents
-invalid transitions but can increase the number of types. Prefer a validated
-constructor when neither benefit is needed.
-
-Test both successful construction and rejected invariants.

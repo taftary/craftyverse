@@ -23,7 +23,7 @@ PlanetCrafter/
 │   ├── game/
 │   └── tools/
 ├── assets/
-├── tests/
+├── tests/  # planned addition, not yet present
 └── docs/rust/
 ```
 

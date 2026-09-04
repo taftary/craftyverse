@@ -9,7 +9,7 @@ community pattern catalogs and general design-pattern tutorials.
 | [The Rust Book](https://doc.rust-lang.org/book/) | Official | Primary guidance for ownership, error handling, traits, and testing. |
 | [Rustonomicon](https://doc.rust-lang.org/nomicon/) | Official | Primary guidance for unsafe Rust and low-level invariants. |
 | [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/) | Community-maintained | Practical public API and library design conventions. |
-| [Rust Design Patterns](https://rust-unofficial.github.io/patterns/patterns/index.html) | Community catalog | Rust-specific idioms, patterns, anti-patterns, and the YAGNI principle. |
+| [Rust Design Patterns](https://rust-unofficial.github.io/patterns/) | Community catalog | Rust-specific idioms, patterns, anti-patterns, and the YAGNI principle. |
 | [Patterns repository](https://github.com/rust-unofficial/patterns) | Open-source repository | Source history and contribution context for the pattern catalog. |
 | [Software Patterns Lexicon](https://softwarepatternslexicon.com/rust/) | Secondary guide | Broad architecture and pattern survey; verify claims against official docs. |
 | [W3Reference Rust patterns](https://www.w3reference.com/rust-tutorial/rust-design-patterns-a-tutorial-on-code-architecture/) | Secondary tutorial | Introductory pattern examples; do not treat unsafe singleton examples as project guidance. |
@@ -23,6 +23,6 @@ library or platform constraint.
 
 ## Review log
 
-- **2026-09-04** — All links reachable. `w3reference.com` blocks plain HEAD
-  requests (returns 520) but serves the page with a browser user agent; the
-  source remains valid.
+- **2026-09-04** — All links reachable, with one caveat: `w3reference.com`
+  blocks plain HEAD requests (returns 520) but serves the page with a browser
+  user agent; the source remains valid.

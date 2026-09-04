@@ -2,8 +2,8 @@
 
 ## Summary
 
-This page records the target technology decisions for the migrated workspace:
-`Target` decisions are required, `Planned` decisions are accepted but not yet
+This page records the technology decisions for the workspace: `Target`
+decisions are required, `Planned` decisions are accepted but not yet
 implemented, and `Open` decisions need an architecture decision record before
 implementation.
 
@@ -11,8 +11,8 @@ implementation.
 
 - Rust edition 2024 is the target language.
 - Vulkan is the sole graphics API; game code never touches Vulkan objects directly.
-- ECS, physics, audio, persistence, networking, and platform lifecycle are open
-  or planned decisions captured by ADRs.
+- ECS, physics, audio, persistence, and networking are open decisions captured
+  by ADRs.
 - Source assets live under `assets/`; processed outputs are owned by tools.
 
 ## Language and workspace
@@ -20,20 +20,20 @@ implementation.
 | Area | Status | Decision |
 | --- | --- | --- |
 | Language | Target | Rust edition 2024 with stable toolchains in CI. |
-| Package layout | Target | A Cargo workspace containing `crates/engine`, `crates/game`, and `crates/tools`. |
+| Package layout | Target | A Cargo workspace containing `crates/engine`, `crates/game`, `crates/tools`, and `docs/rust/examples`. |
 | Engine API | Target | `crates/engine` is a library with no dependency on game content. |
 | Game entry point | Target | `crates/game` owns startup, game state, input mapping, and content. |
-| Developer tooling | Planned | `crates/tools` owns asset validation, preprocessing, and editor commands. |
+| Developer tooling | Target | `crates/tools` owns asset validation, preprocessing, and editor commands. |
 
 ## Rendering and platform
 
 | Area | Status | Decision |
 | --- | --- | --- |
 | Graphics API | Target | Vulkan is the rendering API. |
-| Vulkan crate | Open | [Select the Rust Vulkan layer and ownership model before extraction.](decisions/vulkan-crate.md) |
-| Desktop development | Planned | Windows is the first development and validation platform. |
+| Vulkan crate | Target | [`vulkano` is the sole Vulkan layer; the engine owns all Vulkan objects.](decisions/vulkan-crate.md) |
+| Desktop development | Target | Windows is the first development and validation platform. |
 | Android and iOS | Planned | Add mobile targets after desktop builds cleanly and lifecycle constraints are validated. |
-| Window lifecycle | Open | [Choose `winit`, native integration, or a split adapter through an ADR.](decisions/window-lifecycle.md) |
+| Window lifecycle | Target | [`winit` owns the window lifecycle behind the engine API.](decisions/window-lifecycle.md) |
 | Shaders | Target | Keep shader sources with rendering code and validate generated SPIR-V in the build pipeline. |
 
 The engine owns devices, surfaces, swapchains, pipelines, resources, and frame
@@ -46,7 +46,7 @@ Vulkan objects directly.
 | --- | --- | --- |
 | Math | Target | Use `glam`-compatible value types at the engine boundary. |
 | ECS | Open | [Decide only after ownership and scheduling requirements are documented.](decisions/ecs-adoption.md) |
-| Physics | Planned | Isolate physics behind an engine service and keep game rules vendor-independent. |
+| Physics | Open | [Isolate physics behind an engine service and keep game rules vendor-independent.](decisions/physics-strategy.md) |
 | Input | Planned | Convert platform events into stable engine actions before game systems consume them. |
 | UI and text | Planned | Keep layout and text data CPU-side and expose renderer-neutral draw data. |
 | Audio | Open | [Select a strategy after lifecycle, latency, and packaging constraints are measured.](decisions/audio-strategy.md) |
@@ -64,6 +64,5 @@ Vulkan objects directly.
 
 ## Open decisions
 
-Architecture decision records are required for the Vulkan layer, platform
-lifecycle, ECS adoption, physics, audio, persistence, telemetry, and temporary
-compatibility APIs.
+Architecture decision records are required for ECS adoption, physics, audio,
+persistence, telemetry, and temporary compatibility APIs.

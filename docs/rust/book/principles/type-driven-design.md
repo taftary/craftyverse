@@ -16,14 +16,6 @@ for behavior that has multiple valid implementations.
 - Traits describe stable capabilities, not class-like inheritance.
 - Keep generic abstractions small until two real consumers require them.
 
-## Project rules
-
-- Newtypes distinguish coordinates, indices, handles, and sizes.
-- Enums represent lifecycle states and exhaustive game decisions.
-- Constructors validate invariants and return `Result` when validation can fail.
-- Traits describe stable capabilities; they do not exist only to imitate classes.
-- Keep generic abstractions small until two real consumers require them.
-
 ## Example
 
 ```rust

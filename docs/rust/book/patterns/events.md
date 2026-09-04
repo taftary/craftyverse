@@ -13,18 +13,32 @@ backend object as a shortcut.
 - Prefer direct function calls inside one cohesive subsystem.
 - Use message passing at ownership or scheduling boundaries, not everywhere.
 - Input adapters publish normalized actions; game systems emit domain events.
+- The engine consumes render commands or renderer-neutral draw data.
 - Channels are bounded when producers can outpace consumers.
 - Shutdown and cancellation are explicit messages.
 
 ## Example
 
-For the target architecture:
+A game system emits domain events across an ownership boundary through a
+bounded channel; the consumer drains them without sharing mutable state.
 
-- input adapters publish normalized actions;
-- game systems emit domain events;
-- the engine consumes render commands or renderer-neutral draw data;
-- channels are bounded when producers can outpace consumers;
-- shutdown and cancellation are explicit messages.
+```rust
+use std::sync::mpsc;
 
-Prefer direct function calls inside one cohesive subsystem. Message passing is
-valuable at ownership or scheduling boundaries, not everywhere.
+#[derive(Debug, PartialEq)]
+enum GameEvent {
+    NodeSplit { name: String },
+    Shutdown,
+}
+
+fn main() {
+    let (sender, receiver) = mpsc::sync_channel::<GameEvent>(8);
+    sender.send(GameEvent::NodeSplit { name: "root".into() }).unwrap();
+    sender.send(GameEvent::Shutdown).unwrap();
+
+    let events: Vec<_> = receiver.try_iter().collect();
+    assert_eq!(events.len(), 2);
+}
+```
+
+The runnable version of this flow is the [`message_flow` example](../examples/index.md).
