@@ -1,24 +1,24 @@
 use glam::Vec2;
+use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 use planet_crafter_engine::node::{Labeling, Node};
-use planet_crafter_engine::plan::Plan;
 use planet_crafter_engine::render::Scenario;
 
 /// Pentagonal base scenario: 5 inward base nodes + 5 outward reverted nodes.
-fn base_plan() -> Plan {
-    let mut plan = Plan::default();
-    plan.root_node = Some(planet_crafter_engine::plan::generate_base(
-        "base_",
-        300.0,
-        Vec2::Y,
-        Vec2::ZERO,
-        Labeling::Normal,
-    ));
-    plan
+fn base_plan() -> IcosahedronPlan {
+    IcosahedronPlan {
+        root_node: Some(planet_crafter_engine::icosahedron_plan::generate_base(
+            "base_",
+            300.0,
+            Vec2::Y,
+            Vec2::ZERO,
+            Labeling::Normal,
+        )),
+    }
 }
 
 /// Full dual-pentagon interlocked mesh scenario (North + South, 20 nodes).
-fn dual_mesh_plan() -> Plan {
-    let mut plan = Plan::default();
+fn dual_mesh_plan() -> IcosahedronPlan {
+    let mut plan = IcosahedronPlan::default();
     plan.generate(300.0);
     plan
 }
@@ -103,7 +103,7 @@ mod tests {
         assert_eq!(split.nodes().len(), 4);
 
         // Plan scenario: dual-pentagon mesh has 20 nodes.
-        let mut plan = Plan::default();
+        let mut plan = IcosahedronPlan::default();
         plan.generate(300.0);
         let dual_mesh = Scenario::Plan {
             plan,
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn plan_scenario_splits_without_window() {
-        let mut plan = Plan::default();
+        let mut plan = IcosahedronPlan::default();
         plan.generate(300.0);
         let mut scenario = Scenario::Plan {
             plan,

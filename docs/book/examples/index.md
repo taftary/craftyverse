@@ -29,7 +29,7 @@ Headless examples live in `docs/examples` and are compiled by
   errors explicitly. Demonstrates [error handling](../practices/error-handling.md)
   and [type-driven design](../principles/type-driven-design.md).
 - `state_transitions` — a plan is generated and subdivided, re-anchoring the
-  root node. Demonstrates the [`Plan` specification](../specs/plan.md).
+  root node. Demonstrates the [`IcosahedronPlan` specification](../specs/icosahedron-plan.md).
 - `message_flow` — domain events cross an ownership boundary through a channel.
   Demonstrates the [events pattern](../patterns/events.md).
 - `renderer_neutral_scene` — nodes become GPU-independent vertex data without

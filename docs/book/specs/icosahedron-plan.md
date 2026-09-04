@@ -465,7 +465,7 @@ These numbers are pinned by the tests `plan::tests::split_wires_every_port_recip
 
 ### Files (Rust implementation)
 
-Folder module `crates/engine/src/plan/`:
+Folder module `crates/engine/src/icosahedron_plan/`:
 
 - **`mod.rs`** — `IcosahedronPlan` and the `generate()` orchestration.
 - **`pentagon.rs`** — base generation as free functions: `generate_base` (no longer an `IcosahedronPlan` method — it returns the root and the caller anchors it), `apothem`, `PENTAGON_SIDES`, `walk_perimeter`, `reverted_nodes` (the spec's `getRevertedNodes`, renamed per Rust API guidelines) and `wire_interlock` (the `generate()` step-4 loop).

@@ -6,12 +6,12 @@
 //!
 //! Pentagonal base construction lives in `pentagon`; whole-mesh subdivision
 //! lives in `subdivide`. The full contract is specified in
-//! `docs/book/specs/plan.md`.
+//! `docs/book/specs/icosahedron-plan.md`.
 //!
 //! # Example
 //!
 //! ```
-//! use planet_crafter_engine::plan::IcosahedronPlan;
+//! use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 //!
 //! let mut plan = IcosahedronPlan::default();
 //! let root = plan.generate(1.0);
@@ -71,7 +71,7 @@ impl IcosahedronPlan {
     /// # Example
     ///
     /// ```
-    /// use planet_crafter_engine::plan::IcosahedronPlan;
+    /// use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
     ///
     /// let mut plan = IcosahedronPlan::default();
     /// let root = plan.generate(2.0);
@@ -83,7 +83,7 @@ impl IcosahedronPlan {
     /// ```
     /// use std::rc::Rc;
     /// use planet_crafter_engine::node::collect_nodes;
-    /// use planet_crafter_engine::plan::IcosahedronPlan;
+    /// use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
     ///
     /// let mut plan = IcosahedronPlan::default();
     /// let root = plan.generate(2.0);

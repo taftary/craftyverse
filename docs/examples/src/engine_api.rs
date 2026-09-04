@@ -6,15 +6,15 @@
 //! See `docs/book/architecture/crate-boundaries.md`.
 
 use glam::Vec2;
+use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 use planet_crafter_engine::node::{Labeling, Node};
-use planet_crafter_engine::plan::Plan;
 
 /// Runs the engine-API demonstration.
 ///
 /// A game-level function builds a plan and a standalone node using only the
 /// public surface of the engine crate.
 pub fn run() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     let root = plan.generate(100.0);
     assert!(plan.root_node.is_some());
     assert_eq!(root.borrow().name, "north_base_node_0");

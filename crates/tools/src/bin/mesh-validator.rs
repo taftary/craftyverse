@@ -6,14 +6,14 @@
 
 use std::process;
 
+use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 use planet_crafter_engine::node::collect_nodes;
-use planet_crafter_engine::plan::Plan;
 
 const SIDE_LENGTH: f32 = 300.0;
 const SUBDIVISION_LEVELS: u32 = 2;
 
 fn main() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     plan.generate(SIDE_LENGTH);
 
     for level in 0..=SUBDIVISION_LEVELS {
