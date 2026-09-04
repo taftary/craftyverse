@@ -20,3 +20,9 @@ community pattern catalogs and general design-pattern tutorials.
 
 Review links quarterly or when a documented decision depends on an evolving
 library or platform constraint.
+
+## Review log
+
+- **2026-09-04** — All links reachable. `w3reference.com` blocks plain HEAD
+  requests (returns 520) but serves the page with a browser user agent; the
+  source remains valid.

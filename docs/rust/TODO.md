@@ -12,7 +12,8 @@ Review status (after uncommitted-change review):
   `docs/rust/book/specs/` and are part of the mdBook.
 - Source changes include module-level and public-API rustdoc for `node`,
   `plan`, `scene`, `text`, and `render`.
-- `cargo fmt --check`, `cargo test --workspace --examples`, `cargo doc --no-deps`, and
+- `cargo fmt --check`, `cargo test --workspace --all-targets`,
+  `cargo test --doc --workspace`, `cargo doc --no-deps`, and
   `docs/rust/scripts/check-book.sh` all pass locally.
 
 ## High priority
@@ -30,8 +31,9 @@ Review status (after uncommitted-change review):
   build, local link checks, and `cargo test --workspace --doc` where applicable.
   - [x] Added `.github/workflows/docs.yml` to validate docs and Rust checks on
         changes to `docs/rust/**`, `.github/workflows/docs.yml`, and `README.md`.
-  - [x] Note: this package is a binary crate, so `cargo test --doc` does not
-        apply. Doctests will become runnable only if a library target is added.
+  - [x] Note: the game crate is a binary crate, but `planet-crafter-engine` is
+        a library crate, so `cargo test --doc --workspace` runs doctests on the
+        engine public API.
 - [x] Create an ADR index and template for the open decisions in
   `book/architecture/technology.md`: Vulkan crate and ownership, platform
   lifecycle, ECS versus explicit systems, physics/audio/persistence strategy,
@@ -82,13 +84,19 @@ Review status (after uncommitted-change review):
 
 ## Low priority
 
-- [ ] Review external links in `book/references/curated-links.md` quarterly and
+- [x] Review external links in `book/references/curated-links.md` quarterly and
   record changes to sources used by architecture decisions.
-- [ ] Add doctests for the geometry/topology invariants already covered by
+  - [x] Checked all links on 2026-09-04; `w3reference.com` blocks plain HEAD
+        requests but serves the page with a browser user agent.
+- [x] Add doctests for the geometry/topology invariants already covered by
   unit tests (`node`, `plan`, `scene`) so the public API examples are also
   exercised by `cargo test --doc`.
-  - Blocked: doctests require a library target; the current package is a binary
-    crate.
+  - [x] Added geometry-invariant doctests to `Node::new`.
+  - [x] Added subdivision-invariant doctests to `Node::split`.
+  - [x] Added mesh-saturation doctests to `Plan::generate`.
+  - [x] Added clip-space doctests to `scene::build_scene`.
+  - Note: doctests are valid because `planet-crafter-engine` is a library crate.
+    The game crate remains a binary crate with no doctests.
 
 ## Validation commands
 

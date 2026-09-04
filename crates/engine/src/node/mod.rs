@@ -158,6 +158,31 @@ impl Node {
     /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
     /// assert_eq!(node.borrow().level, 0);
     /// ```
+    ///
+    /// # Geometry invariants
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use planet_crafter_engine::node::{Labeling, Node};
+    ///
+    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 6.0, 4.0, "root", Labeling::Normal);
+    /// let node = node.borrow();
+    /// let [a, b, c] = node.points;
+    ///
+    /// // Direction is normalized; centroid and dimensions match the request.
+    /// assert!((node.direction_of_node.length() - 1.0).abs() < 1e-4);
+    /// assert!(((a + b + c) / 3.0 - node.center).length() < 1e-4);
+    /// assert!(((b - c).length() - node.base_length).abs() < 1e-4);
+    /// assert!(((a - (b + c) / 2.0).length() - node.height).abs() < 1e-4);
+    ///
+    /// // I/J/K directions are perpendicular to their edge and point outward.
+    /// for (dir, start, end) in [(node.directions[0], a, b), (node.directions[1], b, c), (node.directions[2], c, a)] {
+    ///     assert!(dir.dot(end - start).abs() < 1e-4);
+    ///     let mid = (start + end) / 2.0;
+    ///     assert!(dir.dot(mid - node.center) > 0.0);
+    ///     assert!((dir.length() - 1.0).abs() < 1e-4);
+    /// }
+    /// ```
     pub fn new(
         direction_of_node: Vec2,
         center: Vec2,
@@ -238,6 +263,37 @@ impl Node {
     /// let center = node.borrow().split();
     /// assert_eq!(center.borrow().level, 1);
     /// assert!(center.borrow().children[0].is_some());
+    /// ```
+    ///
+    /// # Subdivision invariants
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    /// use glam::Vec2;
+    /// use planet_crafter_engine::node::{Labeling, Node};
+    ///
+    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 4.0, 2.0, "root", Labeling::Normal);
+    /// let center = node.borrow().split();
+    /// let center_ref = center.borrow();
+    ///
+    /// assert_eq!(center_ref.level, 1);
+    /// assert_eq!(center_ref.base_length, 2.0);
+    /// assert_eq!(center_ref.height, 1.0);
+    /// assert!(center_ref.children.iter().all(|c| c.is_some()));
+    ///
+    /// // Reciprocity: each corner links back to the center on the expected port.
+    /// assert!(Rc::ptr_eq(
+    ///     center_ref.children[0].as_ref().unwrap().borrow().children[2].as_ref().unwrap(),
+    ///     &center,
+    /// ));
+    /// assert!(Rc::ptr_eq(
+    ///     center_ref.children[1].as_ref().unwrap().borrow().children[1].as_ref().unwrap(),
+    ///     &center,
+    /// ));
+    /// assert!(Rc::ptr_eq(
+    ///     center_ref.children[2].as_ref().unwrap().borrow().children[0].as_ref().unwrap(),
+    ///     &center,
+    /// ));
     /// ```
     pub fn split(&self) -> NodeRef {
         let old_level = self.level;

@@ -77,6 +77,32 @@ impl Plan {
     /// let root = plan.generate(2.0);
     /// assert_eq!(root.borrow().name, "north_base_node_0");
     /// ```
+    ///
+    /// # Mesh invariants
+    ///
+    /// ```
+    /// use std::rc::Rc;
+    /// use planet_crafter_engine::node::collect_nodes;
+    /// use planet_crafter_engine::plan::Plan;
+    ///
+    /// let mut plan = Plan::default();
+    /// let root = plan.generate(2.0);
+    /// let nodes = collect_nodes(&root);
+    ///
+    /// // Dual-pentagon interlocked mesh: 20 nodes.
+    /// assert_eq!(nodes.len(), 20);
+    /// // Every node has three reciprocal connections.
+    /// for node in &nodes {
+    ///     let node_ref = node.borrow();
+    ///     for (index, child) in node_ref.children.iter().enumerate() {
+    ///         let child = child.as_ref().unwrap();
+    ///         let reciprocal = 2 - index;
+    ///         let child_ref = child.borrow();
+    ///         let back = child_ref.children[reciprocal].as_ref().unwrap();
+    ///         assert!(Rc::ptr_eq(back, node));
+    ///     }
+    /// }
+    /// ```
     pub fn generate(&mut self, side_length: f32) -> NodeRef {
         let north_center = Vec2::new(side_length * 3.0, side_length * 3.0);
         let north_dir = Vec2::Y;

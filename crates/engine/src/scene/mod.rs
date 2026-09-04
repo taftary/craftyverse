@@ -130,6 +130,24 @@ pub struct SceneMesh {
 /// let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &options);
 /// assert!(scene.checkboxes.iter().any(|c| c.attribute == Attribute::Labels));
 /// ```
+///
+/// # View-fit invariant
+///
+/// ```
+/// use glam::Vec2;
+/// use planet_crafter_engine::node::{Labeling, Node};
+/// use planet_crafter_engine::scene::build_scene;
+///
+/// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+/// let mesh = build_scene(&[node], Vec2::new(800.0, 600.0), &Default::default());
+///
+/// // The world-to-clip transform maps every world-space vertex into NDC.
+/// for vertex in mesh.lines.iter().chain(&mesh.triangles) {
+///     let clip = vertex.pos * mesh.world_to_clip.scale + mesh.world_to_clip.offset;
+///     assert!(clip.x.abs() <= 1.0, "clip.x out of range: {}", clip.x);
+///     assert!(clip.y.abs() <= 1.0, "clip.y out of range: {}", clip.y);
+/// }
+/// ```
 pub fn build_scene(nodes: &[NodeRef], viewport: Vec2, options: &DisplayOptions) -> SceneMesh {
     let mut builder = SceneBuilder {
         options: *options,
