@@ -5,6 +5,9 @@
 //!
 //! See `docs/rust/book/patterns/events.md`.
 
+// `std::sync::mpsc` is used here as an ownership-boundary illustration. The
+// channel is still valid in the current single-threaded code and will transfer
+// cleanly to a multi-threaded target architecture without changing the API.
 use std::sync::mpsc;
 
 /// Domain event produced by game systems.

@@ -5,4 +5,12 @@ members = [
     "crates/tools",
     "docs/rust/examples",
 ]
+default-members = ["crates/game"]
 resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+glam = "0.33.6"

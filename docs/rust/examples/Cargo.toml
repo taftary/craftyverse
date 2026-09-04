@@ -5,7 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-glam = "0.33.6"
+glam = { workspace = true }
 planet-crafter-engine = { path = "../../../crates/engine" }
 
 [features]

@@ -1,8 +1,12 @@
 [package]
-name = "PlanetCrafter"
+name = "planet-crafter-game"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-glam = "0.33.6"
+glam = { workspace = true }
 planet-crafter-engine = { path = "../engine" }
+
+[[bin]]
+name = "planet-crafter"
+path = "src/main.rs"

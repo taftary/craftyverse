@@ -1,5 +1,7 @@
 # Pattern Selection
 
+**Status:** Target
+
 ## Summary
 
 Patterns are vocabulary for recurring problems, not mandatory architecture.

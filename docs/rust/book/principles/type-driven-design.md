@@ -1,5 +1,7 @@
 # Type-Driven Design
 
+**Status:** Target
+
 ## Summary
 
 Model domain invariants in types so invalid states are difficult to construct.

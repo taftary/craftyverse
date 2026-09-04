@@ -13,7 +13,7 @@ cargo run --example engine_api -p planet-crafter-examples
 Run all headless examples and their tests:
 
 ```text
-cargo test -p planet-crafter-examples --examples
+cargo test -p planet-crafter-examples
 ```
 
 Run the GPU example (requires a Vulkan-capable display):

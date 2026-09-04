@@ -2,9 +2,9 @@
 
 **Status:** Open
 
-**Deciders:**
+**Deciders:** TBD
 
-**Date:**
+**Date:** 2026-09-04
 
 ## Context
 

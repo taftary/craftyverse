@@ -1,5 +1,7 @@
 # Public APIs and Dependencies
 
+**Status:** Target
+
 ## Summary
 
 A public API is a long-term compatibility commitment. Keep public surfaces

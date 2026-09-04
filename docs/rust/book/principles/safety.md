@@ -1,5 +1,7 @@
 # Safety Boundaries
 
+**Status:** Target
+
 ## Summary
 
 Safe Rust is the default. Unsafe code is permitted only for measured

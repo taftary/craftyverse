@@ -17,7 +17,7 @@ bidirectional links) and a Vulkan debug viewer to visualize it.
 ## Run the viewer
 
 ```
-cargo run
+cargo run --bin planet-crafter
 ```
 
 A window opens showing the node visualization:

@@ -1,5 +1,7 @@
 # Dependency Management
 
+**Status:** Target
+
 ## Summary
 
 Dependencies are part of the architecture. Add a crate only for a concrete

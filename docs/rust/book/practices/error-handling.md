@@ -1,5 +1,7 @@
 # Error Handling
 
+**Status:** Target
+
 ## Summary
 
 Use `Result<T, E>` for recoverable failures and `Option<T>` for an expected

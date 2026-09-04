@@ -1,5 +1,7 @@
 # Events and Message Passing
 
+**Status:** Target
+
 ## Summary
 
 Use messages when systems should communicate without sharing mutable internals.
