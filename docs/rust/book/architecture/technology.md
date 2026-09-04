@@ -1,9 +1,19 @@
 # Technology Targets
 
-This page records the target technology decisions for the migrated workspace.
-`Target` means required destination architecture, `Planned` means an accepted
-direction that still needs implementation, and `Open` means an architecture
-decision record is required before implementation.
+## Summary
+
+This page records the target technology decisions for the migrated workspace:
+`Target` decisions are required, `Planned` decisions are accepted but not yet
+implemented, and `Open` decisions need an architecture decision record before
+implementation.
+
+## Key points
+
+- Rust edition 2024 is the target language.
+- Vulkan is the sole graphics API; game code never touches Vulkan objects directly.
+- ECS, physics, audio, persistence, networking, and platform lifecycle are open
+  or planned decisions captured by ADRs.
+- Source assets live under `assets/`; processed outputs are owned by tools.
 
 ## Language and workspace
 

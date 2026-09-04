@@ -20,6 +20,27 @@ Use the [ADR template](template.md) when proposing a new decision.
 | [Telemetry and temporary compatibility APIs](telemetry-and-adapters.md) | Open | Migration and observability |
 | [Networking strategy](networking-strategy.md) | Open | Runtime systems |
 
+## Context
+
+The target workspace has several technology and boundary decisions that cannot
+be committed until requirements, constraints, or alternatives are understood.
+Without a central place to track these decisions, implementation choices risk
+being made ad hoc and becoming hard to reverse.
+
+## Decision
+
+Use architecture decision records (ADRs) for every open decision listed in
+[Technology targets](../technology.md). Each ADR follows the [ADR template](template.md)
+and records context, the chosen direction, consequences, alternatives, and
+related work.
+
+## Consequences
+
+- Open decisions are visible to the whole team before implementation starts.
+- New decisions can be proposed using a single template and review checklist.
+- Accepted ADRs become part of the handbook and are updated or superseded when
+  the project learns more.
+
 ## Closed decisions
 
 None yet. Accepted ADRs will be listed here with their status and supersession

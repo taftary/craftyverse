@@ -1,5 +1,7 @@
 # Example Policy
 
+## Summary
+
 Examples are small specifications for the target architecture. They must be
 runnable, focused, and independent from a display or GPU unless the page marks
 them as platform-specific.
@@ -13,4 +15,5 @@ Each example includes:
 - a link to the architecture rule it demonstrates.
 
 Production crates are not created by documentation examples. They are introduced
-only during the staged migration in [`MIGRATION.md`](../../MIGRATION.md).
+through the workspace migration process and tracked in architecture decision
+records.

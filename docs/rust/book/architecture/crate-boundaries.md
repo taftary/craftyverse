@@ -1,6 +1,17 @@
 # Crate Boundaries
 
-Each crate has one reason to change and an explicit public surface.
+## Summary
+
+Each crate has one reason to change and an explicit public surface. The engine
+owns reusable systems, the game owns content and policy, and tools own
+asset/developer workflows.
+
+## Key points
+
+- Expose domain contracts, not implementation details, across crate boundaries.
+- Every public type must be testable without a platform or GPU when possible.
+- Dependencies must point toward the engine foundation.
+- Before exposing a type, answer who owns the data and who may mutate it.
 
 ## Engine
 

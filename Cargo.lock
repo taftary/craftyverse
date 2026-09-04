@@ -6,11 +6,8 @@ version = 4
 name = "PlanetCrafter"
 version = "0.1.0"
 dependencies = [
- "fontdue",
  "glam",
- "naga",
- "vulkano",
- "winit",
+ "planet-crafter-engine",
 ]
 
 [[package]]
@@ -1204,6 +1201,24 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
+
+[[package]]
+name = "planet-crafter-engine"
+version = "0.1.0"
+dependencies = [
+ "fontdue",
+ "glam",
+ "naga",
+ "vulkano",
+ "winit",
+]
+
+[[package]]
+name = "planet-crafter-tools"
+version = "0.1.0"
+dependencies = [
+ "planet-crafter-engine",
+]
 
 [[package]]
 name = "polling"

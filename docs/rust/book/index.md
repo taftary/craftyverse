@@ -4,8 +4,8 @@ This book defines the target Rust architecture and engineering practices for
 PlanetCrafter. It is written for a migration from a single package to a Cargo
 workspace containing an engine, game, and tools crate.
 
-Read [`MIGRATION.md`](../MIGRATION.md) for the staged extraction plan. This book
-is the authoritative target architecture and explains the decisions behind it.
+This book is the authoritative target architecture and explains the decisions
+behind it.
 It also provides patterns that must be validated before they become project
 APIs.
 

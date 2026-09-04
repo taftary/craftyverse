@@ -7,8 +7,7 @@ Review status (after uncommitted-change review):
   standalone guides.
 - The deleted `docs/rust/ARCHITECTURE.md`, `docs/rust/technology-definition.md`,
   and `docs/project-structure-and-best-practices/` content has been retired or
-  absorbed into the book, `MIGRATION.md`, `CONTRIBUTING.md`, and
-  `docs/rust/RETIREMENT.md`.
+  absorbed into the book, `CONTRIBUTING.md`, and `docs/rust/RETIREMENT.md`.
 - Module specifications from `docs/classes-definitions/` now live under
   `docs/rust/book/specs/` and are part of the mdBook.
 - Source changes include module-level and public-API rustdoc for `node`,
@@ -55,10 +54,12 @@ Review status (after uncommitted-change review):
 
 ## Medium priority
 
-- [ ] Add the documentation link checker and required-section checks described
+- [x] Add the documentation link checker and required-section checks described
   by `docs/rust/scripts/README.md`.
-  - Partial: a Markdown link checker exists in `docs/rust/scripts/check-links.py`.
-    Required-section checks are not yet implemented.
+  - [x] `docs/rust/scripts/check-links.py` checks internal Markdown links.
+  - [x] `docs/rust/scripts/check-sections.py` checks required sections per page
+        category (architecture, principles, patterns, practices, specs, decisions,
+        examples, references).
 - [x] Link `REVIEW_CHECKLIST.md` from `CONTRIBUTING.md` and require reviewers to
   use it for architecture and practice changes.
 - [ ] Add the first headless, compile-tested examples listed in
@@ -67,15 +68,12 @@ Review status (after uncommitted-change review):
 - [ ] Define how GPU and platform-specific documentation tests are separated
   from headless documentation checks in CI.
 - [x] Add a short documentation index to the root `README.md` that points to the
-  Rust book, migration plan, contribution guidelines, style guide, and review
-  checklist.
+  Rust book, contribution guidelines, style guide, and review checklist.
 
 ## Low priority
 
 - [ ] Review external links in `book/references/curated-links.md` quarterly and
   record changes to sources used by architecture decisions.
-- [ ] After each migration stage, update `MIGRATION.md` with the completed
-  baseline, acceptance evidence, and the next rollback point.
 - [ ] Add doctests for the geometry/topology invariants already covered by
   unit tests (`node`, `plan`, `scene`) so the public API examples are also
   exercised by `cargo test --doc`.

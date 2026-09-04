@@ -14,7 +14,7 @@
 //!
 //! ```
 //! use glam::Vec2;
-//! use crate::node::{Labeling, Node};
+//! use planet_crafter_engine::node::{Labeling, Node};
 //!
 //! let node = Node::new(
 //!     Vec2::Y,
@@ -63,7 +63,9 @@ pub type NodeRef = Rc<RefCell<Node>>;
 /// propagates automatically through [`Node::split`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Labeling {
+    /// Default B/C corner assignment.
     Normal,
+    /// Swapped B/C corner assignment, which also swaps the I and K directions.
     Mirrored,
 }
 
@@ -151,7 +153,7 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use crate::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::{Labeling, Node};
     ///
     /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
     /// assert_eq!(node.borrow().level, 0);
@@ -230,7 +232,7 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use crate::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::{Labeling, Node};
     ///
     /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
     /// let center = node.borrow().split();
@@ -317,7 +319,7 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use crate::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::{Labeling, Node};
     ///
     /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
     /// let center = node.borrow().split();

@@ -1,6 +1,11 @@
 # Migration Principles
 
-The migration changes ownership boundaries before it changes behavior.
+## Summary
+
+The migration changes ownership boundaries before it changes behavior. Each
+stage must leave a buildable, tested checkpoint with a clear rollback point.
+
+## Key points
 
 - Establish a buildable workspace before moving implementation files.
 - Extract stable, renderer-neutral data before renderer-specific code.
@@ -10,5 +15,5 @@ The migration changes ownership boundaries before it changes behavior.
 - Keep headless tests independent from display and GPU requirements.
 - Remove old entry points only after the target boundary is exercised by its consumers.
 
-The detailed stage gates and rollback points live in
-[`MIGRATION.md`](../../MIGRATION.md).
+Detailed stage gates and rollback points are recorded in the project issue
+tracker or pull request history.

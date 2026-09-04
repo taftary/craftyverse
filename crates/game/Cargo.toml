@@ -1,0 +1,8 @@
+[package]
+name = "PlanetCrafter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+glam = "0.33.6"
+planet-crafter-engine = { path = "../engine" }

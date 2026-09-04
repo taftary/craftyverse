@@ -1,0 +1,11 @@
+[package]
+name = "planet-crafter-tools"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+planet-crafter-engine = { path = "../engine" }
+
+[[bin]]
+name = "mesh-validator"
+path = "src/bin/mesh-validator.rs"

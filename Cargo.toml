@@ -1,12 +1,3 @@
-[package]
-name = "PlanetCrafter"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-fontdue = "0.9.4"
-glam = "0.33.6"
-# `spv-in` is required too: naga 30's glsl-in frontend fails to compile without it
-naga = { version = "30.0.1", features = ["glsl-in", "spv-out", "spv-in"] }
-vulkano = "0.35.2"
-winit = "0.30.13"
+[workspace]
+members = ["crates/engine", "crates/game", "crates/tools"]
+resolver = "3"

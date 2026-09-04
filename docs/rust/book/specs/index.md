@@ -1,5 +1,7 @@
 # Module specifications
 
+## Overview
+
 These pages describe the **current implementation modules** in `src/`. They are
 written against the code that exists today and are distinct from the
 [target-architecture chapters](../architecture/workspace.md), which describe the
@@ -15,3 +17,9 @@ new crate, the corresponding spec page should move or be retired alongside it.
 - [Scene](scene.md) — CPU-side scene generation for the debug viewer.
 - [Text](text.md) — bitmap-font glyph atlas and text layout.
 - [Render](render.md) — Vulkan debug viewer and window integration.
+
+## Rules
+
+- Each spec page states the module's public contract, invariants, and behavior.
+- Specs are tied to the current baseline, not the target architecture.
+- Specs are moved or retired as responsibilities migrate to the target workspace.

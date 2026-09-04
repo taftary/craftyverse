@@ -12,12 +12,12 @@ the documentation restructuring.
 | `docs/rust/technology-definition.md` | `docs/rust/book/architecture/technology.md` | Technology decisions were merged into the target/decision format. |
 | `docs/project-structure-and-best-practices/01-basic-project-layout.md` | `docs/rust/book/architecture/workspace.md` and `docs/rust/book/practices/project-structure.md` | Basic layout guidance is now part of the target architecture and practices chapters. |
 | `docs/project-structure-and-best-practices/02-modules.md` | `docs/rust/book/practices/project-structure.md` and `docs/rust/book/architecture/crate-boundaries.md` | Module organization guidance moved into practices and crate-boundary pages. |
-| `docs/project-structure-and-best-practices/03-library-vs-binary.md` | `docs/rust/book/architecture/crate-boundaries.md` and `docs/rust/MIGRATION.md` | Library/binary separation is now described in crate boundaries and the migration extraction map. |
+| `docs/project-structure-and-best-practices/03-library-vs-binary.md` | `docs/rust/book/architecture/crate-boundaries.md` | Library/binary separation is now described in crate boundaries. |
 | `docs/project-structure-and-best-practices/04-folder-organization.md` | `docs/rust/book/practices/project-structure.md` | Folder conventions merged into the project-structure practice page. |
 | `docs/project-structure-and-best-practices/05-clean-code-practices.md` | `docs/rust/book/practices/` (multiple pages) and `docs/rust/STYLEGUIDE.md` | Clean-code guidance distributed across practices and the style guide. |
 | `docs/project-structure-and-best-practices/06-error-handling-and-logging.md` | `docs/rust/book/practices/error-handling.md` | Error-handling content moved here. |
 | `docs/project-structure-and-best-practices/07-dependency-management.md` | `docs/rust/book/practices/dependencies.md` | Dependency guidance moved here. |
-| `docs/project-structure-and-best-practices/08-example-scalable-project.md` | `docs/rust/book/architecture/workspace.md` and `docs/rust/MIGRATION.md` | Scalable-project example replaced by the target workspace and staged migration. |
+| `docs/project-structure-and-best-practices/08-example-scalable-project.md` | `docs/rust/book/architecture/workspace.md` | Scalable-project example replaced by the target workspace. |
 | `docs/project-structure-and-best-practices/README.md` | `docs/rust/book/index.md` and `docs/rust/CONTRIBUTING.md` | Entry-level guidance moved to the book introduction and contribution guide. |
 | `docs/classes-definitions/node.md` | `docs/rust/book/specs/node.md` | Moved verbatim; internal links updated to mdBook-relative paths. |
 | `docs/classes-definitions/plan.md` | `docs/rust/book/specs/plan.md` | Moved verbatim; internal links updated to mdBook-relative paths. |

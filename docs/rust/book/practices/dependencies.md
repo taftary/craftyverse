@@ -1,8 +1,18 @@
 # Dependency Management
 
+## Summary
+
 Dependencies are part of the architecture. Add a crate only for a concrete
 capability, keep features minimal, and place it in the narrowest workspace crate
 that needs it.
+
+## Key points
+
+- Add dependencies for concrete capabilities, not speculative reuse.
+- Keep shared versions and common lints in the workspace manifest.
+- Do not add tools-only dependencies to runtime crates.
+- Treat feature flags as compile-time API and size decisions.
+- Record dependency-direction exceptions in an architecture decision record.
 
 ## Workspace rules
 

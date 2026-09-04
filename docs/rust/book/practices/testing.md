@@ -1,6 +1,11 @@
 # Testing and Doctests
 
-Tests protect crate contracts and migration boundaries.
+## Summary
+
+Tests protect crate contracts and migration boundaries. Separate headless tests
+from GPU and device tests so CI stays fast and reliable.
+
+## Key points
 
 - Unit tests cover local invariants beside the implementation.
 - Integration tests cover public APIs across crate boundaries.

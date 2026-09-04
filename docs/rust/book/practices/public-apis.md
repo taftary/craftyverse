@@ -1,7 +1,17 @@
 # Public APIs and Dependencies
 
+## Summary
+
 A public API is a long-term compatibility commitment. Keep public surfaces
 small, document invariants, and re-export only types users should depend on.
+
+## Key points
+
+- Keep implementation modules private by default.
+- Avoid leaking Vulkan, filesystem, or tool-specific types across engine/game boundaries.
+- Treat feature flags and dependency choices as API design decisions.
+- Record dependency-direction exceptions in an architecture decision record.
+- Run formatting, Clippy, tests, and documentation builds in CI.
 
 ## Rules
 

@@ -13,9 +13,9 @@
 //! # Example
 //!
 //! ```
-//! use crate::text::TextAtlas;
+//! use planet_crafter_engine::text::TextAtlas;
 //!
-//! let font = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+//! let font = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
 //! let atlas = TextAtlas::new(font).expect("valid bundled font");
 //! assert!(!atlas.pixels.is_empty());
 //! ```
@@ -95,9 +95,9 @@ impl TextAtlas {
     /// # Example
     ///
     /// ```
-    /// use crate::text::TextAtlas;
+    /// use planet_crafter_engine::text::TextAtlas;
     ///
-    /// let font = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+    /// let font = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
     /// let atlas = TextAtlas::new(font).expect("bundled font is valid");
     /// assert_eq!(atlas.width, 512);
     /// ```
@@ -195,9 +195,9 @@ impl TextAtlas {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use crate::text::TextAtlas;
+    /// use planet_crafter_engine::text::TextAtlas;
     ///
-    /// let font = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+    /// let font = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
     /// let atlas = TextAtlas::new(font).expect("bundled font is valid");
     /// let vertices = atlas.layout("Hi", Vec2::new(10.0, 10.0), 16.0, [0.0, 0.0, 0.0], false);
     /// assert_eq!(vertices.len(), 2 * 6);

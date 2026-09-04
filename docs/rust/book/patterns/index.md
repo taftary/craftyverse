@@ -1,11 +1,18 @@
 # Pattern Selection
 
+## Summary
+
 Patterns are vocabulary for recurring problems, not mandatory architecture.
 Rust often replaces classic patterns with enums, traits, closures, ownership,
 and iterators.
 
-Use a pattern only when it reduces coupling or makes an invariant clearer. Do
-not introduce a pattern to anticipate an unconfirmed future requirement.
+## Key points
+
+- Use a pattern only when it reduces coupling or makes an invariant clearer.
+- Do not introduce a pattern to anticipate an unconfirmed future requirement.
+- The project prioritizes builders, newtypes, state machines, and messages.
+
+## Example
 
 The target project prioritizes:
 

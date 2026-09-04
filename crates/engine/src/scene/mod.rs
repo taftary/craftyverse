@@ -21,8 +21,8 @@
 //!
 //! ```
 //! use glam::Vec2;
-//! use crate::node::{Labeling, Node};
-//! use crate::scene::{build_scene, DisplayOptions};
+//! use planet_crafter_engine::node::{Labeling, Node};
+//! use planet_crafter_engine::scene::{build_scene, DisplayOptions};
 //!
 //! let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
 //! let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &DisplayOptions::default());
@@ -121,8 +121,8 @@ pub struct SceneMesh {
 ///
 /// ```
 /// use glam::Vec2;
-/// use crate::node::{Labeling, Node};
-/// use crate::scene::{build_scene, Attribute, DisplayOptions};
+/// use planet_crafter_engine::node::{Labeling, Node};
+/// use planet_crafter_engine::scene::{build_scene, Attribute, DisplayOptions};
 ///
 /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
 /// let mut options = DisplayOptions::default();

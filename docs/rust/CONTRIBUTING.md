@@ -13,8 +13,8 @@ A pull request should include:
 
 Migration pull requests should move one responsibility at a time, preserve a
 buildable checkpoint, and explain temporary adapters and their deletion plan.
-Architecture changes require updates to the relevant Rust book chapter,
-`MIGRATION.md`, or an architecture decision record as appropriate.
+Architecture changes require updates to the relevant Rust book chapter or an
+architecture decision record as appropriate.
 
 Reviewers should follow the [`REVIEW_CHECKLIST.md`](REVIEW_CHECKLIST.md) for
 every documentation, pattern, or architecture change.

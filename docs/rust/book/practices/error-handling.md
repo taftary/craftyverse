@@ -1,8 +1,18 @@
 # Error Handling
 
+## Summary
+
 Use `Result<T, E>` for recoverable failures and `Option<T>` for an expected
 absence. Add context at subsystem boundaries while preserving the underlying
 cause for diagnostics.
+
+## Key points
+
+- Engine errors describe resource, device, validation, and lifecycle failures.
+- Game errors describe content and state-transition failures.
+- Tools errors identify invalid input paths, formats, and reproducibility failures.
+- `panic!` is reserved for violated internal invariants or unrecoverable startup conditions.
+- Library APIs expose meaningful typed errors; application code attaches context.
 
 ## Boundary policy
 

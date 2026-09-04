@@ -1,8 +1,17 @@
 # Project Structure
 
+## Summary
+
 Organize code by domain and responsibility. Keep entry points thin, expose the
 smallest public surface, and move implementation into modules that can be tested
 without starting the renderer or opening a window.
+
+## Key points
+
+- Use `lib.rs` for reusable logic and keep `main.rs` focused on startup.
+- Prefer `pub(crate)` for internal collaboration; reserve `pub` for intentional boundaries.
+- Keep business rules separate from I/O, platform callbacks, and configuration.
+- Keep unit tests beside implementation and integration tests at boundaries.
 
 ## Workspace layout
 

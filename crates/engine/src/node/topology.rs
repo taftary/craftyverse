@@ -31,7 +31,7 @@ pub(crate) fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
 ///
 /// ```
 /// use glam::Vec2;
-/// use crate::node::{collect_nodes, Labeling, Node};
+/// use planet_crafter_engine::node::{collect_nodes, Labeling, Node};
 ///
 /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
 /// let center = node.borrow().split();

@@ -44,8 +44,8 @@ pub(crate) fn apothem(side_length: f32) -> f32 {
 ///
 /// ```
 /// use glam::Vec2;
-/// use crate::node::Labeling;
-/// use crate::plan::generate_base;
+/// use planet_crafter_engine::node::Labeling;
+/// use planet_crafter_engine::plan::generate_base;
 ///
 /// let root = generate_base("test_", 1.0, Vec2::Y, Vec2::ZERO, Labeling::Normal);
 /// assert_eq!(root.borrow().name, "test_base_node_0");

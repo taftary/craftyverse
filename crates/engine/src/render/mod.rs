@@ -43,7 +43,12 @@ pub enum Scenario {
     ///
     /// `Plan::split()` subdivides the plan one level when the user presses **S**.
     /// `rebuild` regenerates the plan's initial mesh when the user presses **R**.
-    Plan { plan: Plan, rebuild: fn() -> Plan },
+    Plan {
+        /// Current plan state; mutated by `Plan::split()` and reset by `rebuild`.
+        plan: Plan,
+        /// Function that returns the plan's initial mesh.
+        rebuild: fn() -> Plan,
+    },
 }
 
 impl Scenario {
@@ -51,7 +56,7 @@ impl Scenario {
     ///
     /// For a static scenario this returns the stored nodes. For a plan scenario
     /// it collects the nodes reachable from the plan's current `root_node`.
-    pub(crate) fn nodes(&self) -> Vec<NodeRef> {
+    pub fn nodes(&self) -> Vec<NodeRef> {
         match self {
             Scenario::Static(nodes) => nodes.clone(),
             Scenario::Plan { plan, .. } => {

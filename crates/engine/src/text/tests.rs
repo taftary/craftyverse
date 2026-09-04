@@ -1,6 +1,6 @@
 use super::*;
 
-const FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+const FONT_BYTES: &[u8] = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
 
 fn test_atlas() -> TextAtlas {
     TextAtlas::new(FONT_BYTES).expect("load bundled font")

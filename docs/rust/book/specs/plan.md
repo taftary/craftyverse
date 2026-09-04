@@ -470,3 +470,13 @@ Folder module `src/plan/`:
 - **`mod.rs`** — `Plan` and the `generate()` orchestration.
 - **`pentagon.rs`** — base generation as free functions: `generate_base` (no longer a `Plan` method — it returns the root and the caller anchors it), `apothem`, `PENTAGON_SIDES`, `walk_perimeter`, `reverted_nodes` (the spec's `getRevertedNodes`, renamed per Rust API guidelines) and `wire_interlock` (the `generate()` step-4 loop).
 - **`subdivide.rs`** — `Plan::split()` and the edge-wiring machinery (`edge_midpoint`, `wire_chain_edge`, `wire_pair_edge`, `COINCIDENCE_TOLERANCE`).
+
+### Rules
+
+- `generate()` produces 20 level-0 nodes with every `children` port saturated.
+- `generateBase()` creates 10 nodes per pentagon; paired nodes share a base edge
+  and use opposite labelings.
+- `split()` makes two passes over the old level: split every node, then wire
+  fresh corner nodes across every old edge exactly once.
+- Old nodes survive until the wiring pass completes, then are destroyed.
+- After `split()`, every node at the new level is reachable and fully wired.

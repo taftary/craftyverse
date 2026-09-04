@@ -11,7 +11,7 @@
 //! # Example
 //!
 //! ```
-//! use crate::plan::Plan;
+//! use planet_crafter_engine::plan::Plan;
 //!
 //! let mut plan = Plan::default();
 //! let root = plan.generate(1.0);
@@ -71,7 +71,7 @@ impl Plan {
     /// # Example
     ///
     /// ```
-    /// use crate::plan::Plan;
+    /// use planet_crafter_engine::plan::Plan;
     ///
     /// let mut plan = Plan::default();
     /// let root = plan.generate(2.0);

@@ -35,6 +35,6 @@ normal Rust formatting, test, and Clippy checks.
 
 ## Architecture language
 
-The Rust book is the target blueprint. `MIGRATION.md` describes movement toward
-it. Current implementation facts belong in migration notes, not in the target
+The Rust book is the target blueprint. Current implementation facts belong in
+source documentation and architecture decision records, not in the target
 blueprint.

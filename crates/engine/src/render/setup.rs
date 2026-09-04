@@ -274,7 +274,7 @@ pub(crate) fn upload_atlas(
 ) -> (TextAtlas, Arc<DescriptorSet>) {
     // Rasterize the glyph atlas and upload it as an R8 texture.
     let atlas = TextAtlas::new(include_bytes!(
-        "../../assets/fonts/JetBrainsMono-Regular.ttf"
+        "../../../../assets/fonts/JetBrainsMono-Regular.ttf"
     ))
     .expect("failed to load bundled font");
     let atlas_image = Image::new(

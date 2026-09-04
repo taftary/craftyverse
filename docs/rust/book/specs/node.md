@@ -248,3 +248,12 @@ Folder module `src/node/`:
 - **`geometry.rs`** — pure triangle-geometry helpers (`triangle_points`, `midpoint`, `perpendicular_toward`, `compute_directions`, `child_node`).
 - **`topology.rs`** — the child-link conventions in one place: `reciprocal_index` (the `0 <-> 2`, `1 <-> 1` mapping), `link` (reciprocal link setter) and `collect_nodes` (breadth-first traversal, deduplicated by pointer identity).
 
+### Rules
+
+- A node's `direction_of_node` is normalized and perpendicular to base `BC`.
+- `baseLength` and `height` are halved at every `split()`.
+- `level` starts at `0` and increments by `1` for each split generation.
+- Child links are reciprocal: if `A.children[x] == B`, then `B` links back to `A`
+  through the reciprocal port (`0 <-> 2`, `1 <-> 1`).
+- `destroy()` clears the reciprocal back-link before clearing the local link.
+

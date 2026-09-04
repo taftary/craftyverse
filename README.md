@@ -1,9 +1,7 @@
 # PlanetCrafter
 
 A high-performance game built from scratch in **Rust**, using **Vulkan** as the
-sole graphics API (natively on Android, via MoltenVK on iOS). See the
-[Rust architecture book](docs/rust/book/index.md) and
-[migration plan](docs/rust/MIGRATION.md).
+sole graphics API (natively on Android, via MoltenVK on iOS). See the [Rust architecture book](docs/rust/book/index.md).
 
 The project is at an early stage: it currently contains the geometric node
 system (hierarchical triangle subdivision with directional vectors and
@@ -47,13 +45,11 @@ cargo clippy            # lint
 ## Project structure
 
 ```
-src/
-  main.rs     — entry point: builds the demo scenarios, runs the viewer
-  node/       — geometric node: triangle geometry, directions, split(), links
-  plan/       — pentagonal base generation and whole-mesh subdivision
-  scene/      — CPU scene generation for the viewer (GPU-independent)
-  text/       — fontdue glyph atlas + text layout (GPU-independent)
-  render/     — Vulkan/winit viewer (all GPU code)
+Cargo.toml
+ crates/
+   engine/   — reusable geometry, topology, scene data, text, Vulkan viewer
+   game/     — application binary and content policy
+   tools/    — asset/developer tooling (e.g. mesh-validator)
 assets/
   fonts/      — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/
@@ -65,8 +61,8 @@ docs/
 
 - [Rust architecture book](docs/rust/book/index.md) — target workspace, crate
   boundaries, principles, patterns, and practices
-- [Migration plan](docs/rust/MIGRATION.md) — staged extraction to the target
-  workspace
+- [Migration principles](docs/rust/book/architecture/migration-principles.md) —
+  staged extraction guidance
 - [Contributing guidelines](docs/rust/CONTRIBUTING.md) — how to submit
   documentation and architecture changes
 - [Review checklist](docs/rust/REVIEW_CHECKLIST.md) — checklist for docs and

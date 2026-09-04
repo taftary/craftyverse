@@ -121,3 +121,13 @@ Folder module `src/render/`:
   the device-side `ShaderModule`).
 - **`vertices.rs`** — GPU vertex layouts (`GeomVertex`, `TextVertexGpu`) and
   the `PushTransform` push-constant transform.
+
+### Rules
+
+- All Vulkan and windowing code lives in `src/render/`; the rest of the crate
+  stays GPU-independent.
+- World-space geometry uses a push-constant transform; UI and text use a
+  separate pixel-space transform.
+- Draw order provides layering because there is no depth buffer.
+- Shaders are compiled from inline GLSL to SPIR-V at runtime using `naga`.
+- The viewer loop is event-driven and idle when nothing changes.
