@@ -8,7 +8,7 @@
 //!
 //! Pure geometric helpers live in `geometry`; child-link wiring and graph
 //! traversal live in `topology`. The full contract is specified in
-//! `docs/rust/book/specs/node.md`.
+//! `docs/book/specs/node.md`.
 //!
 //! # Example
 //!
@@ -85,7 +85,7 @@ impl Labeling {
 /// A geometric node: an isosceles triangle with directional vectors and
 /// bidirectional links to adjacent nodes.
 ///
-/// See `docs/rust/book/specs/node.md` for the full specification of the
+/// See `docs/book/specs/node.md` for the full specification of the
 /// geometry, topology, and identity rules.
 pub struct Node {
     // --- Identity ---
@@ -250,7 +250,7 @@ impl Node {
     /// and [`height`](Node::height), and its [`level`](Node::level) is set to
     /// `parent.level + 1`.
     ///
-    /// See `docs/rust/book/specs/node.md` for the full geometric construction
+    /// See `docs/book/specs/node.md` for the full geometric construction
     /// and topology rules.
     ///
     /// # Example

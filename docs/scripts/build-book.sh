@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # Reproducible mdBook build for the Rust handbook.
-# Reads the pinned version from docs/rust/.mdbook-version and installs it
+# Reads the pinned version from docs/.mdbook-version and installs it
 # via cargo if it is not already present.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DOCS_RUST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PROJECT_ROOT="$(cd "${DOCS_RUST_DIR}/../.." && pwd)"
+DOCS_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PROJECT_ROOT="$(cd "${DOCS_DIR}/.." && pwd)"
 
-MDBOOK_VERSION="$(cat "${DOCS_RUST_DIR}/.mdbook-version" | tr -d '[:space:]')"
+MDBOOK_VERSION="$(cat "${DOCS_DIR}/.mdbook-version" | tr -d '[:space:]')"
 MDBOOK_INSTALL_DIR="${PROJECT_ROOT}/target/mdbook"
 MDBOOK_BIN="${MDBOOK_INSTALL_DIR}/bin/mdbook"
 
@@ -32,4 +32,4 @@ else
 fi
 
 echo "Building Rust handbook with mdbook ${MDBOOK_VERSION}..."
-"${MDBOOK_BIN}" build "${DOCS_RUST_DIR}"
+"${MDBOOK_BIN}" build "${DOCS_DIR}"

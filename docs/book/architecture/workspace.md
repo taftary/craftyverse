@@ -15,7 +15,7 @@ crates/
   game/         application and game content binary
   tools/        asset and developer tooling
 assets/         source and processed asset inputs
-docs/rust/      architecture and engineering handbook, examples crate
+docs/           architecture and engineering handbook, examples crate
 ```
 
 The engine is the reusable foundation. The game owns content and application

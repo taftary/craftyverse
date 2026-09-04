@@ -6,7 +6,7 @@
 //!
 //! Pentagonal base construction lives in `pentagon`; whole-mesh subdivision
 //! lives in `subdivide`. The full contract is specified in
-//! `docs/rust/book/specs/plan.md`.
+//! `docs/book/specs/plan.md`.
 //!
 //! # Example
 //!

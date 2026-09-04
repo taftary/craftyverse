@@ -20,7 +20,7 @@ records.
 
 ## Current examples
 
-Headless examples live in `docs/rust/examples` and are compiled by
+Headless examples live in `docs/examples` and are compiled by
 `cargo test --workspace --all-targets`:
 
 - `engine_api` — game code consumes engine contracts without backend details.

@@ -3,7 +3,7 @@
 //! Demonstrates that the `scene` module produces GPU-independent vertex data
 //! from a collection of nodes, without opening a window.
 //!
-//! See `docs/rust/book/specs/scene.md` and `docs/rust/book/specs/render.md`.
+//! See `docs/book/specs/scene.md` and `docs/book/specs/render.md`.
 
 use glam::Vec2;
 use planet_crafter_engine::node::{Labeling, Node};

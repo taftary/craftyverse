@@ -3,13 +3,13 @@
 //! Demonstrates error handling and type-driven resource construction: a font
 //! atlas is built from raw bytes and fails explicitly on invalid input.
 //!
-//! See `docs/rust/book/practices/error-handling.md` and
-//! `docs/rust/book/principles/type-driven-design.md`.
+//! See `docs/book/practices/error-handling.md` and
+//! `docs/book/principles/type-driven-design.md`.
 
 use planet_crafter_engine::text::TextAtlas;
 
 /// Bundled font bytes used by the text-layout examples and tests.
-const FONT: &[u8] = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
+const FONT: &[u8] = include_bytes!("../../../assets/fonts/JetBrainsMono-Regular.ttf");
 
 /// Runs the validated-resource demonstration.
 ///

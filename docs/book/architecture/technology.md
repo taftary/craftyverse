@@ -20,7 +20,7 @@ implementation.
 | Area | Status | Decision |
 | --- | --- | --- |
 | Language | Target | Rust edition 2024 with stable toolchains in CI. |
-| Package layout | Target | A Cargo workspace containing `crates/engine`, `crates/game`, `crates/tools`, and `docs/rust/examples`. |
+| Package layout | Target | A Cargo workspace containing `crates/engine`, `crates/game`, `crates/tools`, and `docs/examples`. |
 | Engine API | Target | `crates/engine` is a library with no dependency on game content. |
 | Game entry point | Target | `crates/game` owns startup, game state, input mapping, and content. |
 | Developer tooling | Target | `crates/tools` owns asset validation, preprocessing, and editor commands. |

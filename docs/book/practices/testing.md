@@ -31,13 +31,13 @@ cargo test --doc --workspace
 ```
 
 `cargo test --workspace --all-targets` includes the example crate
-(`docs/rust/examples`) and compiles its example binaries, but skips examples
+(`docs/examples`) and compiles its example binaries, but skips examples
 that require the `gpu` feature.
 
 ## GPU and platform-specific checks
 
 Examples and tests that need a window, GPU, or device are gated behind the `gpu`
-feature in `docs/rust/examples`. The gate is declared with Cargo's
+feature in `docs/examples`. The gate is declared with Cargo's
 `required-features` so headless runs automatically skip them.
 
 Compile-check the GPU example without running it:

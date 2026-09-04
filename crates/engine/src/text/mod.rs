@@ -8,7 +8,7 @@
 //! The module contains no GPU code. All positions are raw pixels; the
 //! world→pixel mapping of label anchors is the caller's responsibility (see the
 //! `scene` module). The full contract is specified in
-//! `docs/rust/book/specs/text.md`.
+//! `docs/book/specs/text.md`.
 //!
 //! # Example
 //!

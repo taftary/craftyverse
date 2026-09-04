@@ -17,7 +17,7 @@
 //! their runtime compilation in `shaders`, Vulkan object setup in `setup`, the
 //! renderer in `renderer`, and the winit event handling in `viewer`.
 //!
-//! The full contract is specified in `docs/rust/book/specs/render.md`.
+//! The full contract is specified in `docs/book/specs/render.md`.
 
 mod renderer;
 mod setup;

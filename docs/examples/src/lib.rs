@@ -1,6 +1,6 @@
 //! Compile-tested examples for the architecture handbook.
 //!
-//! Each module demonstrates one boundary or rule from `docs/rust/book`. The
+//! Each module demonstrates one boundary or rule from `docs/book`. The
 //! matching binary in `examples/` calls the demonstration function so the
 //! example is also runnable with `cargo run --example <name>`.
 

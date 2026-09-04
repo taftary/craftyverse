@@ -15,7 +15,7 @@ planned crate, dependency, platform, or workflow as implemented.
 
 ## Page structure
 
-`docs/rust/scripts/check-sections.py` enforces the minimum page structure by
+`docs/scripts/check-sections.py` enforces the minimum page structure by
 category: every guidance page needs a summary (or overview) and a key-points
 (or rules/use/avoid) section; pattern pages also need an example; decision
 records need context, decision, and consequences. Beyond that minimum, pages
@@ -30,7 +30,7 @@ mdBook build and a local Markdown link check:
 
 ```text
 cargo fmt --check
-docs/rust/scripts/check-book.sh
+docs/scripts/check-book.sh
 ```
 
 Documentation examples that are part of a Cargo package must still pass the

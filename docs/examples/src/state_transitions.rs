@@ -3,7 +3,7 @@
 //! Demonstrates the plan-splitting state transition: a generated mesh is
 //! subdivided one level and the root node is re-anchored on the split center.
 //!
-//! See `docs/rust/book/specs/plan.md`.
+//! See `docs/book/specs/plan.md`.
 
 use planet_crafter_engine::node::collect_nodes;
 use planet_crafter_engine::plan::Plan;

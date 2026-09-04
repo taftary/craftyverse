@@ -3,7 +3,7 @@
 //! This example opens a Vulkan window and is gated behind the `gpu` feature. It
 //! is intentionally excluded from headless CI runs.
 //!
-//! See `docs/rust/book/practices/testing.md`.
+//! See `docs/book/practices/testing.md`.
 
 use glam::Vec2;
 use planet_crafter_engine::node::{Labeling, Node};

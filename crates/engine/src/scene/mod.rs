@@ -15,7 +15,7 @@
 //!
 //! Colors live in `colors`, display options in `options`, the per-node geometry
 //! builders in `geometry`, and the checkbox panel in `panel`. The full contract
-//! is specified in `docs/rust/book/specs/scene.md`.
+//! is specified in `docs/book/specs/scene.md`.
 //!
 //! # Example
 //!

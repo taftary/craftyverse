@@ -3,7 +3,7 @@
 //! Demonstrates message passing at an ownership boundary: a game system emits
 //! domain events that a consumer handles without sharing mutable internals.
 //!
-//! See `docs/rust/book/patterns/events.md`.
+//! See `docs/book/patterns/events.md`.
 
 // `std::sync::mpsc` is used here as an ownership-boundary illustration. The
 // channel is still valid in the current single-threaded code and will transfer

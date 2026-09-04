@@ -3,7 +3,7 @@
 //! Demonstrates the crate-boundary rule that the game layer consumes engine
 //! contracts without reaching into backend details.
 //!
-//! See `docs/rust/book/architecture/crate-boundaries.md`.
+//! See `docs/book/architecture/crate-boundaries.md`.
 
 use glam::Vec2;
 use planet_crafter_engine::node::{Labeling, Node};

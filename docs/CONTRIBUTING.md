@@ -27,10 +27,10 @@ Before submitting a documentation change, run the handbook build and link
 checker from the repository root:
 
 ```text
-docs/rust/scripts/check-book.sh
+docs/scripts/check-book.sh
 ```
 
-This script reads the pinned `mdbook` version from `docs/rust/.mdbook-version`,
+This script reads the pinned `mdbook` version from `docs/.mdbook-version`,
 installs it under `target/mdbook` if needed, builds the book, and checks for
 broken internal links and missing required page sections. The first run may
 take a few minutes while `cargo` compiles `mdbook`.

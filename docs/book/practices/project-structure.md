@@ -24,7 +24,7 @@ PlanetCrafter/
 │   └── tools/
 ├── assets/
 ├── tests/  # planned addition, not yet present
-└── docs/rust/
+└── docs/
 ```
 
 Within a crate, use `lib.rs` for reusable logic and keep `main.rs` focused on

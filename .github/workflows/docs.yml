@@ -5,13 +5,13 @@ on:
     branches: [main, master]
     paths:
       - "crates/**"
-      - "docs/rust/**"
+      - "docs/**"
       - ".github/workflows/docs.yml"
       - "README.md"
   pull_request:
     paths:
       - "crates/**"
-      - "docs/rust/**"
+      - "docs/**"
       - ".github/workflows/docs.yml"
       - "README.md"
 
@@ -28,10 +28,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target/mdbook
-          key: mdbook-${{ hashFiles('docs/rust/.mdbook-version') }}
+          key: mdbook-${{ hashFiles('docs/.mdbook-version') }}
 
       - name: Build handbook and check links
-        run: docs/rust/scripts/check-book.sh
+        run: docs/scripts/check-book.sh
 
       - name: Check Rust formatting
         run: cargo fmt --check

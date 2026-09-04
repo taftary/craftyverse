@@ -3,7 +3,7 @@ members = [
     "crates/engine",
     "crates/game",
     "crates/tools",
-    "docs/rust/examples",
+    "docs/examples",
 ]
 default-members = ["crates/game"]
 resolver = "3"
