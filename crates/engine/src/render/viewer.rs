@@ -79,7 +79,7 @@ impl Viewer {
             return;
         }
         match event.physical_key {
-            // S: subdivide the current plan one level (Plan::split).
+            // S: subdivide the current plan one level (IcosahedronPlan::split).
             PhysicalKey::Code(KeyCode::KeyS) => {
                 if let Scenario::Plan { plan, .. } = &mut self.scenarios[self.current_scene] {
                     plan.split();

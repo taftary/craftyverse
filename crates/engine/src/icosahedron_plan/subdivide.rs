@@ -1,4 +1,4 @@
-//! Mesh subdivision: `Plan::split` plus the edge-wiring helpers that
+//! Mesh subdivision: `IcosahedronPlan::split` plus the edge-wiring helpers that
 //! reconnect the fresh corner nodes across every subdivided edge.
 
 use std::cell::RefCell;
@@ -10,13 +10,13 @@ use glam::Vec2;
 use crate::node::topology::link;
 use crate::node::{Node, NodeRef, collect_nodes};
 
-use super::Plan;
+use super::IcosahedronPlan;
 
-impl Plan {
+impl IcosahedronPlan {
     /// Subdivides the whole mesh one level: splits every node of the current
     /// level once, reconnects the resulting split-centers across the
     /// subdivided edges, and destroys the old nodes. See
-    /// `docs/book/specs/plan.md` section 7.
+    /// `docs/book/specs/icosahedron-plan.md` section 7.
     ///
     /// Two passes over the old level, which every node of survives until the
     /// end: first split every node and index the centers by parent, then wire

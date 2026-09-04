@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use glam::Vec2;
 
-use super::Plan;
+use super::IcosahedronPlan;
 use super::pentagon::{apothem, generate_base, reverted_nodes, walk_perimeter};
 use super::subdivide::child;
 use crate::node::{Labeling, NodeRef, collect_nodes};
@@ -22,7 +22,7 @@ fn perimeter_loop(root: &NodeRef) -> Vec<NodeRef> {
 
 #[test]
 fn generate_base_creates_ten_level_zero_nodes() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     let root = generate_base("base_", SIDE_LENGTH, Vec2::Y, Vec2::ZERO, Labeling::Normal);
     plan.root_node = Some(Rc::clone(&root));
 
@@ -160,7 +160,7 @@ fn get_reverted_nodes_returns_inner_ring_in_circular_sequence() {
 
 #[test]
 fn generate_builds_twenty_node_dual_mesh() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     let root = plan.generate(SIDE_LENGTH);
 
     let nodes = collect_nodes(&root);
@@ -171,7 +171,7 @@ fn generate_builds_twenty_node_dual_mesh() {
 
 #[test]
 fn generate_saturates_every_child_port_reciprocally() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     let root = plan.generate(SIDE_LENGTH);
 
     // Full mesh saturation: all 20 nodes have all 3 ports connected, with
@@ -202,7 +202,7 @@ fn generate_saturates_every_child_port_reciprocally() {
 
 #[test]
 fn generate_wires_interlock_ports_per_connection_table() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     let root = plan.generate(SIDE_LENGTH);
     let nodes = collect_nodes(&root);
 
@@ -232,7 +232,7 @@ fn generate_wires_interlock_ports_per_connection_table() {
 
 #[test]
 fn generate_offsets_south_base_without_rotation() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     let root = plan.generate(SIDE_LENGTH);
 
     let north_center = Vec2::new(SIDE_LENGTH * 3.0, SIDE_LENGTH * 3.0);
@@ -271,7 +271,7 @@ fn generate_offsets_south_base_without_rotation() {
 
 #[test]
 fn split_subdivides_all_twenty_nodes_into_level_one_nodes() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     plan.generate(SIDE_LENGTH);
     plan.split();
 
@@ -312,7 +312,7 @@ fn split_subdivides_all_twenty_nodes_into_level_one_nodes() {
 /// connected exactly once, with port reciprocity (0 <-> 2, 1 <-> 1).
 #[test]
 fn split_wires_every_port_reciprocally() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     plan.generate(SIDE_LENGTH);
     plan.split();
     let (open, one_way) = wiring_gaps(plan.root_node.as_ref().unwrap());
@@ -331,7 +331,7 @@ fn split_wires_every_port_reciprocally() {
 /// ports, and belt edges wire crosswise across the interlock gap.
 #[test]
 fn split_wires_corner_pairs_across_each_edge_kind() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     plan.generate(SIDE_LENGTH);
     plan.split();
     let nodes = collect_nodes(plan.root_node.as_ref().unwrap());
@@ -438,7 +438,7 @@ fn split_wires_corner_pairs_across_each_edge_kind() {
 /// reciprocally connected.
 #[test]
 fn repeated_splits_keep_mesh_fully_wired_and_connected() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     plan.generate(SIDE_LENGTH);
     for level in 1..=3 {
         plan.split();

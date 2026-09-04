@@ -20,7 +20,7 @@ the documentation restructuring.
 | `docs/project-structure-and-best-practices/08-example-scalable-project.md` | `docs/book/architecture/workspace.md` | Scalable-project example replaced by the target workspace. |
 | `docs/project-structure-and-best-practices/README.md` | `docs/book/index.md` and `docs/CONTRIBUTING.md` | Entry-level guidance moved to the book introduction and contribution guide. |
 | `docs/classes-definitions/node.md` | `docs/book/specs/node.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
-| `docs/classes-definitions/plan.md` | `docs/book/specs/plan.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
+| `docs/classes-definitions/plan.md` | `docs/book/specs/icosahedron-plan.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
 | `docs/classes-definitions/scene.md` | `docs/book/specs/scene.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
 | `docs/classes-definitions/text.md` | `docs/book/specs/text.md` | Moved with minor updates for the new module layout; internal links updated to mdBook-relative paths. |
 | `docs/classes-definitions/render.md` | `docs/book/specs/render.md` | Substantially rewritten for the extracted `crates/engine` renderer and the `Scenario` API. |

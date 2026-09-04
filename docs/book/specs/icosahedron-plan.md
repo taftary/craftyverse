@@ -1,19 +1,19 @@
-# Plan Class Specification
+# IcosahedronPlan Class Specification
 
-> **Prerequisite:** This specification assumes the `Node` class is defined according to the *Node Class Definition* specification. The `Node` class manages individual triangle geometry (`points`, `center`, `directions`), directional vectors, and local topological links (`children`). This document specifies how the `Plan` class encapsulates the root node structure and orchestrates initial base and dual-mesh generation, as well as level-by-level subdivision via splitting.
+> **Prerequisite:** This specification assumes the `Node` class is defined according to the *Node Class Definition* specification. The `Node` class manages individual triangle geometry (`points`, `center`, `directions`), directional vectors, and local topological links (`children`). This document specifies how the `IcosahedronPlan` class encapsulates the root node structure and orchestrates initial base and dual-mesh generation, as well as level-by-level subdivision via splitting.
 
 ---
 
 ## 1. Overview
 
-The `Plan` class is the central manager of the spatial hierarchy, encapsulating a primary root node that anchors and coordinates node generation, global topological interlocking across the system, and recursive mesh subdivision.
+The `IcosahedronPlan` class is the central manager of the spatial hierarchy, encapsulating a primary root node that anchors and coordinates node generation, global topological interlocking across the system, and recursive mesh subdivision.
 
 ---
 
 ## 2. Class Interface
 
 ```cpp
-class Plan {
+class IcosahedronPlan {
 public:
     Node* rootNode; // Reference to the primary base node
 
@@ -336,7 +336,7 @@ Algorithm generate(sideLength):
 
 ### Overview
 
-`Plan.split()` subdivides the whole mesh one level: every node of the current level is split once (`Node.split()` returns the new center node), the fresh corner nodes are interconnected across every subdivided edge, and the old nodes are destroyed at the end. The method makes two passes over the old level, which every old node survives until the destroy step:
+`IcosahedronPlan.split()` subdivides the whole mesh one level: every node of the current level is split once (`Node.split()` returns the new center node), the fresh corner nodes are interconnected across every subdivided edge, and the old nodes are destroyed at the end. The method makes two passes over the old level, which every old node survives until the destroy step:
 
 1. **Split pass** — collect every node reachable from `rootNode` (breadth-first), split each one, and index the returned center node by its parent.
 2. **Wiring pass** — enumerate the old edges and wire the fresh corner nodes across each of them, then re-anchor `rootNode` on the old root's center and destroy every old node.
@@ -465,11 +465,11 @@ These numbers are pinned by the tests `plan::tests::split_wires_every_port_recip
 
 ### Files (Rust implementation)
 
-Folder module `crates/engine/src/plan/`:
+Folder module `crates/engine/src/icosahedron_plan/`:
 
-- **`mod.rs`** — `Plan` and the `generate()` orchestration.
-- **`pentagon.rs`** — base generation as free functions: `generate_base` (no longer a `Plan` method — it returns the root and the caller anchors it), `apothem`, `PENTAGON_SIDES`, `walk_perimeter`, `reverted_nodes` (the spec's `getRevertedNodes`, renamed per Rust API guidelines) and `wire_interlock` (the `generate()` step-4 loop).
-- **`subdivide.rs`** — `Plan::split()` and the edge-wiring machinery (`edge_midpoint`, `wire_chain_edge`, `wire_pair_edge`, `COINCIDENCE_TOLERANCE`).
+- **`mod.rs`** — `IcosahedronPlan` and the `generate()` orchestration.
+- **`pentagon.rs`** — base generation as free functions: `generate_base` (no longer an `IcosahedronPlan` method — it returns the root and the caller anchors it), `apothem`, `PENTAGON_SIDES`, `walk_perimeter`, `reverted_nodes` (the spec's `getRevertedNodes`, renamed per Rust API guidelines) and `wire_interlock` (the `generate()` step-4 loop).
+- **`subdivide.rs`** — `IcosahedronPlan::split()` and the edge-wiring machinery (`edge_midpoint`, `wire_chain_edge`, `wire_pair_edge`, `COINCIDENCE_TOLERANCE`).
 
 ### Rules
 

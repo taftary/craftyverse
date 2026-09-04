@@ -30,7 +30,7 @@ cargo run --example viewer -p planet-crafter-examples --features gpu
   errors explicitly. Demonstrates [error handling](../book/practices/error-handling.md)
   and [type-driven design](../book/principles/type-driven-design.md).
 - `state_transitions` — a plan is generated and subdivided, re-anchoring the
-  root node. Demonstrates the [`Plan` specification](../book/specs/plan.md).
+  root node. Demonstrates the [`IcosahedronPlan` specification](../book/specs/icosahedron-plan.md).
 - `message_flow` — domain events cross an ownership boundary through a channel.
   Demonstrates the [events pattern](../book/patterns/events.md).
 - `renderer_neutral_scene` — nodes become GPU-independent vertex data without

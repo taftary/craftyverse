@@ -3,17 +3,17 @@
 //! Demonstrates the plan-splitting state transition: a generated mesh is
 //! subdivided one level and the root node is re-anchored on the split center.
 //!
-//! See `docs/book/specs/plan.md`.
+//! See `docs/book/specs/icosahedron-plan.md`.
 
+use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 use planet_crafter_engine::node::collect_nodes;
-use planet_crafter_engine::plan::Plan;
 
 /// Runs the state-transition demonstration.
 ///
 /// A fresh plan is generated, split once, and the post-split topology is
 /// checked without opening a window.
 pub fn run() {
-    let mut plan = Plan::default();
+    let mut plan = IcosahedronPlan::default();
     plan.generate(100.0);
     let before = collect_nodes(plan.root_node.as_ref().unwrap()).len();
     assert_eq!(before, 20);

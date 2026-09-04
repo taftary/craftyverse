@@ -30,8 +30,8 @@ mod tests;
 
 use winit::event_loop::{ControlFlow, EventLoop};
 
+use crate::icosahedron_plan::IcosahedronPlan;
 use crate::node::{NodeRef, collect_nodes};
-use crate::plan::Plan;
 use viewer::Viewer;
 
 /// A viewer scenario: a fixed node list, or a live plan that can be
@@ -41,13 +41,13 @@ pub enum Scenario {
     Static(Vec<NodeRef>),
     /// Live plan scenario.
     ///
-    /// `Plan::split()` subdivides the plan one level when the user presses **S**.
+    /// `IcosahedronPlan::split()` subdivides the plan one level when the user presses **S**.
     /// `rebuild` regenerates the plan's initial mesh when the user presses **R**.
     Plan {
-        /// Current plan state; mutated by `Plan::split()` and reset by `rebuild`.
-        plan: Plan,
+        /// Current plan state; mutated by `IcosahedronPlan::split()` and reset by `rebuild`.
+        plan: IcosahedronPlan,
         /// Function that returns the plan's initial mesh.
-        rebuild: fn() -> Plan,
+        rebuild: fn() -> IcosahedronPlan,
     },
 }
 

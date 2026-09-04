@@ -1,19 +1,19 @@
-//! The `Plan` module: central manager of the node hierarchy.
+//! The `IcosahedronPlan` module: central manager of the node hierarchy.
 //!
-//! A [`Plan`] encapsulates the primary root node that anchors a generated mesh.
+//! An [`IcosahedronPlan`] encapsulates the primary root node that anchors a generated mesh.
 //! It orchestrates pentagonal base generation and the dual-pentagon interlocked
 //! mesh, and it can subdivide the whole mesh one level at a time.
 //!
 //! Pentagonal base construction lives in `pentagon`; whole-mesh subdivision
 //! lives in `subdivide`. The full contract is specified in
-//! `docs/book/specs/plan.md`.
+//! `docs/book/specs/icosahedron-plan.md`.
 //!
 //! # Example
 //!
 //! ```
-//! use planet_crafter_engine::plan::Plan;
+//! use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 //!
-//! let mut plan = Plan::default();
+//! let mut plan = IcosahedronPlan::default();
 //! let root = plan.generate(1.0);
 //! assert!(plan.root_node.is_some());
 //! assert_eq!(root.borrow().level, 0);
@@ -36,19 +36,19 @@ pub use pentagon::generate_base;
 /// Central manager of the node hierarchy.
 ///
 /// Holds a reference to the primary base node that anchors the generated mesh.
-/// After [`Plan::generate`] the root node is the North base root of the
+/// After [`IcosahedronPlan::generate`] the root node is the North base root of the
 /// dual-pentagon interlocked mesh.
 #[derive(Default)]
-pub struct Plan {
+pub struct IcosahedronPlan {
     /// Reference to the primary base node.
     ///
-    /// `None` before [`Plan::generate`] is called. After generation it points
-    /// to the North base root, and after [`Plan::split`] it is re-anchored on
+    /// `None` before [`IcosahedronPlan::generate`] is called. After generation it points
+    /// to the North base root, and after [`IcosahedronPlan::split`] it is re-anchored on
     /// the old root's center node.
     pub root_node: Option<NodeRef>,
 }
 
-impl Plan {
+impl IcosahedronPlan {
     /// Generates the dual-pentagon interlocked mesh.
     ///
     /// This method builds a North pentagonal base and a South pentagonal base,
@@ -71,9 +71,9 @@ impl Plan {
     /// # Example
     ///
     /// ```
-    /// use planet_crafter_engine::plan::Plan;
+    /// use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
     ///
-    /// let mut plan = Plan::default();
+    /// let mut plan = IcosahedronPlan::default();
     /// let root = plan.generate(2.0);
     /// assert_eq!(root.borrow().name, "north_base_node_0");
     /// ```
@@ -83,9 +83,9 @@ impl Plan {
     /// ```
     /// use std::rc::Rc;
     /// use planet_crafter_engine::node::collect_nodes;
-    /// use planet_crafter_engine::plan::Plan;
+    /// use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
     ///
-    /// let mut plan = Plan::default();
+    /// let mut plan = IcosahedronPlan::default();
     /// let root = plan.generate(2.0);
     /// let nodes = collect_nodes(&root);
     ///
