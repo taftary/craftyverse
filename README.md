@@ -1,9 +1,7 @@
 # PlanetCrafter
 
 A high-performance game built from scratch in **Rust**, using **Vulkan** as the
-sole graphics API (natively on Android, via MoltenVK on iOS). See
-[`docs/technology-definition.md`](docs/technology-definition.md) for the full
-technology definition.
+sole graphics API (natively on Android, via MoltenVK on iOS). See the [Rust architecture book](docs/book/index.md).
 
 The project is at an early stage: it currently contains the geometric node
 system (hierarchical triangle subdivision with directional vectors and
@@ -19,13 +17,17 @@ bidirectional links) and a Vulkan debug viewer to visualize it.
 ## Run the viewer
 
 ```
-cargo run
+cargo run --bin planet-crafter
 ```
 
 A window opens showing the node visualization:
 
 - **1** — one node, no split
 - **2** — split node (center + 3 corner nodes)
+- **3** — pentagonal base plan (live)
+- **4** — dual-mesh interlocked plan (live)
+- **S** — subdivide the current plan one level (live scenes)
+- **R** — regenerate the current plan
 - Close the window to exit
 
 For an optimized build: `cargo run --release`.
@@ -40,37 +42,37 @@ the matching attribute on or off.
 ## Development
 
 ```
-cargo test              # unit tests (node geometry, scene generation, text layout)
-cargo clippy            # lint
+cargo test --workspace    # unit tests (node geometry, plan wiring, scene generation, text layout, shader compilation)
+cargo clippy --workspace  # lint
 ```
 
 ## Project structure
 
 ```
-src/
-  main.rs     — entry point: builds the demo scenarios, runs the viewer
-  node.rs     — geometric node: triangle geometry, directions, split(), links
-  scene.rs    — CPU scene generation for the viewer (GPU-independent)
-  text.rs     — fontdue glyph atlas + text layout (GPU-independent)
-  render.rs   — Vulkan/winit viewer (all GPU code)
+Cargo.toml
+crates/
+  engine/   — reusable geometry, topology, scene data, text, Vulkan viewer
+  game/     — application binary and content policy
+  tools/    — asset/developer tooling (e.g. mesh-validator)
 assets/
-  fonts/      — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
-docs/
-  technology-definition.md       — target platforms, stack, architecture goals
-  classes-definitions/           — per-module specifications
-  project-structure-and-best-practices/ — Rust conventions used by the project
+  fonts/    — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
+docs/     — target architecture, handbook, and per-module specifications
 ```
 
 ## Documentation
 
-- [`docs/classes-definitions/node.md`](docs/classes-definitions/node.md) — node
-  geometry and `split()` specification
-- [`docs/classes-definitions/scene.md`](docs/classes-definitions/scene.md) —
-  scene generation (what gets drawn, view fit, colors)
-- [`docs/classes-definitions/text.md`](docs/classes-definitions/text.md) —
-  glyph atlas and text layout
-- [`docs/classes-definitions/render.md`](docs/classes-definitions/render.md) —
-  Vulkan viewer architecture, pipelines, platform notes
+- [Rust architecture book](docs/book/index.md) — target workspace, crate
+  boundaries, principles, patterns, and practices
+- [Migration principles](docs/book/architecture/migration-principles.md) —
+  staged extraction guidance
+- [Contributing guidelines](docs/CONTRIBUTING.md) — how to submit
+  documentation and architecture changes
+- [Review checklist](docs/REVIEW_CHECKLIST.md) — checklist for docs and
+  architecture reviews
+- [Style guide](docs/STYLEGUIDE.md) — status language, Rust conventions,
+  page structure, and validation commands
+- [Module specifications](docs/book/specs/index.md) — current implementation
+  specs for `node`, `plan`, `scene`, `text`, and `render`
 
 ## Main dependencies
 
