@@ -1,4 +1,4 @@
-use super::colors::{hex_rgb, level_color, DIRECTION_COLORS, LEVEL_COLORS};
+use super::colors::{DIRECTION_COLORS, LEVEL_COLORS, hex_rgb, level_color};
 use super::geometry::DOT_SEGMENTS;
 use super::options::ATTRIBUTES;
 use super::*;
@@ -38,13 +38,24 @@ fn single_node_emits_all_element_kinds() {
 
 #[test]
 fn origin_arrow_is_skipped_when_node_is_at_origin() {
-    let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "at_origin", Labeling::Normal);
+    let node = Node::new(
+        Vec2::Y,
+        Vec2::ZERO,
+        Vec2::ZERO,
+        300.0,
+        200.0,
+        "at_origin",
+        Labeling::Normal,
+    );
     let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
     // Only outline + arrow shafts remain.
     assert_eq!(mesh.lines.len(), (3 + 4) * 2);
     // 4 arrowheads + dot segments + 3 open-port discs.
-    assert_eq!(mesh.triangles.len(), (4 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3);
+    assert_eq!(
+        mesh.triangles.len(),
+        (4 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3
+    );
 }
 
 #[test]
@@ -85,10 +96,11 @@ fn child_links_are_dashed_and_colored_by_direction() {
     assert_eq!(mesh.lines.len() % 2, 0);
     // Every segment carries one of the I/J/K direction colors, and all
     // three are used.
-    assert!(mesh
-        .lines
-        .iter()
-        .all(|vertex| DIRECTION_COLORS.contains(&vertex.color)));
+    assert!(
+        mesh.lines
+            .iter()
+            .all(|vertex| DIRECTION_COLORS.contains(&vertex.color))
+    );
     for color in DIRECTION_COLORS {
         assert!(mesh.lines.iter().any(|vertex| vertex.color == color));
     }
@@ -103,7 +115,11 @@ fn open_ports_emit_bold_disc_per_null_port() {
         open_ports_ijk: [true; 3],
         ..DisplayOptions::none()
     };
-    let mesh = build_scene(std::slice::from_ref(&node), Vec2::new(800.0, 800.0), &options);
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        Vec2::new(800.0, 800.0),
+        &options,
+    );
 
     // One disc per open port (all three are null), no lines.
     assert_eq!(mesh.triangles.len(), 3 * DOT_SEGMENTS * 3);
@@ -115,7 +131,11 @@ fn open_ports_emit_bold_disc_per_null_port() {
 
     // The split center node is fully linked: no markers.
     let center = node.borrow().split();
-    let mesh = build_scene(std::slice::from_ref(&center), Vec2::new(800.0, 800.0), &options);
+    let mesh = build_scene(
+        std::slice::from_ref(&center),
+        Vec2::new(800.0, 800.0),
+        &options,
+    );
     assert!(mesh.triangles.is_empty());
 
     // Each corner node has two open ports: two discs.
@@ -135,34 +155,52 @@ fn per_port_switches_gate_each_group() {
 
     // One port off: two discs remain, none in the disabled port's color.
     options.toggle(Attribute::OpenPort(1));
-    let mesh = build_scene(std::slice::from_ref(&node), Vec2::new(800.0, 800.0), &options);
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        Vec2::new(800.0, 800.0),
+        &options,
+    );
     assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
-    assert!(mesh
-        .triangles
-        .iter()
-        .all(|vertex| vertex.color != DIRECTION_COLORS[1]));
+    assert!(
+        mesh.triangles
+            .iter()
+            .all(|vertex| vertex.color != DIRECTION_COLORS[1])
+    );
 
     // The master gates the whole group without touching the per-port
     // switches: no markers while off, the same selection returns when on.
     options.toggle(Attribute::OpenPorts);
-    let mesh = build_scene(std::slice::from_ref(&node), Vec2::new(800.0, 800.0), &options);
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        Vec2::new(800.0, 800.0),
+        &options,
+    );
     assert!(mesh.triangles.is_empty());
     options.toggle(Attribute::OpenPorts);
-    let mesh = build_scene(std::slice::from_ref(&node), Vec2::new(800.0, 800.0), &options);
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        Vec2::new(800.0, 800.0),
+        &options,
+    );
     assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
 
     // Directions: only port I enabled — one shaft and one arrowhead, red.
     options.open_ports = false;
     options.directions = true;
     options.directions_ijk = [true, false, false];
-    let mesh = build_scene(std::slice::from_ref(&node), Vec2::new(800.0, 800.0), &options);
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        Vec2::new(800.0, 800.0),
+        &options,
+    );
     assert_eq!(mesh.lines.len(), 2);
     assert_eq!(mesh.triangles.len(), 3);
-    assert!(mesh
-        .lines
-        .iter()
-        .chain(&mesh.triangles)
-        .all(|vertex| vertex.color == DIRECTION_COLORS[0]));
+    assert!(
+        mesh.lines
+            .iter()
+            .chain(&mesh.triangles)
+            .all(|vertex| vertex.color == DIRECTION_COLORS[0])
+    );
 
     // Child links: the split center has three links; keep only I and K.
     let center = node.borrow().split();
@@ -171,10 +209,11 @@ fn per_port_switches_gate_each_group() {
     options.child_links_ijk = [true, false, true];
     let mesh = build_scene(&[center], Vec2::new(800.0, 800.0), &options);
     assert!(!mesh.lines.is_empty());
-    assert!(mesh
-        .lines
-        .iter()
-        .all(|vertex| vertex.color != DIRECTION_COLORS[1]));
+    assert!(
+        mesh.lines
+            .iter()
+            .all(|vertex| vertex.color != DIRECTION_COLORS[1])
+    );
     for color in [DIRECTION_COLORS[0], DIRECTION_COLORS[2]] {
         assert!(mesh.lines.iter().any(|vertex| vertex.color == color));
     }
@@ -207,7 +246,10 @@ fn toggle_gates_each_attribute() {
 
     // No direction arrowheads left; only the origin arrowhead + dot + the
     // three open-port discs.
-    assert_eq!(mesh.triangles.len(), (1 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3);
+    assert_eq!(
+        mesh.triangles.len(),
+        (1 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3
+    );
     // Two of the checkboxes are unticked.
     assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() - 2) * 2 * 3);
 }
@@ -250,7 +292,10 @@ fn empty_scene_produces_identity_like_transform() {
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
     assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
     assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
-    assert_eq!(mesh.world_to_clip.scale, Vec2::new(2.0 / 800.0, -2.0 / 800.0));
+    assert_eq!(
+        mesh.world_to_clip.scale,
+        Vec2::new(2.0 / 800.0, -2.0 / 800.0)
+    );
 }
 
 #[test]
@@ -259,4 +304,3 @@ fn hex_rgb_parses_channels() {
     assert_eq!(hex_rgb("#ffffff"), [1.0; 3]);
     assert_eq!(hex_rgb("#ff0000"), [1.0, 0.0, 0.0]);
 }
-

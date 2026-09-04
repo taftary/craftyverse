@@ -34,7 +34,11 @@ fn layout_emits_two_triangles_per_glyph() {
 #[test]
 fn layout_skips_whitespace_quads() {
     let atlas = test_atlas();
-    assert!(atlas.layout(" ", Vec2::ZERO, 12.0, [0.0; 3], false).is_empty());
+    assert!(
+        atlas
+            .layout(" ", Vec2::ZERO, 12.0, [0.0; 3], false)
+            .is_empty()
+    );
 }
 
 #[test]
@@ -42,7 +46,10 @@ fn centered_layout_is_symmetric_around_anchor() {
     let atlas = test_atlas();
     let vertices = atlas.layout("AA", Vec2::new(100.0, 0.0), 12.0, [0.0; 3], true);
 
-    let min_x = vertices.iter().map(|v| v.pos.x).fold(f32::INFINITY, f32::min);
+    let min_x = vertices
+        .iter()
+        .map(|v| v.pos.x)
+        .fold(f32::INFINITY, f32::min);
     let max_x = vertices
         .iter()
         .map(|v| v.pos.x)

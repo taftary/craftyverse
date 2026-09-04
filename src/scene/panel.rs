@@ -6,7 +6,7 @@ use glam::Vec2;
 
 use super::colors::{DIRECTION_COLORS, LABEL_COLOR, UI_COLOR};
 use super::geometry::{push_line, push_triangle};
-use super::options::{Attribute, ATTRIBUTES};
+use super::options::{ATTRIBUTES, Attribute};
 use super::{Checkbox, SceneBuilder, TextRun, Vertex};
 
 /// Checkbox panel metrics (pixels, y-down); top-left anchored.
@@ -52,8 +52,13 @@ impl SceneBuilder {
     /// box outline, inset fill when on, label and clickable rectangle.
     fn add_checkbox_row(&mut self, row: usize, attribute: Attribute, label: &str) {
         let indent = attribute.port().map_or(0.0, |_| CHECKBOX_SUB_INDENT);
-        let label_color = attribute.port().map_or(LABEL_COLOR, |i| DIRECTION_COLORS[i]);
-        let min = Vec2::new(PANEL_PAD + indent, PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT);
+        let label_color = attribute
+            .port()
+            .map_or(LABEL_COLOR, |i| DIRECTION_COLORS[i]);
+        let min = Vec2::new(
+            PANEL_PAD + indent,
+            PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT,
+        );
         let max = min + Vec2::splat(CHECKBOX_SIZE);
         rect_outline(&mut self.ui_lines, min, max, UI_COLOR);
         if self.options.value(attribute) {

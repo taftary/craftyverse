@@ -1,9 +1,9 @@
 # PlanetCrafter
 
 A high-performance game built from scratch in **Rust**, using **Vulkan** as the
-sole graphics API (natively on Android, via MoltenVK on iOS). See
-[`docs/technology-definition.md`](docs/technology-definition.md) for the full
-technology definition.
+sole graphics API (natively on Android, via MoltenVK on iOS). See the
+[Rust architecture book](docs/rust/book/index.md) and
+[migration plan](docs/rust/MIGRATION.md).
 
 The project is at an early stage: it currently contains the geometric node
 system (hierarchical triangle subdivision with directional vectors and
@@ -57,21 +57,24 @@ src/
 assets/
   fonts/      — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/
-  technology-definition.md       — target platforms, stack, architecture goals
-  classes-definitions/           — per-module specifications
-  project-structure-and-best-practices/ — Rust conventions used by the project
+  rust/       — target architecture, migration, and Rust standards
+  rust/book/specs/               — per-module specifications
 ```
 
 ## Documentation
 
-- [`docs/classes-definitions/node.md`](docs/classes-definitions/node.md) — node
-  geometry and `split()` specification
-- [`docs/classes-definitions/scene.md`](docs/classes-definitions/scene.md) —
-  scene generation (what gets drawn, view fit, colors)
-- [`docs/classes-definitions/text.md`](docs/classes-definitions/text.md) —
-  glyph atlas and text layout
-- [`docs/classes-definitions/render.md`](docs/classes-definitions/render.md) —
-  Vulkan viewer architecture, pipelines, platform notes
+- [Rust architecture book](docs/rust/book/index.md) — target workspace, crate
+  boundaries, principles, patterns, and practices
+- [Migration plan](docs/rust/MIGRATION.md) — staged extraction to the target
+  workspace
+- [Contributing guidelines](docs/rust/CONTRIBUTING.md) — how to submit
+  documentation and architecture changes
+- [Review checklist](docs/rust/REVIEW_CHECKLIST.md) — checklist for docs and
+  architecture reviews
+- [Style guide](docs/rust/STYLEGUIDE.md) — status language, Rust conventions,
+  page structure, and validation commands
+- [Module specifications](docs/rust/book/specs/index.md) — current implementation
+  specs for `node`, `plan`, `scene`, `text`, and `render`
 
 ## Main dependencies
 

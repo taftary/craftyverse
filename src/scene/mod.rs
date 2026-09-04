@@ -1,18 +1,33 @@
 //! CPU-side scene generation for the Vulkan debug viewer.
 //!
-//! Generates the same visualization the SVG viewer produced — triangle
-//! outlines, direction arrows, dashed origin arrow, child links, open-port
-//! markers, center dots and text labels — but as plain vertex data: colored
-//! line and triangle lists in a y-down world space, plus pixel-space text
-//! runs. The renderer only uploads the buffers and applies the two clip
-//! transforms.
+//! This module turns a collection of [`Node`](crate::node::Node) instances into
+//! render-agnostic vertex data: colored line and triangle lists in a y-down
+//! world space, plus pixel-space text runs. The renderer uploads the buffers and
+//! applies the two clip transforms.
 //!
-//! Each displayed node attribute can be toggled through [`DisplayOptions`];
-//! the scene also carries a pixel-space checkbox panel (geometry plus hit
-//! rectangles) that the viewer uses to flip them at runtime.
+//! The generated visualization mirrors what the former SVG viewer produced:
+//! triangle outlines, direction arrows (I/J/K and `direction_of_node`), a dashed
+//! origin arrow, child links, open-port markers, center dots, and text labels.
 //!
-//! Colors live in `colors`, display options in `options`, the per-node
-//! geometry builders in `geometry` and the checkbox panel in `panel`.
+//! Each displayed node attribute can be toggled at runtime through
+//! [`DisplayOptions`]. The scene also carries a pixel-space checkbox panel
+//! (geometry plus hit rectangles) that the viewer uses to flip the options.
+//!
+//! Colors live in `colors`, display options in `options`, the per-node geometry
+//! builders in `geometry`, and the checkbox panel in `panel`. The full contract
+//! is specified in `docs/rust/book/specs/scene.md`.
+//!
+//! # Example
+//!
+//! ```
+//! use glam::Vec2;
+//! use crate::node::{Labeling, Node};
+//! use crate::scene::{build_scene, DisplayOptions};
+//!
+//! let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+//! let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &DisplayOptions::default());
+//! assert!(!scene.lines.is_empty());
+//! ```
 
 mod colors;
 mod geometry;
@@ -31,49 +46,90 @@ pub use options::{Attribute, Checkbox, DisplayOptions};
 /// Colored vertex in mapped world space (y-down).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Vertex {
+    /// Position in mapped world space. The y-axis points down to match the
+    /// former SVG coordinate system.
     pub pos: Vec2,
+    /// RGB color with components in the range `[0.0, 1.0]`.
     pub color: [f32; 3],
 }
 
-/// A text label with a pixel-space anchor (top-left, or top-center when
-/// `centered`). Glyphs keep a constant pixel size regardless of the view fit.
+/// A text label anchored in pixel space.
+///
+/// `anchor` is the top-left of the text block, or the top-center when
+/// `centered` is `true`. Glyphs are laid out at a constant pixel size
+/// regardless of the world-space view fit.
 #[derive(Clone, Debug)]
 pub struct TextRun {
+    /// Text content of the label.
     pub text: String,
+    /// Anchor point in pixels (y-down).
     pub anchor: Vec2,
+    /// Font size in pixels.
     pub size: f32,
+    /// RGB color.
     pub color: [f32; 3],
+    /// When `true`, `anchor` is the top-center of the text block.
     pub centered: bool,
 }
 
-/// Affine transform `clip = pos * scale + offset` into Vulkan clip space.
+/// Affine transform from pixel/world space into Vulkan clip space.
+///
+/// The mapping is `clip = pos * scale + offset`.
 #[derive(Clone, Copy, Debug)]
 pub struct ClipTransform {
+    /// Scale component of the affine mapping.
     pub scale: Vec2,
+    /// Offset component of the affine mapping.
     pub offset: Vec2,
 }
 
-/// Everything the renderer needs for one scene.
+/// Everything the renderer needs to draw one frame of the debug viewer.
 pub struct SceneMesh {
-    /// Colored line list in mapped world space.
+    /// Colored line list in mapped world space (y-down). Includes outlines,
+    /// arrow shafts, dashed lines, and child links.
     pub lines: Vec<Vertex>,
-    /// Colored triangle list in mapped world space (arrowheads, center dots).
+    /// Colored triangle list in mapped world space. Includes arrowheads,
+    /// center dots, and checkbox fills.
     pub triangles: Vec<Vertex>,
-    /// Checkbox panel geometry in pixel space (drawn with `pixel_to_clip`).
+    /// Checkbox panel line geometry in pixel space, drawn with `pixel_to_clip`.
     pub ui_lines: Vec<Vertex>,
+    /// Checkbox panel triangle geometry in pixel space, drawn with `pixel_to_clip`.
     pub ui_triangles: Vec<Vertex>,
-    /// Text labels, anchored in pixel space (node labels and checkbox labels).
+    /// Text labels in pixel space (node labels and checkbox labels).
     pub texts: Vec<TextRun>,
-    /// Checkbox hit rectangles, same order as the panel rows.
+    /// Checkbox hit rectangles, in the same order as the panel rows.
     pub checkboxes: Vec<Checkbox>,
-    /// Maps `lines`/`triangles` positions to clip space.
+    /// Maps `lines` and `triangles` world positions to clip space.
     pub world_to_clip: ClipTransform,
     /// Maps text and UI pixel positions to clip space.
     pub pixel_to_clip: ClipTransform,
 }
 
-/// Builds the visualization of `nodes` fitted into `viewport` pixels,
-/// displaying the attributes enabled in `options`.
+/// Builds a visualization of `nodes` fitted into `viewport` pixels.
+///
+/// Only the attributes enabled in `options` are generated. The returned
+/// [`SceneMesh`] also contains the checkbox panel and the transforms required
+/// to render it.
+///
+/// # Parameters
+///
+/// - `nodes` — nodes to visualize.
+/// - `viewport` — window size in pixels.
+/// - `options` — which node attributes to display.
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec2;
+/// use crate::node::{Labeling, Node};
+/// use crate::scene::{build_scene, Attribute, DisplayOptions};
+///
+/// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+/// let mut options = DisplayOptions::default();
+/// options.toggle(Attribute::Labels);
+/// let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &options);
+/// assert!(scene.checkboxes.iter().any(|c| c.attribute == Attribute::Labels));
+/// ```
 pub fn build_scene(nodes: &[NodeRef], viewport: Vec2, options: &DisplayOptions) -> SceneMesh {
     let mut builder = SceneBuilder {
         options: *options,
@@ -195,10 +251,7 @@ fn fit_view(bounds: &Bounds, viewport: Vec2) -> (Vec2, f32, Vec2) {
 /// mapped straight to clip space (`pixel_to_clip`).
 fn to_clip_transform(scale: Vec2, offset: Vec2, viewport: Vec2) -> ClipTransform {
     ClipTransform {
-        scale: Vec2::new(
-            scale.x * 2.0 / viewport.x,
-            -scale.y * 2.0 / viewport.y,
-        ),
+        scale: Vec2::new(scale.x * 2.0 / viewport.x, -scale.y * 2.0 / viewport.y),
         offset: Vec2::new(
             offset.x * 2.0 / viewport.x - 1.0,
             1.0 - offset.y * 2.0 / viewport.y,

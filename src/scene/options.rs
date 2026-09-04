@@ -1,25 +1,42 @@
 //! Display options: the toggleable node attributes, the flag set backing
-//! them and the checkbox hit rectangles.
+//! them, and the checkbox hit rectangles.
 
 use glam::Vec2;
 
-/// One toggleable node attribute of the visualization; each variant has a
-/// checkbox in the display-options panel. `ChildLinks`, `OpenPorts` and
-/// `Directions` are group masters gating their per-port sub-switches
-/// (`ChildLink(i)`, `OpenPort(i)`, `Direction(i)`; 0 = I, 1 = J, 2 = K): an
-/// element is drawn only when both the master and its per-port switch are on.
+/// One toggleable node attribute of the visualization.
+///
+/// Each variant corresponds to a row in the display-options panel.
+/// `ChildLinks`, `OpenPorts`, and `Directions` are group masters that gate
+/// their per-port sub-switches:
+///
+/// - `ChildLink(i)`, `OpenPort(i)`, `Direction(i)` where `i` is `0` for I,
+///   `1` for J, and `2` for K.
+///
+/// An element is drawn only when both its group master and its per-port switch
+/// are enabled.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Attribute {
+    /// Master switch for child-link lines.
     ChildLinks,
+    /// Per-port child-link switch.
     ChildLink(usize),
+    /// Master switch for open-port markers.
     OpenPorts,
+    /// Per-port open-port switch.
     OpenPort(usize),
+    /// Triangle outline.
     Outline,
+    /// Master switch for I/J/K direction arrows.
     Directions,
+    /// Per-port direction arrow switch.
     Direction(usize),
+    /// Node direction arrow (base to apex).
     DirectionOfNode,
+    /// Dashed origin arrow.
     Origin,
+    /// Filled center dot.
     CenterDot,
+    /// Node name/level and corner letter labels.
     Labels,
 }
 
@@ -33,20 +50,32 @@ impl Attribute {
     }
 }
 
-/// Which node attributes the visualization displays. Toggled at runtime
-/// through the checkbox panel; everything is on by default.
+/// Which node attributes the visualization displays.
+///
+/// Toggled at runtime through the checkbox panel; everything is on by default.
 #[derive(Clone, Copy, Debug)]
 pub struct DisplayOptions {
+    /// Master switch for child-link lines.
     pub child_links: bool,
+    /// Per-port child-link switches, indexed `[I, J, K]`.
     pub child_links_ijk: [bool; 3],
+    /// Master switch for open-port markers.
     pub open_ports: bool,
+    /// Per-port open-port switches, indexed `[I, J, K]`.
     pub open_ports_ijk: [bool; 3],
+    /// Triangle outline switch.
     pub outline: bool,
+    /// Master switch for I/J/K direction arrows.
     pub directions: bool,
+    /// Per-port direction arrow switches, indexed `[I, J, K]`.
     pub directions_ijk: [bool; 3],
+    /// Node direction arrow switch.
     pub direction_of_node: bool,
+    /// Dashed origin arrow switch.
     pub origin: bool,
+    /// Center dot switch.
     pub center_dot: bool,
+    /// Label switch.
     pub labels: bool,
 }
 
@@ -69,8 +98,9 @@ impl Default for DisplayOptions {
 }
 
 impl DisplayOptions {
-    /// All attributes off — complement of the all-on `Default`. Test-only so
-    /// far: gated to keep the non-test build free of dead code.
+    /// Returns an option set with every attribute disabled.
+    ///
+    /// Test-only: gated to keep the non-test build free of dead code.
     #[cfg(test)]
     pub fn none() -> Self {
         Self {
@@ -88,12 +118,12 @@ impl DisplayOptions {
         }
     }
 
-    /// Current display state of one attribute.
+    /// Returns the current display state of `attribute`.
     pub fn value(&self, attribute: Attribute) -> bool {
         *self.field(attribute)
     }
 
-    /// Flips one attribute (checkbox click).
+    /// Toggles `attribute` (used on checkbox click).
     pub fn toggle(&mut self, attribute: Attribute) {
         let field = self.field_mut(attribute);
         *field = !*field;
@@ -157,19 +187,23 @@ pub(crate) const ATTRIBUTES: [(Attribute, &str); 17] = [
     (Attribute::Labels, "labels"),
 ];
 
-/// Clickable area of one checkbox (pixel space, y-down). The viewer
-/// hit-tests mouse clicks against these.
+/// Clickable area of one checkbox (pixel space, y-down).
+///
+/// The viewer hit-tests mouse clicks against these rectangles.
 #[derive(Clone, Copy, Debug)]
 pub struct Checkbox {
+    /// Attribute controlled by this checkbox.
     pub attribute: Attribute,
-    /// Top-left and bottom-right corners of the clickable rectangle (checkbox
-    /// box plus label), in pixels.
+    /// Top-left corner of the clickable rectangle (checkbox box plus label),
+    /// in pixels.
     pub min: Vec2,
+    /// Bottom-right corner of the clickable rectangle, in pixels.
     pub max: Vec2,
 }
 
 impl Checkbox {
-    /// Whether `point` (pixels, y-down) is inside the clickable rectangle.
+    /// Returns `true` if `point` (pixels, y-down) is inside the clickable
+    /// rectangle.
     pub fn contains(&self, point: Vec2) -> bool {
         point.cmpge(self.min).all() && point.cmple(self.max).all()
     }

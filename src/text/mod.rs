@@ -1,9 +1,24 @@
 //! Bitmap-font text layout for the Vulkan debug viewer.
 //!
 //! Printable ASCII glyphs are rasterized once with `fontdue` into a
-//! single-channel (R8) texture atlas; `layout()` then turns a text run into
-//! textured quads in pixel space. The renderer uploads `pixels` as a texture
-//! and draws the quads with alpha blending.
+//! single-channel (R8) texture atlas. [`TextAtlas::layout`] then turns a text
+//! run into textured quads positioned in pixel space. The renderer uploads
+//! [`TextAtlas::pixels`] as a texture and draws the quads with alpha blending.
+//!
+//! The module contains no GPU code. All positions are raw pixels; the
+//! world→pixel mapping of label anchors is the caller's responsibility (see the
+//! `scene` module). The full contract is specified in
+//! `docs/rust/book/specs/text.md`.
+//!
+//! # Example
+//!
+//! ```
+//! use crate::text::TextAtlas;
+//!
+//! let font = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+//! let atlas = TextAtlas::new(font).expect("valid bundled font");
+//! assert!(!atlas.pixels.is_empty());
+//! ```
 
 mod packing;
 
@@ -15,9 +30,10 @@ use std::collections::HashMap;
 use fontdue::{Font, FontSettings};
 use glam::Vec2;
 
-use packing::{blit, uv_rect, ShelfPacker};
+use packing::{ShelfPacker, blit, uv_rect};
 
-/// Glyph rasterization size in the atlas; layouts scale quads down from it.
+/// Glyph rasterization size in the atlas. Layouts scale quads down from this
+/// size; linear sampling keeps small labels readable.
 const ATLAS_SIZE: f32 = 48.0;
 /// Width of the glyph atlas texture in pixels.
 const ATLAS_WIDTH: usize = 512;
@@ -29,8 +45,11 @@ const GLYPH_PADDING: usize = 2;
 /// Vertex of a text quad, positioned in pixels (y-down).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextVertex {
+    /// Pixel position (y-down).
     pub pos: Vec2,
+    /// Texture coordinates into the glyph atlas.
     pub uv: Vec2,
+    /// RGB color.
     pub color: [f32; 3],
 }
 
@@ -38,9 +57,10 @@ pub struct TextVertex {
 struct Glyph {
     uv_min: Vec2,
     uv_max: Vec2,
-    /// Bitmap size in pixels at `ATLAS_SIZE`.
+    /// Bitmap size in pixels at [`ATLAS_SIZE`].
     size: Vec2,
-    /// Bearing at `ATLAS_SIZE`: x = left side bearing, y = baseline→bottom (y-up).
+    /// Bearing at [`ATLAS_SIZE`]: `x` is the left side bearing, `y` is
+    /// baseline→bottom (y-up).
     bearing: Vec2,
     advance: f32,
     has_bitmap: bool,
@@ -49,9 +69,11 @@ struct Glyph {
 /// Rasterized glyph atlas plus the metrics needed to lay out text runs.
 pub struct TextAtlas {
     glyphs: HashMap<char, Glyph>,
-    /// Baseline distance from the top of the line box at `ATLAS_SIZE`.
+    /// Baseline distance from the top of the line box at [`ATLAS_SIZE`].
     ascent: f32,
+    /// Atlas width in pixels.
     pub width: u32,
+    /// Atlas height in pixels.
     pub height: u32,
     /// R8 coverage values, row-major, `width * height` bytes.
     pub pixels: Vec<u8>,
@@ -59,6 +81,26 @@ pub struct TextAtlas {
 
 impl TextAtlas {
     /// Rasterizes printable ASCII into a shelf-packed atlas.
+    ///
+    /// Parses `font_bytes` with `fontdue`, then rasterizes every printable
+    /// ASCII character (`' '..='~'`) at [`ATLAS_SIZE`] into a 512×512 R8 atlas.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Err` if:
+    /// - `font_bytes` is not a valid font.
+    /// - the font has no horizontal line metrics.
+    /// - the glyph atlas overflows its fixed size.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use crate::text::TextAtlas;
+    ///
+    /// let font = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+    /// let atlas = TextAtlas::new(font).expect("bundled font is valid");
+    /// assert_eq!(atlas.width, 512);
+    /// ```
     pub fn new(font_bytes: &[u8]) -> Result<Self, String> {
         let font = Font::from_bytes(font_bytes, FontSettings::default())
             .map_err(|err| format!("failed to load font: {err}"))?;
@@ -86,7 +128,15 @@ impl TextAtlas {
             let (x, y) = packer
                 .reserve(metrics.width, metrics.height)
                 .ok_or("text atlas overflow")?;
-            blit(&mut pixels, ATLAS_WIDTH, x, y, &bitmap, metrics.width, metrics.height);
+            blit(
+                &mut pixels,
+                ATLAS_WIDTH,
+                x,
+                y,
+                &bitmap,
+                metrics.width,
+                metrics.height,
+            );
             let (uv_min, uv_max) = uv_rect(x, y, metrics.width, metrics.height);
             glyphs.insert(
                 ch,
@@ -123,8 +173,35 @@ impl TextAtlas {
         text.chars().map(|ch| self.glyph(ch).advance * scale).sum()
     }
 
-    /// Lays out `text` at `size` px into two triangles per glyph. `anchor` is
-    /// the top-left of the text block (top-center when `centered`), in pixels.
+    /// Lays out `text` into two triangles per glyph.
+    ///
+    /// # Parameters
+    ///
+    /// - `text` — the string to lay out.
+    /// - `anchor` — top-left of the text block, or top-center when `centered`
+    ///   is `true`.
+    /// - `size` — font size in pixels.
+    /// - `color` — RGB color.
+    /// - `centered` — when `true`, the anchor is the top-center of the block.
+    ///
+    /// # Returns
+    ///
+    /// Six [`TextVertex`] instances per glyph (two triangles), ready to be
+    /// uploaded as a vertex buffer.
+    ///
+    /// Whitespace produces no quads; unknown characters fall back to `'?'`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use crate::text::TextAtlas;
+    ///
+    /// let font = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+    /// let atlas = TextAtlas::new(font).expect("bundled font is valid");
+    /// let vertices = atlas.layout("Hi", Vec2::new(10.0, 10.0), 16.0, [0.0, 0.0, 0.0], false);
+    /// assert_eq!(vertices.len(), 2 * 6);
+    /// ```
     pub fn layout(
         &self,
         text: &str,
@@ -164,7 +241,7 @@ impl TextAtlas {
     }
 }
 
-/// Pushes the two triangles (indices [0,1,2,0,2,3]) of a glyph quad from its
+/// Pushes the two triangles (indices `[0,1,2,0,2,3]`) of a glyph quad from its
 /// position corners (top-left, top-right, bottom-right, bottom-left) and its
 /// UV rect.
 fn push_quad(out: &mut Vec<TextVertex>, corners: [Vec2; 4], uvs: (Vec2, Vec2), color: [f32; 3]) {

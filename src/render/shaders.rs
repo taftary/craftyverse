@@ -89,7 +89,7 @@ pub(crate) fn load_shader(
     // SAFETY: the SPIR-V comes from naga's validated output, so it satisfies
     // the validity invariants `ShaderModule::new` requires.
     unsafe { ShaderModule::new(device.clone(), ShaderModuleCreateInfo::new(&words)) }
-    .expect("failed to create shader module")
-    .entry_point("main")
-    .expect("shader has no `main` entry point")
+        .expect("failed to create shader module")
+        .entry_point("main")
+        .expect("shader has no `main` entry point")
 }

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use glam::Vec2;
 
 use crate::node::topology::link;
-use crate::node::{collect_nodes, Node, NodeRef};
+use crate::node::{Node, NodeRef, collect_nodes};
 
 use super::Plan;
 
@@ -16,7 +16,7 @@ impl Plan {
     /// Subdivides the whole mesh one level: splits every node of the current
     /// level once, reconnects the resulting split-centers across the
     /// subdivided edges, and destroys the old nodes. See
-    /// `docs/classes-definitions/plan.md` section 7.
+    /// `docs/rust/book/specs/plan.md` section 7.
     ///
     /// Two passes over the old level, which every node of survives until the
     /// end: first split every node and index the centers by parent, then wire
@@ -33,7 +33,8 @@ impl Plan {
 
         // Split every node once, indexing the new center by parent. Old nodes
         // stay alive (and their addresses stable) until the destroy pass.
-        let mut centers: HashMap<*const RefCell<Node>, NodeRef> = HashMap::with_capacity(old_nodes.len());
+        let mut centers: HashMap<*const RefCell<Node>, NodeRef> =
+            HashMap::with_capacity(old_nodes.len());
         for node in &old_nodes {
             centers.insert(Rc::as_ptr(node), node.borrow().split());
         }
@@ -43,14 +44,20 @@ impl Plan {
         // 1 <-> 1) guarantees the canonicalization wires it exactly once.
         for node in &old_nodes {
             for index in 0..3 {
-                let Some(neighbor) = child(node, index) else { continue };
+                let Some(neighbor) = child(node, index) else {
+                    continue;
+                };
                 match index {
                     // 0 <-> 2 edges are wired from their port-0 side.
-                    0 => wire_chain_edge(&centers[&Rc::as_ptr(node)], &centers[&Rc::as_ptr(&neighbor)]),
+                    0 => wire_chain_edge(
+                        &centers[&Rc::as_ptr(node)],
+                        &centers[&Rc::as_ptr(&neighbor)],
+                    ),
                     // 1 <-> 1 edges are wired from one canonical side.
-                    1 if Rc::as_ptr(node) < Rc::as_ptr(&neighbor) => {
-                        wire_pair_edge(&centers[&Rc::as_ptr(node)], &centers[&Rc::as_ptr(&neighbor)])
-                    }
+                    1 if Rc::as_ptr(node) < Rc::as_ptr(&neighbor) => wire_pair_edge(
+                        &centers[&Rc::as_ptr(node)],
+                        &centers[&Rc::as_ptr(&neighbor)],
+                    ),
                     _ => {}
                 }
             }
@@ -109,7 +116,11 @@ fn wire_chain_edge(p_center: &NodeRef, q_center: &NodeRef) {
 
     let coincident = edge_midpoint(&p_i, 0).distance(edge_midpoint(&q_i, 2))
         < p_i.borrow().base_length * COINCIDENCE_TOLERANCE;
-    let (q_near_a, q_near_b) = if coincident { (&q_i, &q_k) } else { (&q_k, &q_i) };
+    let (q_near_a, q_near_b) = if coincident {
+        (&q_i, &q_k)
+    } else {
+        (&q_k, &q_i)
+    };
     link(&p_i, 0, q_near_a, 2);
     link(&p_j, 0, q_near_b, 2);
 }

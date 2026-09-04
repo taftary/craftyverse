@@ -12,7 +12,13 @@ use render::Scenario;
 /// Pentagonal base scenario: 5 inward base nodes + 5 outward reverted nodes.
 fn base_plan() -> Plan {
     let mut plan = Plan::default();
-    plan.root_node = Some(plan::generate_base("base_", 300.0, Vec2::Y, Vec2::ZERO, Labeling::Normal));
+    plan.root_node = Some(plan::generate_base(
+        "base_",
+        300.0,
+        Vec2::Y,
+        Vec2::ZERO,
+        Labeling::Normal,
+    ));
     plan
 }
 
@@ -29,10 +35,26 @@ fn main() {
     let height = 300.0 * 3.0_f32.sqrt() / 2.0;
 
     // 1. One node, without split.
-    let no_split = Scenario::Static(vec![Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "root", Labeling::Normal)]);
+    let no_split = Scenario::Static(vec![Node::new(
+        Vec2::Y,
+        Vec2::ZERO,
+        origin,
+        300.0,
+        height,
+        "root",
+        Labeling::Normal,
+    )]);
 
     // 2. One node with split — display only the split nodes.
-    let parent = Node::new(Vec2::Y, Vec2::ZERO, origin, 300.0, height, "parent", Labeling::Normal);
+    let parent = Node::new(
+        Vec2::Y,
+        Vec2::ZERO,
+        origin,
+        300.0,
+        height,
+        "parent",
+        Labeling::Normal,
+    );
     let center = parent.borrow().split();
     let mut split_nodes = vec![center.clone()];
     for corner in center.borrow().children.iter().flatten() {
@@ -41,11 +63,17 @@ fn main() {
     let split = Scenario::Static(split_nodes);
 
     // 3. One pentagonal base — live plan: S subdivides it, R regenerates it.
-    let base = Scenario::Plan { plan: base_plan(), rebuild: base_plan };
+    let base = Scenario::Plan {
+        plan: base_plan(),
+        rebuild: base_plan,
+    };
 
     // 4. Full dual-pentagon interlocked mesh — live plan: S subdivides it,
     //    R regenerates it.
-    let dual_mesh = Scenario::Plan { plan: dual_mesh_plan(), rebuild: dual_mesh_plan };
+    let dual_mesh = Scenario::Plan {
+        plan: dual_mesh_plan(),
+        rebuild: dual_mesh_plan,
+    };
 
     // Opens the Vulkan viewer window; keys 1..4 select the scene, S splits
     // the current plan one level, R regenerates it.

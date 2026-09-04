@@ -21,8 +21,23 @@ pub(crate) fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
     b.borrow_mut().children[port_b] = Some(Rc::clone(a));
 }
 
-/// Collects every node reachable from `root` by following child links
-/// (breadth-first, deduplicated by pointer identity).
+/// Collects every node reachable from `root` by following child links.
+///
+/// Traversal is breadth-first and deduplicated by pointer identity, so each
+/// `NodeRef` appears exactly once even when the mesh contains cycles. The
+/// returned vector is ordered by discovery distance from `root`.
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec2;
+/// use crate::node::{collect_nodes, Labeling, Node};
+///
+/// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+/// let center = node.borrow().split();
+/// let all = collect_nodes(&center);
+/// assert_eq!(all.len(), 4);
+/// ```
 pub fn collect_nodes(root: &NodeRef) -> Vec<NodeRef> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::from([Rc::clone(root)]);

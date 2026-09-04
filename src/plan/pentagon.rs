@@ -19,18 +19,37 @@ pub(crate) fn apothem(side_length: f32) -> f32 {
     side_length / (2.0 * (PI / PENTAGON_SIDES as f32).tan())
 }
 
-/// Constructs a pentagonal base structure composed of 5 paired Node
-/// structures (10 nodes total): 5 inward-pointing `base_node`s whose
-/// apexes converge at `pentagon_center`, and 5 outward-pointing
-/// `reverted_node`s. Each pair shares a base edge flush with a pentagon
-/// side. Returns the first generated base node.
+/// Constructs a pentagonal base structure.
+///
+/// The structure is composed of 5 paired nodes (10 nodes total):
+/// - 5 inward-pointing `base_node`s whose apexes converge at `pentagon_center`.
+/// - 5 outward-pointing `reverted_node`s.
+///
+/// Each pair shares a base edge flush with a pentagon side. The returned node
+/// is the first generated base node; traversing `children[2]` visits all 5 base
+/// nodes in a closed circular loop.
+///
+/// # Parameters
 ///
 /// - `name` — name prefix of the base structure.
 /// - `side_length` — length of each pentagon edge.
-/// - `pentagon_direction` — initial orientation vector.
+/// - `pentagon_direction` — initial orientation vector; used to rotate the
+///   pentagon.
 /// - `pentagon_center` — center coordinates of the pentagon.
-/// - `labeling` — corner labeling convention for the `base_node`s;
-///   `reverted_node`s receive the opposite labeling.
+/// - `labeling` — corner labeling convention for the `base_node`s. Each
+///   `reverted_node` receives the opposite labeling so both nodes of a pair
+///   label the same pentagon vertex with the same letter.
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec2;
+/// use crate::node::Labeling;
+/// use crate::plan::generate_base;
+///
+/// let root = generate_base("test_", 1.0, Vec2::Y, Vec2::ZERO, Labeling::Normal);
+/// assert_eq!(root.borrow().name, "test_base_node_0");
+/// ```
 pub fn generate_base(
     name: &str,
     side_length: f32,
@@ -110,11 +129,7 @@ pub(crate) fn walk_perimeter(root: &NodeRef) -> [NodeRef; PENTAGON_SIDES] {
     let mut loop_nodes = Vec::with_capacity(PENTAGON_SIDES);
     loop_nodes.push(Rc::clone(root));
     for _ in 1..PENTAGON_SIDES {
-        let next = loop_nodes
-            .last()
-            .unwrap()
-            .borrow()
-            .children[2]
+        let next = loop_nodes.last().unwrap().borrow().children[2]
             .clone()
             .expect("next base node");
         loop_nodes.push(next);
@@ -130,9 +145,7 @@ pub(crate) fn walk_perimeter(root: &NodeRef) -> [NodeRef; PENTAGON_SIDES] {
 pub(crate) fn reverted_nodes(root_base_node: &NodeRef) -> [NodeRef; PENTAGON_SIDES] {
     walk_perimeter(root_base_node).map(|base_node| {
         Rc::clone(
-            base_node
-                .borrow()
-                .children[1]
+            base_node.borrow().children[1]
                 .as_ref()
                 .expect("paired reverted node"),
         )

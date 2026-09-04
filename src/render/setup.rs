@@ -4,6 +4,7 @@
 
 use std::sync::Arc;
 
+use vulkano::VulkanLibrary;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -20,20 +21,16 @@ use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreate
 use vulkano::image::view::ImageView;
 use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
-use vulkano::memory::allocator::{
-    AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator,
-};
+use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
+use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::graphics::color_blend::{
     AttachmentBlend, ColorBlendAttachmentState, ColorBlendState,
 };
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
-use vulkano::pipeline::graphics::vertex_input::{
-    VertexBufferDescription, VertexDefinition,
-};
+use vulkano::pipeline::graphics::vertex_input::{VertexBufferDescription, VertexDefinition};
 use vulkano::pipeline::graphics::viewport::ViewportState;
-use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::layout::PipelineDescriptorSetLayoutCreateInfo;
 use vulkano::pipeline::{
     DynamicState, GraphicsPipeline, Pipeline, PipelineLayout, PipelineShaderStageCreateInfo,
@@ -42,7 +39,6 @@ use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpa
 use vulkano::shader::EntryPoint;
 use vulkano::swapchain::{PresentMode, Surface, Swapchain, SwapchainCreateInfo};
 use vulkano::sync::{self, GpuFuture};
-use vulkano::VulkanLibrary;
 use winit::event_loop::EventLoop;
 use winit::window::Window;
 
@@ -277,8 +273,10 @@ pub(crate) fn upload_atlas(
     text_pipeline: &Arc<GraphicsPipeline>,
 ) -> (TextAtlas, Arc<DescriptorSet>) {
     // Rasterize the glyph atlas and upload it as an R8 texture.
-    let atlas = TextAtlas::new(include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf"))
-        .expect("failed to load bundled font");
+    let atlas = TextAtlas::new(include_bytes!(
+        "../../assets/fonts/JetBrainsMono-Regular.ttf"
+    ))
+    .expect("failed to load bundled font");
     let atlas_image = Image::new(
         memory_allocator.clone(),
         ImageCreateInfo {
@@ -339,7 +337,12 @@ pub(crate) fn upload_atlas(
     )
     .unwrap();
     let atlas_view = ImageView::new_default(atlas_image).unwrap();
-    let text_layout = text_pipeline.layout().set_layouts().first().unwrap().clone();
+    let text_layout = text_pipeline
+        .layout()
+        .set_layouts()
+        .first()
+        .unwrap()
+        .clone();
     let text_descriptor_set = DescriptorSet::new(
         descriptor_set_allocator.clone(),
         text_layout,

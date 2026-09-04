@@ -14,8 +14,8 @@ use winit::window::{Window, WindowId};
 
 use crate::scene::DisplayOptions;
 
-use super::renderer::Renderer;
 use super::Scenario;
+use super::renderer::Renderer;
 
 pub(crate) struct Viewer {
     instance: Arc<Instance>,
@@ -116,10 +116,9 @@ impl ApplicationHandler for Viewer {
         if self.renderer.is_none() {
             let window = Arc::new(
                 event_loop
-                    .create_window(
-                        Window::default_attributes()
-                            .with_title("PlanetCrafter node viewer — 1-4: scenes, S: split level, R: reset"),
-                    )
+                    .create_window(Window::default_attributes().with_title(
+                        "PlanetCrafter node viewer — 1-4: scenes, S: split level, R: reset",
+                    ))
                     .expect("failed to create window"),
             );
             let mut renderer = Renderer::new(self.instance.clone(), window);

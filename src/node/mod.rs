@@ -1,7 +1,33 @@
-//! The `Node` class: isosceles triangle geometry, directional vectors and
-//! bidirectional links to adjacent nodes. Pure geometric helpers live in
-//! `geometry`, child-link wiring and traversal in `topology`.
-//! See `docs/classes-definitions/node.md`.
+//! The `Node` module: isosceles triangle geometry, directional vectors, and
+//! bidirectional links to adjacent nodes.
+//!
+//! A [`Node`] represents one isosceles triangle in a hierarchical mesh. It stores
+//! its corner points, center, directional vectors, and up to three neighbors in
+//! the `children` array. Nodes are reference-counted and mutable via
+//! [`NodeRef`] so that bidirectional links can be shared.
+//!
+//! Pure geometric helpers live in `geometry`; child-link wiring and graph
+//! traversal live in `topology`. The full contract is specified in
+//! `docs/rust/book/specs/node.md`.
+//!
+//! # Example
+//!
+//! ```
+//! use glam::Vec2;
+//! use crate::node::{Labeling, Node};
+//!
+//! let node = Node::new(
+//!     Vec2::Y,
+//!     Vec2::ZERO,
+//!     Vec2::ZERO,
+//!     2.0,
+//!     1.0,
+//!     "root",
+//!     Labeling::Normal,
+//! );
+//! let center = node.borrow().center;
+//! assert_eq!(center, Vec2::ZERO);
+//! ```
 
 mod geometry;
 pub(crate) mod topology;
@@ -19,13 +45,22 @@ use topology::{link, reciprocal_index};
 
 pub use topology::collect_nodes;
 
-/// Shared, mutable link to a node. Used for the bidirectional `children` links.
+/// Shared, mutable reference to a [`Node`].
+///
+/// `NodeRef` is an `Rc<RefCell<Node>>`: multiple parts of the mesh can hold the
+/// same node, and the mutable borrow is deferred to runtime. This is the
+/// ownership model used for the bidirectional `children` links.
 pub type NodeRef = Rc<RefCell<Node>>;
 
-/// Corner labeling convention for a node's triangle: `Normal` keeps the
-/// default B/C assignment, `Mirrored` swaps it (and therefore the I/K
-/// direction vectors). Construction-time only — afterwards the labeling is
-/// implicit in the stored `points` triplet and propagates through `split()`.
+/// Corner labeling convention for a node's triangle.
+///
+/// - `Normal` keeps the default B/C corner assignment.
+/// - `Mirrored` swaps the B/C corner assignment, which also swaps the I and K
+///   direction vectors.
+///
+/// The labeling is a construction-time choice only. After construction the
+/// labeling is implicit in the stored [`points`](Node::points) triplet and
+/// propagates automatically through [`Node::split`].
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Labeling {
     Normal,
@@ -33,7 +68,10 @@ pub enum Labeling {
 }
 
 impl Labeling {
-    /// The opposite labeling (used to mirror paired nodes).
+    /// Returns the opposite labeling.
+    ///
+    /// Used to mirror paired nodes so that both nodes of a pair label the same
+    /// pentagon vertex with the same letter.
     pub fn opposite(self) -> Self {
         match self {
             Labeling::Normal => Labeling::Mirrored,
@@ -42,50 +80,82 @@ impl Labeling {
     }
 }
 
-/// A geometric node: isosceles triangle geometry, directional vectors and
-/// bidirectional links to adjacent nodes. See `docs/classes-definitions/node.md`.
+/// A geometric node: an isosceles triangle with directional vectors and
+/// bidirectional links to adjacent nodes.
+///
+/// See `docs/rust/book/specs/node.md` for the full specification of the
+/// geometry, topology, and identity rules.
 pub struct Node {
     // --- Identity ---
-    /// Unique identifier across all nodes.
+    /// Unique identifier across all nodes. The caller is responsible for
+    /// keeping names unique; duplicate names do not affect geometry but make
+    /// debugging and logging ambiguous.
     pub name: String,
-    /// Split depth; 0 for the root node, no upper bound.
+    /// Split depth. `0` for a root node; incremented by one for every
+    /// generation produced by [`Node::split`]. There is no upper bound.
     pub level: u32,
 
     // --- Geometry ---
-    /// Center of the node.
+    /// Centroid of the node's triangle, computed from the corner points.
     pub center: Vec2,
-    /// Vector from the node center toward the origin.
+    /// Vector from the node center toward the origin used to construct the
+    /// node. This is `origin - center` and is recomputed for each child during
+    /// [`Node::split`].
     pub direction_to_origin: Vec2,
-    /// Directional vectors `[i, j, k]`.
+    /// Directional vectors `[i, j, k]`. Each vector is perpendicular to one
+    /// edge of the triangle and points from the center toward that edge:
+    /// - `i` is perpendicular to edge AB,
+    /// - `j` is perpendicular to edge BC,
+    /// - `k` is perpendicular to edge CA.
     pub directions: [Vec2; 3],
-    /// Triangle corner points `[A, B, C]` — A is the apex, BC the base.
+    /// Triangle corner points `[A, B, C]`. `A` is the apex and `BC` is the
+    /// base. The base is perpendicular to `direction_of_node`.
     pub points: [Vec2; 3],
-    /// Orientation of the isosceles triangle: normalized vector pointing from
-    /// base BC toward apex A, perpendicular to BC.
+    /// Normalized orientation vector of the isosceles triangle, pointing from
+    /// the base `BC` toward the apex `A`.
     pub direction_of_node: Vec2,
-    /// Length of the base edge BC.
+    /// Length of the base edge `BC`.
     pub base_length: f32,
-    /// Height of the isosceles triangle (distance from base BC to apex A).
+    /// Perpendicular distance from the base `BC` to the apex `A`.
     pub height: f32,
 
     // --- Topology ---
-    /// Bidirectional links `[nodeI, nodeJ, nodeK]`; `children[0]` is the link in
-    /// direction I, `children[1]` in direction J, `children[2]` in direction K.
+    /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
+    ///
+    /// - `children[0]` is the link in direction `i` (perpendicular to edge AB).
+    /// - `children[1]` is the link in direction `j` (perpendicular to edge BC).
+    /// - `children[2]` is the link in direction `k` (perpendicular to edge CA).
+    ///
+    /// Links are reciprocal: if `A.children[x] == B`, then
+    /// `B.children[reciprocal_index(x)] == A`.
     pub children: [Option<NodeRef>; 3],
 }
 
 impl Node {
-    /// Creates a node and initializes its geometry.
+    /// Creates a new node and initializes its geometry.
     ///
-    /// - `direction_of_node` — direction pointing toward apex A (perpendicular
-    ///   to base BC); stored normalized.
-    /// - `center` — center point of the node.
-    /// - `origin` — position of the origin, used to orient the node.
-    /// - `base_length` — length of the base edge BC of the node's triangle.
-    /// - `height` — height of the isosceles triangle from base BC to apex A.
-    /// - `name` — unique name identifying the node.
-    /// - `labeling` — corner labeling convention; `Mirrored` swaps the B/C
-    ///   corner assignment and therefore the I/K direction vectors.
+    /// # Parameters
+    ///
+    /// - `direction_of_node` — direction pointing from base `BC` toward apex
+    ///   `A`. Stored normalized; the base is constructed perpendicular to it.
+    /// - `center` — centroid of the node's triangle.
+    /// - `origin` — position used to compute `direction_to_origin` for the node
+    ///   and its descendants.
+    /// - `base_length` — length of the base edge `BC`.
+    /// - `height` — perpendicular distance from base `BC` to apex `A`.
+    /// - `name` — unique identifier for the node.
+    /// - `labeling` — corner labeling convention. `Mirrored` swaps the B/C
+    ///   assignment and therefore the I/K direction vectors.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use crate::node::{Labeling, Node};
+    ///
+    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+    /// assert_eq!(node.borrow().level, 0);
+    /// ```
     pub fn new(
         direction_of_node: Vec2,
         center: Vec2,
@@ -108,9 +178,11 @@ impl Node {
         )))
     }
 
-    /// Builds a node from an explicit points triplet: the center is the
-    /// centroid, `direction_to_origin` and the directions are derived from the
-    /// points.
+    /// Builds a node from an explicit points triplet.
+    ///
+    /// The center is the centroid of the triplet, `direction_to_origin` and the
+    /// `[i, j, k]` directions are derived from the points. This constructor is
+    /// used internally by [`Node::new`] and [`Node::split`].
     fn from_points(
         direction_of_node: Vec2,
         points: [Vec2; 3],
@@ -135,9 +207,36 @@ impl Node {
         }
     }
 
-    /// Splits the node into four new nodes (three corner nodes plus one center
-    /// node), interconnects them and returns the center node.
-    /// See `docs/classes-definitions/node.md` for the full specification.
+    /// Splits the node into four new nodes and returns the center node.
+    ///
+    /// The four new nodes are:
+    /// - `NodeI`, `NodeJ`, `NodeK` — corner nodes that keep the parent's
+    ///   `direction_of_node`.
+    /// - `NodeCenter` — the inverted middle node with
+    ///   `direction_of_node = -parent.direction_of_node`.
+    ///
+    /// The center node is internally connected to each corner node through
+    /// reciprocal `children` links. The caller is responsible for wiring the
+    /// corner nodes to neighboring split centers across the subdivided edges.
+    ///
+    /// Each new node receives half the parent's [`base_length`](Node::base_length)
+    /// and [`height`](Node::height), and its [`level`](Node::level) is set to
+    /// `parent.level + 1`.
+    ///
+    /// See `docs/rust/book/specs/node.md` for the full geometric construction
+    /// and topology rules.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use crate::node::{Labeling, Node};
+    ///
+    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+    /// let center = node.borrow().split();
+    /// assert_eq!(center.borrow().level, 1);
+    /// assert!(center.borrow().children[0].is_some());
+    /// ```
     pub fn split(&self) -> NodeRef {
         let old_level = self.level;
         // The node stores no origin; recover it from center + direction_to_origin.
@@ -207,10 +306,24 @@ impl Node {
         node_center
     }
 
-    /// Destroys the node by severing all bidirectional `children` links: for
-    /// each linked neighbor, the reciprocal back-link is cleared first, then
-    /// the link itself. The node is freed automatically once its last `Rc`
-    /// reference is dropped — there is no explicit self-destruction in Rust.
+    /// Severs all bidirectional `children` links.
+    ///
+    /// For each linked neighbor, the reciprocal back-link is cleared first,
+    /// then the link on this node. The node itself is freed automatically once
+    /// its last `Rc` reference is dropped; there is no explicit
+    /// self-destruction in Rust.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use glam::Vec2;
+    /// use crate::node::{Labeling, Node};
+    ///
+    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+    /// let center = node.borrow().split();
+    /// center.borrow_mut().destroy();
+    /// assert!(center.borrow().children.iter().all(|c| c.is_none()));
+    /// ```
     pub fn destroy(&mut self) {
         // (link index on self, reciprocal back-link index on the neighbor),
         // mirroring the interconnections established by `split()`.

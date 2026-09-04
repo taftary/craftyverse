@@ -15,11 +15,8 @@ pub(crate) const LEVEL_COLORS: [[f32; 3]; 8] = [
 
 /// Colors of the I/J/K direction vectors (red/green/blue); also used for the
 /// per-port child links, open-port markers and sub-switch labels.
-pub(crate) const DIRECTION_COLORS: [[f32; 3]; 3] = [
-    hex_rgb("#d32f2f"),
-    hex_rgb("#388e3c"),
-    hex_rgb("#1976d2"),
-];
+pub(crate) const DIRECTION_COLORS: [[f32; 3]; 3] =
+    [hex_rgb("#d32f2f"), hex_rgb("#388e3c"), hex_rgb("#1976d2")];
 /// Color of the `direction_of_node` arrow.
 pub(crate) const NODE_DIRECTION_COLOR: [f32; 3] = hex_rgb("#8e24aa");
 /// Color of the dashed origin arrow.

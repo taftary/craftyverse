@@ -70,7 +70,15 @@ fn new_builds_equilateral_triangle_around_center() {
 
 #[test]
 fn new_builds_isosceles_triangle_from_direction_and_dimensions() {
-    let node = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "iso", Labeling::Normal);
+    let node = Node::new(
+        Vec2::X,
+        Vec2::ZERO,
+        Vec2::ZERO,
+        300.0,
+        200.0,
+        "iso",
+        Labeling::Normal,
+    );
     let node = node.borrow();
     let [a, b, c] = node.points;
 
@@ -92,8 +100,24 @@ fn new_builds_isosceles_triangle_from_direction_and_dimensions() {
 
 #[test]
 fn new_mirrored_labeling_swaps_b_c_and_i_k() {
-    let normal = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "n", Labeling::Normal);
-    let mirrored = Node::new(Vec2::X, Vec2::ZERO, Vec2::ZERO, 300.0, 200.0, "m", Labeling::Mirrored);
+    let normal = Node::new(
+        Vec2::X,
+        Vec2::ZERO,
+        Vec2::ZERO,
+        300.0,
+        200.0,
+        "n",
+        Labeling::Normal,
+    );
+    let mirrored = Node::new(
+        Vec2::X,
+        Vec2::ZERO,
+        Vec2::ZERO,
+        300.0,
+        200.0,
+        "m",
+        Labeling::Mirrored,
+    );
     let normal = normal.borrow();
     let mirrored = mirrored.borrow();
 

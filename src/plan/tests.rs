@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use glam::Vec2;
 
+use super::Plan;
 use super::pentagon::{apothem, generate_base, reverted_nodes, walk_perimeter};
 use super::subdivide::child;
-use super::Plan;
-use crate::node::{collect_nodes, Labeling, NodeRef};
+use crate::node::{Labeling, NodeRef, collect_nodes};
 
 const EPSILON: f32 = 1e-3;
 const SIDE_LENGTH: f32 = 300.0;
@@ -32,12 +32,16 @@ fn generate_base_creates_ten_level_zero_nodes() {
         assert_eq!(node.borrow().level, 0);
     }
     for i in 0..5 {
-        assert!(nodes
-            .iter()
-            .any(|node| node.borrow().name == format!("base_base_node_{i}")));
-        assert!(nodes
-            .iter()
-            .any(|node| node.borrow().name == format!("base_reverted_node_{i}")));
+        assert!(
+            nodes
+                .iter()
+                .any(|node| node.borrow().name == format!("base_base_node_{i}"))
+        );
+        assert!(
+            nodes
+                .iter()
+                .any(|node| node.borrow().name == format!("base_reverted_node_{i}"))
+        );
     }
     // rootNode state points at the first base node.
     assert!(Rc::ptr_eq(plan.root_node.as_ref().unwrap(), &root));
@@ -47,7 +51,13 @@ fn generate_base_creates_ten_level_zero_nodes() {
 #[test]
 fn generate_base_base_apexes_converge_at_pentagon_center() {
     let center = Vec2::new(100.0, 200.0);
-    let root = generate_base("base_", SIDE_LENGTH, Vec2::new(1.0, 1.0), center, Labeling::Normal);
+    let root = generate_base(
+        "base_",
+        SIDE_LENGTH,
+        Vec2::new(1.0, 1.0),
+        center,
+        Labeling::Normal,
+    );
 
     // h = r, so every inward base_node apex lands on the pentagon center
     // and its base midpoint sits exactly one apothem away from it.
@@ -120,7 +130,10 @@ fn generate_base_perimeter_loop_closes_after_five_hops() {
     // children[2] visits 5 distinct base nodes, then returns to the start.
     let loop_nodes = perimeter_loop(&root);
     for (i, node) in loop_nodes.iter().enumerate() {
-        assert_eq!(node.borrow().name, format!("base_base_node_{}", (5 - i) % 5));
+        assert_eq!(
+            node.borrow().name,
+            format!("base_base_node_{}", (5 - i) % 5)
+        );
     }
     let back = loop_nodes[4].borrow().children[2].clone().unwrap();
     assert!(Rc::ptr_eq(&back, &root));
@@ -141,10 +154,7 @@ fn get_reverted_nodes_returns_inner_ring_in_circular_sequence() {
     // paired reverted nodes come out in the same rotated order.
     let reverted = reverted_nodes(&root);
     for (node, suffix) in reverted.iter().zip([0, 4, 3, 2, 1]) {
-        assert_eq!(
-            node.borrow().name,
-            format!("north_reverted_node_{suffix}")
-        );
+        assert_eq!(node.borrow().name, format!("north_reverted_node_{suffix}"));
     }
 }
 
@@ -169,9 +179,9 @@ fn generate_saturates_every_child_port_reciprocally() {
     for node in collect_nodes(&root) {
         let node_ref = node.borrow();
         for (index, child) in node_ref.children.iter().enumerate() {
-            let child = child.as_ref().unwrap_or_else(|| {
-                panic!("{} port {index} is unconnected", node_ref.name)
-            });
+            let child = child
+                .as_ref()
+                .unwrap_or_else(|| panic!("{} port {index} is unconnected", node_ref.name));
             let reciprocal_index = match index {
                 0 => 2,
                 1 => 1,
@@ -333,14 +343,16 @@ fn split_wires_corner_pairs_across_each_edge_kind() {
             .unwrap_or_else(|| panic!("missing {name}"))
     };
     let assert_linked = |a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize| {
-        let forward = child(a, port_a).unwrap_or_else(|| panic!("{}[{port_a}] is open", a.borrow().name));
+        let forward =
+            child(a, port_a).unwrap_or_else(|| panic!("{}[{port_a}] is open", a.borrow().name));
         assert!(
             Rc::ptr_eq(&forward, b),
             "{}[{port_a}] does not link to {}",
             a.borrow().name,
             b.borrow().name
         );
-        let back = child(b, port_b).unwrap_or_else(|| panic!("{}[{port_b}] is open", b.borrow().name));
+        let back =
+            child(b, port_b).unwrap_or_else(|| panic!("{}[{port_b}] is open", b.borrow().name));
         assert!(
             Rc::ptr_eq(&back, a),
             "{}[{port_b}] does not link back to {}",
@@ -351,24 +363,74 @@ fn split_wires_corner_pairs_across_each_edge_kind() {
 
     // Perimeter edge north_base_node_0 -> north_base_node_1 (coincident,
     // straight pairing I<->I, J<->K).
-    assert_linked(&by_name("north_base_node_0.I"), 0, &by_name("north_base_node_1.I"), 2);
-    assert_linked(&by_name("north_base_node_0.J"), 0, &by_name("north_base_node_1.K"), 2);
+    assert_linked(
+        &by_name("north_base_node_0.I"),
+        0,
+        &by_name("north_base_node_1.I"),
+        2,
+    );
+    assert_linked(
+        &by_name("north_base_node_0.J"),
+        0,
+        &by_name("north_base_node_1.K"),
+        2,
+    );
 
     // Pair edge north_base_node_0 <-> north_reverted_node_0 (straight
     // pairing J<->J, K<->K across the shared base edge).
-    assert_linked(&by_name("north_base_node_0.J"), 1, &by_name("north_reverted_node_0.J"), 1);
-    assert_linked(&by_name("north_base_node_0.K"), 1, &by_name("north_reverted_node_0.K"), 1);
+    assert_linked(
+        &by_name("north_base_node_0.J"),
+        1,
+        &by_name("north_reverted_node_0.J"),
+        1,
+    );
+    assert_linked(
+        &by_name("north_base_node_0.K"),
+        1,
+        &by_name("north_reverted_node_0.K"),
+        1,
+    );
 
     // Belt edge north_reverted_node_4 -> south_reverted_node_4 (crosswise
     // pairing I<->K, J<->I across the interlock gap).
-    assert_linked(&by_name("north_reverted_node_4.I"), 0, &by_name("south_reverted_node_4.K"), 2);
-    assert_linked(&by_name("north_reverted_node_4.J"), 0, &by_name("south_reverted_node_4.I"), 2);
+    assert_linked(
+        &by_name("north_reverted_node_4.I"),
+        0,
+        &by_name("south_reverted_node_4.K"),
+        2,
+    );
+    assert_linked(
+        &by_name("north_reverted_node_4.J"),
+        0,
+        &by_name("south_reverted_node_4.I"),
+        2,
+    );
 
     // Ring closes: north cap (straight) and belt (crosswise).
-    assert_linked(&by_name("north_base_node_4.I"), 0, &by_name("north_base_node_0.I"), 2);
-    assert_linked(&by_name("north_base_node_4.J"), 0, &by_name("north_base_node_0.K"), 2);
-    assert_linked(&by_name("south_reverted_node_3.I"), 0, &by_name("north_reverted_node_4.K"), 2);
-    assert_linked(&by_name("south_reverted_node_3.J"), 0, &by_name("north_reverted_node_4.I"), 2);
+    assert_linked(
+        &by_name("north_base_node_4.I"),
+        0,
+        &by_name("north_base_node_0.I"),
+        2,
+    );
+    assert_linked(
+        &by_name("north_base_node_4.J"),
+        0,
+        &by_name("north_base_node_0.K"),
+        2,
+    );
+    assert_linked(
+        &by_name("south_reverted_node_3.I"),
+        0,
+        &by_name("north_reverted_node_4.K"),
+        2,
+    );
+    assert_linked(
+        &by_name("south_reverted_node_3.J"),
+        0,
+        &by_name("north_reverted_node_4.I"),
+        2,
+    );
 }
 
 /// Repeated subdivision keeps the mesh fully wired and connected: at each

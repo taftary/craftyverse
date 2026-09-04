@@ -4,7 +4,7 @@ use winit::keyboard::{KeyCode, NativeKeyCode, PhysicalKey};
 
 use super::renderer::checkbox_at;
 use super::setup::device_type_rank;
-use super::shaders::{compile_spirv, GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT};
+use super::shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
 use super::vertices::PushTransform;
 use super::viewer::scenario_index_of;
 use crate::scene::{Attribute, Checkbox, ClipTransform};

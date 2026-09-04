@@ -13,8 +13,8 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, RenderPassBeginInfo,
     SubpassBeginInfo, SubpassEndInfo,
 };
-use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::DescriptorSet;
+use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::device::{Device, DeviceExtensions, Queue};
 use vulkano::instance::Instance;
 use vulkano::memory::allocator::StandardMemoryAllocator;
@@ -25,7 +25,7 @@ use vulkano::pipeline::graphics::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
 use vulkano::swapchain::{
-    acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
+    Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo, acquire_next_image,
 };
 use vulkano::sync::{self, GpuFuture};
 use vulkano::{Validated, VulkanError};
@@ -36,7 +36,7 @@ use crate::scene::{self, Attribute, Checkbox, DisplayOptions, SceneMesh};
 use crate::text::TextAtlas;
 
 use super::setup;
-use super::shaders::{load_shader, GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT};
+use super::shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, load_shader};
 use super::vertices::{GeomVertex, PushTransform, TextVertexGpu};
 
 /// Owns the window, the Vulkan objects and the current scene's vertex
@@ -73,16 +73,19 @@ impl Renderer {
     /// Full Vulkan setup: device, swapchain, render pass, pipelines and the
     /// glyph atlas (see `setup`). Scene buffers stay empty until `set_scene`.
     pub(crate) fn new(instance: Arc<Instance>, window: Arc<Window>) -> Self {
-        let surface =
-            Surface::from_window(instance.clone(), window.clone()).expect("failed to create surface");
+        let surface = Surface::from_window(instance.clone(), window.clone())
+            .expect("failed to create surface");
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
         let (physical_device, queue_family_index) =
             setup::pick_physical_device(&instance, &surface, &device_extensions);
-        let (device, queue) =
-            setup::create_device_and_queue(&physical_device, &device_extensions, queue_family_index);
+        let (device, queue) = setup::create_device_and_queue(
+            &physical_device,
+            &device_extensions,
+            queue_family_index,
+        );
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let command_buffer_allocator = Arc::new(StandardCommandBufferAllocator::new(
@@ -307,18 +310,42 @@ impl Renderer {
 
         // World-space geometry: child links, outlines, arrow shafts, dashes…
         if let Some(lines) = &self.line_buffer {
-            record_draw(&mut builder, &self.line_pipeline, self.world_to_clip, lines, None);
+            record_draw(
+                &mut builder,
+                &self.line_pipeline,
+                self.world_to_clip,
+                lines,
+                None,
+            );
         }
         // …then filled triangles (arrowheads, dots) on top of the lines.
         if let Some(triangles) = &self.tri_buffer {
-            record_draw(&mut builder, &self.tri_pipeline, self.world_to_clip, triangles, None);
+            record_draw(
+                &mut builder,
+                &self.tri_pipeline,
+                self.world_to_clip,
+                triangles,
+                None,
+            );
         }
         // Checkbox panel, in pixel space.
         if let Some(ui_lines) = &self.ui_line_buffer {
-            record_draw(&mut builder, &self.line_pipeline, self.pixel_to_clip, ui_lines, None);
+            record_draw(
+                &mut builder,
+                &self.line_pipeline,
+                self.pixel_to_clip,
+                ui_lines,
+                None,
+            );
         }
         if let Some(ui_triangles) = &self.ui_tri_buffer {
-            record_draw(&mut builder, &self.tri_pipeline, self.pixel_to_clip, ui_triangles, None);
+            record_draw(
+                &mut builder,
+                &self.tri_pipeline,
+                self.pixel_to_clip,
+                ui_triangles,
+                None,
+            );
         }
         // …finally alpha-blended text in pixel space.
         if let Some(text) = &self.text_buffer {
@@ -343,10 +370,7 @@ impl Renderer {
             .unwrap()
             .then_swapchain_present(
                 self.queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    self.swapchain.clone(),
-                    image_index,
-                ),
+                SwapchainPresentInfo::swapchain_image_index(self.swapchain.clone(), image_index),
             )
             .then_signal_fence_and_flush();
         match future.map_err(Validated::unwrap) {

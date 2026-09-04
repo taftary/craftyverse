@@ -8,8 +8,8 @@ use glam::Vec2;
 use crate::node::Node;
 
 use super::colors::{
-    level_color, CORNER_LABEL_COLOR, DIRECTION_COLORS, LABEL_COLOR, NODE_DIRECTION_COLOR,
-    ORIGIN_COLOR,
+    CORNER_LABEL_COLOR, DIRECTION_COLORS, LABEL_COLOR, NODE_DIRECTION_COLOR, ORIGIN_COLOR,
+    level_color,
 };
 use super::{Bounds, LabelRequest, SceneBuilder, Vertex};
 
@@ -207,7 +207,10 @@ impl SceneBuilder {
                 continue;
             }
             let outward = node.directions[index];
-            let center = map_track(&mut self.bounds, edge_midpoints[index] + outward * radius * 1.4);
+            let center = map_track(
+                &mut self.bounds,
+                edge_midpoints[index] + outward * radius * 1.4,
+            );
             // Extend the content bounds to the disc rim so the view fit never
             // clips a marker.
             self.bounds
@@ -239,7 +242,10 @@ impl SceneBuilder {
             if !self.options.directions_ijk[index] {
                 continue;
             }
-            let end = map_track(&mut self.bounds, node.center + direction.normalize() * arrow_len);
+            let end = map_track(
+                &mut self.bounds,
+                node.center + direction.normalize() * arrow_len,
+            );
             let color = DIRECTION_COLORS[index];
             push_arrow(
                 &mut self.lines,
@@ -257,7 +263,10 @@ impl SceneBuilder {
     /// the node's center.
     fn add_direction_of_node_arrow(&mut self, node: &Node, center: Vec2, arrow_len: f32) {
         self.bounds.track(center);
-        let end = map_track(&mut self.bounds, node.center + node.direction_of_node * arrow_len);
+        let end = map_track(
+            &mut self.bounds,
+            node.center + node.direction_of_node * arrow_len,
+        );
         push_arrow(
             &mut self.lines,
             &mut self.triangles,
