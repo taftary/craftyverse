@@ -1,7 +1,10 @@
 # PlanetCrafter
 
 A high-performance game built from scratch in **Rust**, using **Vulkan** as the
-sole graphics API (natively on Android, via MoltenVK on iOS). See the [Rust architecture book](docs/book/index.md).
+sole graphics API. The current baseline is desktop Vulkan; Android (native
+Vulkan) and iOS (Vulkan via MoltenVK) are **Planned** (see the
+[technology status](docs/book/architecture/technology.md)). See the
+[Rust architecture book](docs/book/index.md).
 
 The project is at an early stage: it currently contains the geometric node
 system (hierarchical triangle subdivision with directional vectors and
