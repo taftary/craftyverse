@@ -1,22 +1,26 @@
 use super::*;
 
 const EPSILON: f32 = 1e-4;
-const SQRT_3_2: f32 = 0.866_025_4; // √3 / 2
+const SQRT_3_2: f32 = 0.866_025_4; // sqrt(3) / 2
 
-fn approx_eq(a: Vec2, b: Vec2) -> bool {
+fn point(x: f32, y: f32) -> Vec3 {
+    Vec3::new(x, y, 0.0)
+}
+
+fn approx_eq(a: Vec3, b: Vec3) -> bool {
     (a - b).length() < EPSILON
 }
 
-/// Equilateral test node (base 300, apex up, height = base * √3 / 2).
+/// Equilateral test node (base 300, apex up, height = base * sqrt(3) / 2).
 fn test_node() -> NodeRef {
     Node::new(
         "root",
         [
-            Vec2::new(0.0, 100.0 * 3.0_f32.sqrt()),
-            Vec2::new(150.0, -50.0 * 3.0_f32.sqrt()),
-            Vec2::new(-150.0, -50.0 * 3.0_f32.sqrt()),
+            point(0.0, 100.0 * 3.0_f32.sqrt()),
+            point(150.0, -50.0 * 3.0_f32.sqrt()),
+            point(-150.0, -50.0 * 3.0_f32.sqrt()),
         ],
-        Vec2::new(0.0, 1000.0),
+        point(0.0, 1000.0),
     )
 }
 
@@ -27,9 +31,9 @@ fn new_initializes_identity_and_geometry() {
 
     assert_eq!(node.name, "root");
     assert_eq!(node.level, 0);
-    assert!(approx_eq(node.center, Vec2::ZERO));
-    assert!(approx_eq(node.direction_to_origin, Vec2::new(0.0, 1000.0)));
-    assert!(approx_eq(node.direction_of_node, Vec2::Y));
+    assert!(approx_eq(node.center, Vec3::ZERO));
+    assert!(approx_eq(node.direction_to_origin, point(0.0, 1000.0)));
+    assert!(approx_eq(node.direction_of_node, Vec3::Y));
     assert_eq!(node.base_length, 300.0);
     assert_eq!(node.height, 300.0 * 3.0_f32.sqrt() / 2.0);
     assert!(node.children.iter().all(|slot| slot.is_none()));
@@ -39,14 +43,10 @@ fn new_initializes_identity_and_geometry() {
 fn new_normalizes_direction_of_node() {
     let node = Node::new(
         "scaled",
-        [
-            Vec2::new(0.0, 2.0),
-            Vec2::new(1.5, -1.0),
-            Vec2::new(-1.5, -1.0),
-        ],
-        Vec2::ZERO,
+        [point(0.0, 2.0), point(1.5, -1.0), point(-1.5, -1.0)],
+        Vec3::ZERO,
     );
-    assert!(approx_eq(node.borrow().direction_of_node, Vec2::Y));
+    assert!(approx_eq(node.borrow().direction_of_node, Vec3::Y));
 }
 
 #[test]
@@ -63,60 +63,65 @@ fn new_builds_equilateral_triangle_around_center() {
     assert!(((c - a).length() - side).abs() < EPSILON);
 
     // Apex up: A on top, B bottom-right, C bottom-left.
-    assert!(a.y > 0.0 && approx_eq(Vec2::new(a.x, 0.0), Vec2::ZERO));
+    assert!(a.y > 0.0 && approx_eq(point(a.x, 0.0), Vec3::ZERO));
     assert!(b.x > 0.0 && b.y < 0.0);
     assert!(c.x < 0.0 && c.y < 0.0);
 }
 
 #[test]
-fn new_builds_isosceles_triangle_from_direction_and_dimensions() {
+fn new_derives_altitude_and_dimensions_from_triangle_points() {
     let node = Node::new(
         "iso",
         [
-            Vec2::new(2.0 * 200.0 / 3.0, 0.0),
-            Vec2::new(-200.0 / 3.0, -150.0),
-            Vec2::new(-200.0 / 3.0, 150.0),
+            point(2.0 * 200.0 / 3.0, 0.0),
+            point(-200.0 / 3.0, -150.0),
+            point(-200.0 / 3.0, 150.0),
         ],
-        Vec2::ZERO,
+        Vec3::ZERO,
     );
     let node = node.borrow();
     let [a, b, c] = node.points;
 
     // Direction stored normalized, centroid is the center.
-    assert!(approx_eq(node.direction_of_node, Vec2::X));
-    assert!(approx_eq((a + b + c) / 3.0, Vec2::ZERO));
+    assert!(approx_eq(node.direction_of_node, Vec3::X));
+    assert!(approx_eq((a + b + c) / 3.0, Vec3::ZERO));
 
     // Apex A is 2/3 of the height along the direction, the base midpoint
     // 1/3 against it; BC is perpendicular to the direction, B and C half
     // the base length away on the perpendicular axis.
-    assert!(approx_eq(a, Vec2::new(2.0 * 200.0 / 3.0, 0.0)));
-    assert!(approx_eq(b, Vec2::new(-200.0 / 3.0, -150.0)));
-    assert!(approx_eq(c, Vec2::new(-200.0 / 3.0, 150.0)));
+    assert!(approx_eq(a, point(2.0 * 200.0 / 3.0, 0.0)));
+    assert!(approx_eq(b, point(-200.0 / 3.0, -150.0)));
+    assert!(approx_eq(c, point(-200.0 / 3.0, 150.0)));
 
-    // Isosceles: AB == AC, apex at distance `height` from base BC.
-    assert!(((a - b).length() - (a - c).length()).abs() < EPSILON);
+    // Height is the perpendicular distance from A to line BC.
     assert!(((a - (b + c) / 2.0).length() - 200.0).abs() < EPSILON);
+}
+
+#[test]
+fn new_supports_scalene_triangles() {
+    let node = Node::new(
+        "scalene",
+        [point(1.0, 3.0), point(0.0, 0.0), point(4.0, 0.0)],
+        Vec3::ZERO,
+    );
+    let node = node.borrow();
+
+    assert!(approx_eq(node.direction_of_node, Vec3::Y));
+    assert_eq!(node.base_length, 4.0);
+    assert_eq!(node.height, 3.0);
 }
 
 #[test]
 fn point_order_controls_direction_labels() {
     let normal = Node::new(
         "normal",
-        [
-            Vec2::new(0.0, 2.0),
-            Vec2::new(1.5, -1.0),
-            Vec2::new(-1.5, -1.0),
-        ],
-        Vec2::ZERO,
+        [point(0.0, 2.0), point(1.5, -1.0), point(-1.5, -1.0)],
+        Vec3::ZERO,
     );
     let mirrored = Node::new(
         "mirrored",
-        [
-            Vec2::new(0.0, 2.0),
-            Vec2::new(-1.5, -1.0),
-            Vec2::new(1.5, -1.0),
-        ],
-        Vec2::ZERO,
+        [point(0.0, 2.0), point(-1.5, -1.0), point(1.5, -1.0)],
+        Vec3::ZERO,
     );
     let normal = normal.borrow();
     let mirrored = mirrored.borrow();
@@ -133,10 +138,10 @@ fn equilateral_directions_match_expected_orientation() {
     let node = test_node();
     let [i, j, k] = node.borrow().directions;
 
-    // I up-right (⊥ AB), J straight down (⊥ BC), K up-left (⊥ CA).
-    assert!(approx_eq(i, Vec2::new(SQRT_3_2, 0.5)));
-    assert!(approx_eq(j, Vec2::new(0.0, -1.0)));
-    assert!(approx_eq(k, Vec2::new(-SQRT_3_2, 0.5)));
+    // I up-right (perpendicular to AB), J straight down (perpendicular to BC),
+    assert!(approx_eq(i, point(SQRT_3_2, 0.5)));
+    assert!(approx_eq(j, point(0.0, -1.0)));
+    assert!(approx_eq(k, point(-SQRT_3_2, 0.5)));
 }
 
 #[test]
@@ -146,7 +151,7 @@ fn directions_are_perpendicular_and_point_toward_edges() {
     let [a, b, c] = node.points;
     let [i, j, k] = node.directions;
 
-    // Uniform rule: I ⊥ AB, J ⊥ BC, K ⊥ CA.
+    // Uniform rule: I perpendicular to AB, J perpendicular to BC, K
     for (direction, edge_start, edge_end) in [(i, a, b), (j, b, c), (k, c, a)] {
         let edge = edge_end - edge_start;
         assert!(direction.dot(edge).abs() < EPSILON);
@@ -163,8 +168,8 @@ fn split_returns_center_node_with_incremented_level() {
 
     assert_eq!(center.borrow().level, 1);
     assert_eq!(center.borrow().name, "root.C");
-    // The center node is inverted relative to the parent.
-    assert!(approx_eq(center.borrow().direction_of_node, -Vec2::Y));
+    // The symmetric fixture produces the opposite center altitude.
+    assert!(approx_eq(center.borrow().direction_of_node, -Vec3::Y));
     // The parent node keeps its own level.
     assert_eq!(node.borrow().level, 0);
 }
@@ -198,7 +203,7 @@ fn split_connects_center_and_corner_nodes_bidirectionally() {
     // names.
     for (corner, suffix) in [(node_i, "root.I"), (node_j, "root.J"), (node_k, "root.K")] {
         let corner = corner.borrow();
-        assert!(approx_eq(corner.direction_of_node, Vec2::Y));
+        assert!(approx_eq(corner.direction_of_node, Vec3::Y));
         assert_eq!(corner.name, suffix);
         assert_eq!(corner.level, 1);
     }
@@ -248,30 +253,25 @@ fn split_subdivides_points() {
 }
 
 #[test]
-fn split_halves_base_length_and_height() {
+fn split_derives_dimensions_from_child_points() {
     let node = test_node();
-    let (base_length, height) = {
-        let node = node.borrow();
-        (node.base_length, node.height)
-    };
     let center = node.borrow().split();
     let center_ref = center.borrow();
 
-    // All four new nodes get half the parent's base length and height, and
-    // the stored dimensions match the actual subdivided points geometry.
+    // Stored dimensions match each child's actual point geometry.
     for slot in &center_ref.children {
         let corner = slot.as_ref().unwrap().borrow();
-        assert_eq!(corner.base_length, base_length / 2.0);
-        assert_eq!(corner.height, height / 2.0);
         let [a, b, c] = corner.points;
         assert!(((b - c).length() - corner.base_length).abs() < EPSILON);
-        assert!(((a - (b + c) / 2.0).length() - corner.height).abs() < EPSILON);
+        let base_direction = (c - b).normalize();
+        let base_projection = b + base_direction * (a - b).dot(base_direction);
+        assert!(((a - base_projection).length() - corner.height).abs() < EPSILON);
     }
-    assert_eq!(center_ref.base_length, base_length / 2.0);
-    assert_eq!(center_ref.height, height / 2.0);
     let [a, b, c] = center_ref.points;
     assert!(((b - c).length() - center_ref.base_length).abs() < EPSILON);
-    assert!(((a - (b + c) / 2.0).length() - center_ref.height).abs() < EPSILON);
+    let base_direction = (c - b).normalize();
+    let base_projection = b + base_direction * (a - b).dot(base_direction);
+    assert!(((a - base_projection).length() - center_ref.height).abs() < EPSILON);
 }
 
 #[test]
@@ -281,15 +281,15 @@ fn split_corner_nodes_keep_parent_orientation() {
     let center_ref = center.borrow();
 
     // All corner nodes keep the parent's direction_of_node and have the
-    // same global orientation as the parent: I up-right, J straight down,
-    // K up-left.
+    // I up-right (perpendicular to AB), J straight down (perpendicular to BC),
+    // K up-left (perpendicular to CA).
     for slot in &center_ref.children {
         let corner = slot.as_ref().unwrap().borrow();
-        assert!(approx_eq(corner.direction_of_node, Vec2::Y));
+        assert!(approx_eq(corner.direction_of_node, Vec3::Y));
         let [i, j, k] = corner.directions;
-        assert!(approx_eq(i, Vec2::new(SQRT_3_2, 0.5)));
-        assert!(approx_eq(j, Vec2::new(0.0, -1.0)));
-        assert!(approx_eq(k, Vec2::new(-SQRT_3_2, 0.5)));
+        assert!(approx_eq(i, point(SQRT_3_2, 0.5)));
+        assert!(approx_eq(j, point(0.0, -1.0)));
+        assert!(approx_eq(k, point(-SQRT_3_2, 0.5)));
     }
 }
 
@@ -299,12 +299,12 @@ fn split_center_node_has_mirrored_orientation() {
     let center = node.borrow().split();
     let center_ref = center.borrow();
 
-    assert!(approx_eq(center_ref.direction_of_node, -Vec2::Y));
+    assert!(approx_eq(center_ref.direction_of_node, -Vec3::Y));
     // Center node: I down-right, J straight up, K down-left.
     let [i, j, k] = center_ref.directions;
-    assert!(approx_eq(i, Vec2::new(SQRT_3_2, -0.5)));
-    assert!(approx_eq(j, Vec2::new(0.0, 1.0)));
-    assert!(approx_eq(k, Vec2::new(-SQRT_3_2, -0.5)));
+    assert!(approx_eq(i, point(SQRT_3_2, -0.5)));
+    assert!(approx_eq(j, point(0.0, 1.0)));
+    assert!(approx_eq(k, point(-SQRT_3_2, -0.5)));
 }
 
 #[test]
@@ -316,7 +316,7 @@ fn split_recomputes_directions_from_own_points() {
     let [i, j, k] = center_ref.directions;
 
     // The uniform rule is computed from the node's own points triplet:
-    // I ⊥ AB, J ⊥ BC, K ⊥ CA, all pointing toward their edge.
+    // I ÃƒÂ¢Ã…Â Ã‚Â¥ AB, J ÃƒÂ¢Ã…Â Ã‚Â¥ BC, K ÃƒÂ¢Ã…Â Ã‚Â¥ CA, all pointing toward their edge.
     for (direction, edge_start, edge_end) in [(i, a, b), (j, b, c), (k, c, a)] {
         assert!(direction.dot(edge_end - edge_start).abs() < EPSILON);
         let edge_mid = (edge_start + edge_end) / 2.0;
@@ -390,13 +390,13 @@ fn collect_nodes_deduplicates_reciprocal_cycles() {
 
 #[test]
 fn split_preserves_origin_for_descendants() {
-    let origin = Vec2::new(0.0, 1000.0);
+    let origin = point(0.0, 1000.0);
     let node = Node::new(
         "root",
         [
-            Vec2::new(0.0, 100.0 * 3.0_f32.sqrt()),
-            Vec2::new(150.0, -50.0 * 3.0_f32.sqrt()),
-            Vec2::new(-150.0, -50.0 * 3.0_f32.sqrt()),
+            point(0.0, 100.0 * 3.0_f32.sqrt()),
+            point(150.0, -50.0 * 3.0_f32.sqrt()),
+            point(-150.0, -50.0 * 3.0_f32.sqrt()),
         ],
         origin,
     );

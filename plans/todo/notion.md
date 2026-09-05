@@ -44,21 +44,19 @@ Two decisions are already made:
 Source: [`crates/engine/src/node/mod.rs`](../crates/engine/src/node/mod.rs)
 Spec: [`docs/book/specs/node.md`](../docs/book/specs/node.md)
 
-A `Node` is one isosceles triangle in a hierarchical mesh.
+A `Node` is one non-degenerate 3D triangle in a hierarchical mesh.
 
-- **Geometry:** `center` (centroid), corner `points` `[A, B, C]` (`A` = apex,
-  `BC` = base, perpendicular to the orientation), `direction_of_node`
-  (base -> apex, normalized), `direction_to_origin`, and the directional
-  vectors `[i, j, k]` — each perpendicular to one edge and pointing outward
-  from the center.
+- **Geometry:** `center` (centroid), corner `points` `[A, B, C]`,
+  `direction_of_node` (normalized altitude toward `A`), `direction_to_origin`,
+  and the directional vectors `[i, j, k]` — each in the triangle plane,
+  perpendicular to one edge, and pointing outward from the center.
 - **Topology:** `children[3]` — bidirectional links to adjacent nodes, one per
   direction (I/J/K). Links are reciprocal (`0 <-> 2`, `1 <-> 1`).
 - **Identity:** unique `name`; `level` (split depth, 0 for roots).
-- **Methods:** `new(...)` builds the triangle; `split()` subdivides into four
-  nodes (corner nodes I/J/K keep the parent direction, the inverted center
-  node flips it), halves base length and height, wires the internal
-  center <-> corner links, and returns the center node; `destroy()` severs
-  all reciprocal links.
+- **Methods:** `new(name, points, origin)` builds the triangle; `split()`
+  subdivides into four nodes, derives each child's geometry from its own points,
+  wires the internal center <-> corner links, and returns the center node;
+  `destroy()` severs all reciprocal links.
 
 Ownership: `NodeRef = Rc<RefCell<Node>>` — shared, runtime-borrowed links.
 

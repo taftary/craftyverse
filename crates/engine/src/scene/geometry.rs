@@ -3,7 +3,7 @@
 //! Builders receive the node's center already mapped (y-down) and track every
 //! emitted point in the content bounds used for the view fit.
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 
 use crate::node::Node;
 
@@ -30,6 +30,11 @@ const CORNER_LABEL_SIZE_PX: f32 = 10.0;
 /// at the call sites.
 pub(crate) fn flip_y(point: Vec2) -> Vec2 {
     Vec2::new(point.x, -point.y)
+}
+
+/// Projects the node's XY-plane Vec3 geometry into the 2D debug viewer.
+fn project(point: Vec3) -> Vec2 {
+    point.truncate()
 }
 
 /// Appends one line segment; endpoints are already mapped.
@@ -146,7 +151,7 @@ impl SceneBuilder {
     /// builder tracks it in the content bounds only when it actually emits.
     pub(super) fn add_node(&mut self, node: &Node) {
         let arrow_len = arrow_length(node);
-        let center = flip_y(node.center);
+        let center = flip_y(project(node.center));
         if self.options.child_links {
             self.add_child_links(node, center, arrow_len);
         }
@@ -183,7 +188,7 @@ impl SceneBuilder {
             if !self.options.child_links_ijk[index] {
                 continue;
             }
-            let to = map_track(&mut self.bounds, child.borrow().center);
+            let to = map_track(&mut self.bounds, project(child.borrow().center));
             push_dashed_line(
                 &mut self.lines,
                 center,
@@ -209,12 +214,13 @@ impl SceneBuilder {
             let outward = node.directions[index];
             let center = map_track(
                 &mut self.bounds,
-                edge_midpoints[index] + outward * radius * 1.4,
+                project(edge_midpoints[index] + outward * radius * 1.4),
             );
             // Extend the content bounds to the disc rim so the view fit never
             // clips a marker.
-            self.bounds
-                .track(flip_y(edge_midpoints[index] + outward * radius * 2.4));
+            self.bounds.track(flip_y(project(
+                edge_midpoints[index] + outward * radius * 2.4,
+            )));
             push_disc(
                 &mut self.triangles,
                 center,
@@ -228,7 +234,9 @@ impl SceneBuilder {
     /// Triangle outline through the corner points A → B → C → A, colored by level.
     fn add_triangle_outline(&mut self, node: &Node) {
         let color = level_color(node.level);
-        let [a, b, c] = node.points.map(|point| map_track(&mut self.bounds, point));
+        let [a, b, c] = node
+            .points
+            .map(|point| map_track(&mut self.bounds, project(point)));
         push_line(&mut self.lines, a, b, color);
         push_line(&mut self.lines, b, c, color);
         push_line(&mut self.lines, c, a, color);
@@ -244,7 +252,7 @@ impl SceneBuilder {
             }
             let end = map_track(
                 &mut self.bounds,
-                node.center + direction.normalize() * arrow_len,
+                project(node.center + direction.normalize() * arrow_len),
             );
             let color = DIRECTION_COLORS[index];
             push_arrow(
@@ -265,7 +273,7 @@ impl SceneBuilder {
         self.bounds.track(center);
         let end = map_track(
             &mut self.bounds,
-            node.center + node.direction_of_node * arrow_len,
+            project(node.center + node.direction_of_node * arrow_len),
         );
         push_arrow(
             &mut self.lines,
@@ -287,7 +295,7 @@ impl SceneBuilder {
         self.bounds.track(center);
         let end = map_track(
             &mut self.bounds,
-            node.center + node.direction_to_origin.normalize() * arrow_len,
+            project(node.center + node.direction_to_origin.normalize() * arrow_len),
         );
         push_arrow(
             &mut self.lines,
@@ -324,7 +332,7 @@ impl SceneBuilder {
             centered: false,
         });
         for (point, corner_label) in node.points.iter().zip(['A', 'B', 'C']) {
-            let corner = map_track(&mut self.bounds, *point);
+            let corner = map_track(&mut self.bounds, project(*point));
             let outward = (corner - center).normalize();
             self.labels.push(LabelRequest {
                 text: corner_label.to_string(),

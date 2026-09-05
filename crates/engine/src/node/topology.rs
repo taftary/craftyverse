@@ -30,10 +30,10 @@ pub(crate) fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
 /// # Example
 ///
 /// ```
-/// use glam::Vec2;
+/// use glam::Vec3;
 /// use planet_crafter_engine::node::{collect_nodes, Node};
 ///
-/// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+/// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 /// let center = node.borrow().split();
 /// let all = collect_nodes(&center);
 /// assert_eq!(all.len(), 4);

@@ -20,11 +20,11 @@
 //! # Example
 //!
 //! ```
-//! use glam::Vec2;
+//! use glam::{Vec2, Vec3};
 //! use planet_crafter_engine::node::Node;
 //! use planet_crafter_engine::scene::{build_scene, DisplayOptions};
 //!
-//! let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+//! let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 //! let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &DisplayOptions::default());
 //! assert!(!scene.lines.is_empty());
 //! ```
@@ -120,11 +120,11 @@ pub struct SceneMesh {
 /// # Example
 ///
 /// ```
-/// use glam::Vec2;
+/// use glam::{Vec2, Vec3};
 /// use planet_crafter_engine::node::Node;
 /// use planet_crafter_engine::scene::{build_scene, Attribute, DisplayOptions};
 ///
-/// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+/// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 /// let mut options = DisplayOptions::default();
 /// options.toggle(Attribute::Labels);
 /// let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &options);
@@ -134,11 +134,11 @@ pub struct SceneMesh {
 /// # View-fit invariant
 ///
 /// ```
-/// use glam::Vec2;
+/// use glam::{Vec2, Vec3};
 /// use planet_crafter_engine::node::Node;
 /// use planet_crafter_engine::scene::build_scene;
 ///
-/// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+/// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 /// let mesh = build_scene(&[node], Vec2::new(800.0, 600.0), &Default::default());
 ///
 /// // The world-to-clip transform maps every world-space vertex into NDC.

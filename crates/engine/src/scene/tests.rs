@@ -3,17 +3,22 @@ use super::geometry::DOT_SEGMENTS;
 use super::options::ATTRIBUTES;
 use super::*;
 use crate::node::Node;
+use glam::Vec3;
+
+fn point(x: f32, y: f32) -> Vec3 {
+    Vec3::new(x, y, 0.0)
+}
 
 /// Equilateral test node (base 300, apex up, height = base * √3 / 2).
 fn test_node() -> NodeRef {
     Node::new(
         "root",
         [
-            Vec2::new(0.0, 100.0 * 3.0_f32.sqrt()),
-            Vec2::new(150.0, -50.0 * 3.0_f32.sqrt()),
-            Vec2::new(-150.0, -50.0 * 3.0_f32.sqrt()),
+            point(0.0, 100.0 * 3.0_f32.sqrt()),
+            point(150.0, -50.0 * 3.0_f32.sqrt()),
+            point(-150.0, -50.0 * 3.0_f32.sqrt()),
         ],
-        Vec2::new(0.0, 1000.0),
+        Vec3::new(0.0, 1000.0, 0.0),
     )
 }
 
@@ -41,11 +46,11 @@ fn origin_arrow_is_skipped_when_node_is_at_origin() {
     let node = Node::new(
         "at_origin",
         [
-            Vec2::new(0.0, 4.0 / 3.0),
-            Vec2::new(1.5, -2.0 / 3.0),
-            Vec2::new(-1.5, -2.0 / 3.0),
+            point(0.0, 4.0 / 3.0),
+            point(1.5, -2.0 / 3.0),
+            point(-1.5, -2.0 / 3.0),
         ],
-        Vec2::ZERO,
+        Vec3::ZERO,
     );
     let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 

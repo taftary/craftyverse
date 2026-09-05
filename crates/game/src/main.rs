@@ -1,15 +1,15 @@
-use glam::Vec2;
+use glam::Vec3;
 use planet_crafter_engine::node::Node;
 use planet_crafter_engine::render::Scenario;
 
 fn main() {
-    let origin = Vec2::new(0.0, 1000.0);
+    let origin = Vec3::new(0.0, 1000.0, 0.0);
     // Equilateral triangles pointing up: height = base * √3 / 2.
     let height = 300.0 * 3.0_f32.sqrt() / 2.0;
     let points = [
-        Vec2::new(0.0, 2.0 * height / 3.0),
-        Vec2::new(150.0, -height / 3.0),
-        Vec2::new(-150.0, -height / 3.0),
+        Vec3::new(0.0, 2.0 * height / 3.0, 0.0),
+        Vec3::new(150.0, -height / 3.0, 0.0),
+        Vec3::new(-150.0, -height / 3.0, 0.0),
     ];
 
     // 1. One node, without split.
@@ -39,11 +39,11 @@ mod tests {
         let node = Node::new(
             "root",
             [
-                Vec2::new(0.0, 2.0 * height / 3.0),
-                Vec2::new(150.0, -height / 3.0),
-                Vec2::new(-150.0, -height / 3.0),
+                Vec3::new(0.0, 2.0 * height / 3.0, 0.0),
+                Vec3::new(150.0, -height / 3.0, 0.0),
+                Vec3::new(-150.0, -height / 3.0, 0.0),
             ],
-            Vec2::new(0.0, 1000.0),
+            Vec3::new(0.0, 1000.0, 0.0),
         );
         let no_split = Scenario::Static(vec![node.clone()]);
         assert_eq!(no_split.nodes().len(), 1);

@@ -1,7 +1,7 @@
-//! The `Node` module: isosceles triangle geometry, directional vectors, and
+//! The `Node` module: triangle geometry, directional vectors, and
 //! bidirectional links to adjacent nodes.
 //!
-//! A [`Node`] represents one isosceles triangle in a hierarchical mesh. It stores
+//! A [`Node`] represents one non-degenerate triangle in a hierarchical mesh. It stores
 //! its corner points, center, directional vectors, and up to three neighbors in
 //! the `children` array. Nodes are reference-counted and mutable via
 //! [`NodeRef`] so that bidirectional links can be shared.
@@ -13,12 +13,12 @@
 //! # Example
 //!
 //! ```
-//! use glam::Vec2;
+//! use glam::Vec3;
 //! use planet_crafter_engine::node::Node;
 //!
-//! let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+//! let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 //! let center = node.borrow().center;
-//! assert_eq!(center, Vec2::ZERO);
+//! assert_eq!(center, Vec3::ZERO);
 //! ```
 
 mod geometry;
@@ -30,7 +30,7 @@ mod tests;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use glam::Vec2;
+use glam::Vec3;
 
 use geometry::{child_node, compute_directions, midpoint};
 use topology::{link, reciprocal_index};
@@ -44,7 +44,7 @@ pub use topology::collect_nodes;
 /// ownership model used for the bidirectional `children` links.
 pub type NodeRef = Rc<RefCell<Node>>;
 
-/// A geometric node: an isosceles triangle with directional vectors and
+/// A geometric node: a triangle with directional vectors and
 /// bidirectional links to adjacent nodes.
 ///
 /// See `docs/book/specs/node.md` for the full specification of the
@@ -61,26 +61,24 @@ pub struct Node {
 
     // --- Geometry ---
     /// Centroid of the node's triangle, computed from the corner points.
-    pub center: Vec2,
+    pub center: Vec3,
     /// Vector from the node center toward the origin used to construct the
     /// node. This is `origin - center` and is recomputed for each child during
     /// [`Node::split`].
-    pub direction_to_origin: Vec2,
+    pub direction_to_origin: Vec3,
     /// Directional vectors `[i, j, k]`. Each vector is perpendicular to one
     /// edge of the triangle and points from the center toward that edge:
     /// - `i` is perpendicular to edge AB,
     /// - `j` is perpendicular to edge BC,
     /// - `k` is perpendicular to edge CA.
-    pub directions: [Vec2; 3],
-    /// Triangle corner points `[A, B, C]`. `A` is the apex and `BC` is the
-    /// base. The base is perpendicular to `direction_of_node`.
-    pub points: [Vec2; 3],
-    /// Normalized orientation vector of the isosceles triangle, pointing from
-    /// the base `BC` toward the apex `A`.
-    pub direction_of_node: Vec2,
+    pub directions: [Vec3; 3],
+    /// Triangle corner points `[A, B, C]`. `BC` is the reference base edge.
+    pub points: [Vec3; 3],
+    /// Normalized altitude direction from the base edge `BC` toward `A`.
+    pub direction_of_node: Vec3,
     /// Length of the base edge `BC`.
     pub base_length: f32,
-    /// Perpendicular distance from the base `BC` to the apex `A`.
+    /// Perpendicular distance from the line `BC` to `A`.
     pub height: f32,
 
     // --- Topology ---
@@ -96,7 +94,7 @@ pub struct Node {
 }
 
 impl Node {
-    /// Creates a level-zero node from an explicit isosceles triangle.
+    /// Creates a level-zero node from an explicit non-degenerate triangle.
     ///
     /// # Parameters
     ///
@@ -106,26 +104,26 @@ impl Node {
     /// - `origin` — position used to compute `direction_to_origin` for the node
     ///   and its descendants.
     ///
-    /// The caller must provide a non-degenerate isosceles triangle. The center,
-    /// orientation, dimensions, and edge directions are derived from `points`.
+    /// The caller must provide a non-degenerate triangle. The center, altitude,
+    /// dimensions, and edge directions are derived from `points`.
     ///
     /// # Example
     ///
     /// ```
-    /// use glam::Vec2;
+    /// use glam::Vec3;
     /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+    /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
     /// assert_eq!(node.borrow().level, 0);
     /// ```
     ///
     /// # Geometry invariants
     ///
     /// ```
-    /// use glam::Vec2;
+    /// use glam::Vec3;
     /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new("root", [Vec2::new(0.0, 8.0 / 3.0), Vec2::new(3.0, -4.0 / 3.0), Vec2::new(-3.0, -4.0 / 3.0)], Vec2::ZERO);
+    /// let node = Node::new("root", [Vec3::new(0.0, 8.0 / 3.0, 0.0), Vec3::new(3.0, -4.0 / 3.0, 0.0), Vec3::new(-3.0, -4.0 / 3.0, 0.0)], Vec3::ZERO);
     /// let node = node.borrow();
     /// let [a, b, c] = node.points;
     ///
@@ -143,7 +141,7 @@ impl Node {
     ///     assert!((dir.length() - 1.0).abs() < 1e-4);
     /// }
     /// ```
-    pub fn new(name: impl Into<String>, points: [Vec2; 3], origin: Vec2) -> NodeRef {
+    pub fn new(name: impl Into<String>, points: [Vec3; 3], origin: Vec3) -> NodeRef {
         Rc::new(RefCell::new(Self::from_points(
             points,
             origin,
@@ -157,10 +155,12 @@ impl Node {
     /// The center is the centroid of the triplet, `direction_to_origin` and the
     /// `[i, j, k]` directions are derived from the points. This constructor is
     /// used internally by [`Node::new`] and [`Node::split`].
-    fn from_points(points: [Vec2; 3], origin: Vec2, level: u32, name: String) -> Self {
+    fn from_points(points: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
         let center = (points[0] + points[1] + points[2]) / 3.0;
-        let base_midpoint = midpoint(points[1], points[2]);
-        let direction_of_node = (points[0] - base_midpoint).normalize();
+        let base_direction = (points[2] - points[1]).normalize();
+        let base_projection =
+            points[1] + base_direction * (points[0] - points[1]).dot(base_direction);
+        let height_vector = points[0] - base_projection;
         Node {
             name,
             level,
@@ -168,28 +168,23 @@ impl Node {
             direction_to_origin: origin - center,
             directions: compute_directions(&points, center),
             points,
-            direction_of_node,
+            direction_of_node: height_vector.normalize(),
             base_length: (points[1] - points[2]).length(),
-            height: (points[0] - base_midpoint).length(),
+            height: height_vector.length(),
             children: [None, None, None],
         }
     }
 
     /// Splits the node into four new nodes and returns the center node.
     ///
-    /// The four new nodes are:
-    /// - `NodeI`, `NodeJ`, `NodeK` — corner nodes that keep the parent's
-    ///   `direction_of_node`.
-    /// - `NodeCenter` — the inverted middle node with
-    ///   `direction_of_node = -parent.direction_of_node`.
+    /// The four new nodes are `NodeI`, `NodeJ`, `NodeK`, and `NodeCenter`.
     ///
     /// The center node is internally connected to each corner node through
     /// reciprocal `children` links. The caller is responsible for wiring the
     /// corner nodes to neighboring split centers across the subdivided edges.
     ///
-    /// Each new node receives half the parent's [`base_length`](Node::base_length)
-    /// and [`height`](Node::height), and its [`level`](Node::level) is set to
-    /// `parent.level + 1`.
+    /// Each new node derives its dimensions and orientation from its own point
+    /// triplet, and its [`level`](Node::level) is set to `parent.level + 1`.
     ///
     /// See `docs/book/specs/node.md` for the full geometric construction
     /// and topology rules.
@@ -197,10 +192,10 @@ impl Node {
     /// # Example
     ///
     /// ```
-    /// use glam::Vec2;
+    /// use glam::Vec3;
     /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+    /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
     /// let center = node.borrow().split();
     /// assert_eq!(center.borrow().level, 1);
     /// assert!(center.borrow().children[0].is_some());
@@ -210,10 +205,10 @@ impl Node {
     ///
     /// ```
     /// use std::rc::Rc;
-    /// use glam::Vec2;
+    /// use glam::Vec3;
     /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new("root", [Vec2::new(0.0, 4.0 / 3.0), Vec2::new(1.0, -2.0 / 3.0), Vec2::new(-1.0, -2.0 / 3.0)], Vec2::ZERO);
+    /// let node = Node::new("root", [Vec3::new(0.0, 4.0 / 3.0, 0.0), Vec3::new(1.0, -2.0 / 3.0, 0.0), Vec3::new(-1.0, -2.0 / 3.0, 0.0)], Vec3::ZERO);
     /// let center = node.borrow().split();
     /// let center_ref = center.borrow();
     ///
@@ -248,11 +243,9 @@ impl Node {
         let p_ca = midpoint(p_c, p_a);
 
         // 2./3. New nodes from their subdivided points triplets (centers are
-        // the centroids). Corner nodes keep the parent's `direction_of_node`
-        // (their apex is a parent corner, so the geometry matches); the center
-        // node is inverted relative to the parent triangle, so its direction
-        // is flipped. Each new node gets half the parent's base length and
-        // height. Names derive from the parent name to stay unique.
+        // the centroids). Each child derives its own altitude and dimensions
+        // from its point triplet. Names derive from the parent name to stay
+        // unique.
         let level = old_level + 1;
         let node_i = child_node([p_a, p_ab, p_ca], origin, level, format!("{}.I", self.name));
         let node_j = child_node([p_ab, p_b, p_bc], origin, level, format!("{}.J", self.name));
@@ -286,10 +279,10 @@ impl Node {
     /// # Example
     ///
     /// ```
-    /// use glam::Vec2;
+    /// use glam::Vec3;
     /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
+    /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
     /// let center = node.borrow().split();
     /// center.borrow_mut().destroy();
     /// assert!(center.borrow().children.iter().all(|c| c.is_none()));
