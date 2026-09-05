@@ -61,7 +61,7 @@ store a separate origin position; descendants reconstruct it as
 ## Split
 
 ```text
-Node::split(&self) -> NodeRef
+split_node(node: &Node) -> NodeRef
 ```
 
 Splitting creates four level-plus-one nodes from the parent points:

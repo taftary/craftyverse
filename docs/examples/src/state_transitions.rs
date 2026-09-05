@@ -3,7 +3,7 @@
 //! Demonstrates a node-splitting state transition.
 
 use glam::Vec3;
-use planet_crafter_engine::node::Node;
+use planet_crafter_engine::node::{Node, split_node};
 
 /// Runs the state-transition demonstration.
 ///
@@ -19,7 +19,7 @@ pub fn run() {
         ],
         Vec3::ZERO,
     );
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     assert_eq!(center.borrow().level, 1);
     assert_eq!(center.borrow().children.iter().flatten().count(), 3);
 }

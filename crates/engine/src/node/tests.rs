@@ -164,7 +164,7 @@ fn directions_are_perpendicular_and_point_toward_edges() {
 #[test]
 fn split_returns_center_node_with_incremented_level() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
 
     assert_eq!(center.borrow().level, 1);
     assert_eq!(center.borrow().name, "root.C");
@@ -177,7 +177,7 @@ fn split_returns_center_node_with_incremented_level() {
 #[test]
 fn split_connects_center_and_corner_nodes_bidirectionally() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let center_ref = center.borrow();
 
     // Each center port faces the corner across its edge: I -> node J,
@@ -225,7 +225,7 @@ fn split_connects_center_and_corner_nodes_bidirectionally() {
 fn split_subdivides_points() {
     let node = test_node();
     let [p_a, p_b, p_c] = node.borrow().points;
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
 
     let p_ab = (p_a + p_b) / 2.0;
     let p_bc = (p_b + p_c) / 2.0;
@@ -255,7 +255,7 @@ fn split_subdivides_points() {
 #[test]
 fn split_derives_dimensions_from_child_points() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let center_ref = center.borrow();
 
     // Stored dimensions match each child's actual point geometry.
@@ -277,7 +277,7 @@ fn split_derives_dimensions_from_child_points() {
 #[test]
 fn split_corner_nodes_keep_parent_orientation() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let center_ref = center.borrow();
 
     // All corner nodes keep the parent's direction_of_node and have the
@@ -296,7 +296,7 @@ fn split_corner_nodes_keep_parent_orientation() {
 #[test]
 fn split_center_node_has_mirrored_orientation() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let center_ref = center.borrow();
 
     assert!(approx_eq(center_ref.direction_of_node, -Vec3::Y));
@@ -310,7 +310,7 @@ fn split_center_node_has_mirrored_orientation() {
 #[test]
 fn split_recomputes_directions_from_own_points() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let center_ref = center.borrow();
     let [a, b, c] = center_ref.points;
     let [i, j, k] = center_ref.directions;
@@ -328,8 +328,8 @@ fn split_recomputes_directions_from_own_points() {
 #[test]
 fn split_can_be_called_multiple_times() {
     let node = test_node();
-    let first = node.borrow().split();
-    let second = node.borrow().split();
+    let first = split_node(&node.borrow());
+    let second = split_node(&node.borrow());
 
     // Each call produces four new nodes; the returned centers are distinct.
     assert!(!Rc::ptr_eq(&first, &second));
@@ -340,7 +340,7 @@ fn split_can_be_called_multiple_times() {
 #[test]
 fn destroy_severs_all_bidirectional_links() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let (node_j, node_i, node_k) = {
         let center_ref = center.borrow();
         (
@@ -375,7 +375,7 @@ fn destroy_without_links_is_noop() {
 #[test]
 fn collect_nodes_deduplicates_reciprocal_cycles() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let nodes = collect_nodes(&center);
 
     assert_eq!(nodes.len(), 4);
@@ -401,12 +401,8 @@ fn split_preserves_origin_for_descendants() {
         ],
         origin,
     );
-    let center = node.borrow().split();
-    let grandchild = center.borrow().children[0]
-        .as_ref()
-        .unwrap()
-        .borrow()
-        .split();
+    let center = split_node(&node.borrow());
+    let grandchild = split_node(&center.borrow().children[0].as_ref().unwrap().borrow());
 
     for descendant in collect_nodes(&grandchild) {
         let descendant = descendant.borrow();

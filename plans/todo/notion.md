@@ -72,7 +72,7 @@ Ownership: `NodeRef = Rc<RefCell<Node>>` — shared, runtime-borrowed links.
 
 | Draft pipeline step                  | Status      | Where |
 |--------------------------------------|-------------|-------|
-| Triangle subdivision (x4 per level)  | Implemented | `Node::split` |
+| Triangle subdivision (x4 per level)  | Implemented | `split_node` |
 | Mesh integrity / wiring validation   | Implemented | link-based topology, viewer |
 | Spherical projection (net -> sphere) | Next        | geometry layer (Section 4) |
 | Vertex relaxation                    | Next        | geometry layer (Section 4) |
@@ -111,7 +111,7 @@ Carried over from the drafts, unchanged:
 
 ### 4.1 Implemented
 
-- **Subdivision** — `Node::split` per node, one level at a time.
+- **Subdivision** — `split_node` per node, one level at a time.
 - **Mesh integrity** — mostly dissolved by construction: connectivity lives
   in reciprocal links, not in coordinates, so the classic failure modes from
   the drafts (subdivision mismatch, float-duplicate vertices, vertex

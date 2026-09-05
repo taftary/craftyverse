@@ -9,7 +9,7 @@ use super::NodeRef;
 /// Reciprocal port index of the `children` link convention: a link on port
 /// `index` is backed by port `reciprocal_index(index)` on the neighbor —
 /// 0 ↔ 2 (I ↔ K) and 1 ↔ 1 (J ↔ J), mirroring the interconnections
-/// established by `Node::split`.
+/// established by `split_node`.
 pub(crate) fn reciprocal_index(index: usize) -> usize {
     2 - index
 }
@@ -31,10 +31,10 @@ pub(crate) fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
 ///
 /// ```
 /// use glam::Vec3;
-/// use planet_crafter_engine::node::{collect_nodes, Node};
+/// use planet_crafter_engine::node::{collect_nodes, split_node, Node};
 ///
 /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
-/// let center = node.borrow().split();
+/// let center = split_node(&node.borrow());
 /// let all = collect_nodes(&center);
 /// assert_eq!(all.len(), 4);
 /// ```

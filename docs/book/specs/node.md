@@ -69,7 +69,7 @@ For every node, directions are computed from that node's own points:
 ### Methods
 
 - `Node::new(name, points, origin) -> NodeRef` creates a level-zero node.
-- `Node::split(&self) -> NodeRef` creates four level-plus-one nodes.
+- `split_node(node: &Node) -> NodeRef` creates four level-plus-one nodes.
 - `Node::destroy(&mut self)` clears reciprocal child links.
 - `collect_nodes(root)` breadth-first traverses reachable nodes once each.
 
@@ -101,15 +101,15 @@ Node::new(name, points, origin) -> NodeRef
 
 The constructor assumes valid input rather than returning a validation error.
 
-### split() Method Specification
+### split_node() Function Specification
 
 **Signature**
 
 ```text
-Node::split(&self) -> NodeRef
+split_node(node: &Node) -> NodeRef
 ```
 
-The parent remains unchanged. The method reconstructs the origin as
+`node` remains unchanged. The function reconstructs the origin as
 `center + direction_to_origin`, then computes:
 
 ```text
@@ -125,8 +125,8 @@ NodeCenter = [pBC, pAB, pCA]
 
 Each child derives its center, dimensions, orientation, directions, and origin
 vector from its own points. Child dimensions and orientations are not copied
-from the parent: they are recomputed from the child triangle. Every child
-receives level `parent.level + 1` and a name with the suffix `.I`, `.J`, `.K`,
+from `node`: they are recomputed from the child triangle. Every child
+receives level `node.level + 1` and a name with the suffix `.I`, `.J`, `.K`,
 or `.C`.
 
 Only center-to-corner links are created:
@@ -159,11 +159,12 @@ or infinite traversal.
 
 ### Files (Rust implementation)
 
-- `crates/engine/src/node/mod.rs` - `Node`, `NodeRef`, construction, splitting,
-  and destruction.
+- `crates/engine/src/node/mod.rs` - `Node`, `NodeRef`, construction, and
+  destruction.
 - `crates/engine/src/node/geometry.rs` - midpoint, perpendicular-direction,
   and child-node helpers.
 - `crates/engine/src/node/topology.rs` - reciprocal links and graph traversal.
+- `crates/engine/src/node/subdivision.rs` - triangle subdivision (`split_node`).
 - `crates/engine/src/node/tests.rs` - geometry, topology, lifecycle, traversal,
   and origin-propagation tests.
 

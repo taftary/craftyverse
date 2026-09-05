@@ -1,5 +1,5 @@
 use glam::Vec3;
-use planet_crafter_engine::node::Node;
+use planet_crafter_engine::node::{Node, split_node};
 use planet_crafter_engine::render::Scenario;
 
 fn main() {
@@ -17,7 +17,7 @@ fn main() {
 
     // 2. One node with split — display only the split nodes.
     let parent = Node::new("parent", points, origin);
-    let center = parent.borrow().split();
+    let center = split_node(&parent.borrow());
     let mut split_nodes = vec![center.clone()];
     for corner in center.borrow().children.iter().flatten() {
         split_nodes.push(corner.clone());
@@ -49,7 +49,7 @@ mod tests {
         assert_eq!(no_split.nodes().len(), 1);
 
         // Static scenario with a split node: center + 3 corners.
-        let center = node.borrow().split();
+        let center = split_node(&node.borrow());
         let mut split_nodes = vec![center.clone()];
         for corner in center.borrow().children.iter().flatten() {
             split_nodes.push(corner.clone());

@@ -105,7 +105,7 @@ reachable.
   applied per point (`(x, -y)`), exactly like the SVG viewer did.
 - **Arrow length** — `arrow_len = 0.5 * min distance from center to a corner
   point of the node's triangle`, so arrows scale with the node's own triangle
-  and stay readable after repeated `split()` calls (same rule as the SVG viewer).
+  and stay readable after repeated `split_node()` calls (same rule as the SVG viewer).
 - **View fit** — all mapped points contribute to a running bounding box; the
   scene is fitted into the viewport with a 5 % margin, aspect ratio preserved,
   centered. This is the equivalent of the SVG `viewBox` logic. The checkbox

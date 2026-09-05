@@ -7,8 +7,8 @@
 //! [`NodeRef`] so that bidirectional links can be shared.
 //!
 //! Pure geometric helpers live in `geometry`; child-link wiring and graph
-//! traversal live in `topology`. The full contract is specified in
-//! `docs/book/specs/node.md`.
+//! traversal live in `topology`; triangle subdivision lives in `subdivision`.
+//! The full contract is specified in `docs/book/specs/node.md`.
 //!
 //! # Example
 //!
@@ -22,6 +22,7 @@
 //! ```
 
 mod geometry;
+mod subdivision;
 pub(crate) mod topology;
 
 #[cfg(test)]
@@ -32,9 +33,10 @@ use std::rc::Rc;
 
 use glam::Vec3;
 
-use geometry::{child_node, compute_directions, midpoint};
-use topology::{link, reciprocal_index};
+use geometry::compute_directions;
+use topology::reciprocal_index;
 
+pub use subdivision::split_node;
 pub use topology::collect_nodes;
 
 /// Shared, mutable reference to a [`Node`].
@@ -56,7 +58,7 @@ pub struct Node {
     /// debugging and logging ambiguous.
     pub name: String,
     /// Split depth. `0` for a root node; incremented by one for every
-    /// generation produced by [`Node::split`]. There is no upper bound.
+    /// generation produced by [`split_node`]. There is no upper bound.
     pub level: u32,
 
     // --- Geometry ---
@@ -64,7 +66,7 @@ pub struct Node {
     pub center: Vec3,
     /// Vector from the node center toward the origin used to construct the
     /// node. This is `origin - center` and is recomputed for each child during
-    /// [`Node::split`].
+    /// [`split_node`].
     pub direction_to_origin: Vec3,
     /// Directional vectors `[i, j, k]`. Each vector is perpendicular to one
     /// edge of the triangle and points from the center toward that edge:
@@ -154,7 +156,7 @@ impl Node {
     ///
     /// The center is the centroid of the triplet, `direction_to_origin` and the
     /// `[i, j, k]` directions are derived from the points. This constructor is
-    /// used internally by [`Node::new`] and [`Node::split`].
+    /// used internally by [`Node::new`] and [`split_node`].
     fn from_points(points: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
         let center = (points[0] + points[1] + points[2]) / 3.0;
         let base_direction = (points[2] - points[1]).normalize();
@@ -175,100 +177,6 @@ impl Node {
         }
     }
 
-    /// Splits the node into four new nodes and returns the center node.
-    ///
-    /// The four new nodes are `NodeI`, `NodeJ`, `NodeK`, and `NodeCenter`.
-    ///
-    /// The center node is internally connected to each corner node through
-    /// reciprocal `children` links. The caller is responsible for wiring the
-    /// corner nodes to neighboring split centers across the subdivided edges.
-    ///
-    /// Each new node derives its dimensions and orientation from its own point
-    /// triplet, and its [`level`](Node::level) is set to `parent.level + 1`.
-    ///
-    /// See `docs/book/specs/node.md` for the full geometric construction
-    /// and topology rules.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use glam::Vec3;
-    /// use planet_crafter_engine::node::Node;
-    ///
-    /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
-    /// let center = node.borrow().split();
-    /// assert_eq!(center.borrow().level, 1);
-    /// assert!(center.borrow().children[0].is_some());
-    /// ```
-    ///
-    /// # Subdivision invariants
-    ///
-    /// ```
-    /// use std::rc::Rc;
-    /// use glam::Vec3;
-    /// use planet_crafter_engine::node::Node;
-    ///
-    /// let node = Node::new("root", [Vec3::new(0.0, 4.0 / 3.0, 0.0), Vec3::new(1.0, -2.0 / 3.0, 0.0), Vec3::new(-1.0, -2.0 / 3.0, 0.0)], Vec3::ZERO);
-    /// let center = node.borrow().split();
-    /// let center_ref = center.borrow();
-    ///
-    /// assert_eq!(center_ref.level, 1);
-    /// assert_eq!(center_ref.base_length, 1.0);
-    /// assert_eq!(center_ref.height, 1.0);
-    /// assert!(center_ref.children.iter().all(|c| c.is_some()));
-    ///
-    /// // Reciprocity: each corner links back to the center on the expected port.
-    /// assert!(Rc::ptr_eq(
-    ///     center_ref.children[0].as_ref().unwrap().borrow().children[2].as_ref().unwrap(),
-    ///     &center,
-    /// ));
-    /// assert!(Rc::ptr_eq(
-    ///     center_ref.children[1].as_ref().unwrap().borrow().children[1].as_ref().unwrap(),
-    ///     &center,
-    /// ));
-    /// assert!(Rc::ptr_eq(
-    ///     center_ref.children[2].as_ref().unwrap().borrow().children[0].as_ref().unwrap(),
-    ///     &center,
-    /// ));
-    /// ```
-    pub fn split(&self) -> NodeRef {
-        let old_level = self.level;
-        // The node stores no origin; recover it from center + direction_to_origin.
-        let origin = self.center + self.direction_to_origin;
-        let [p_a, p_b, p_c] = self.points;
-
-        // 1. Point midpoints.
-        let p_ab = midpoint(p_a, p_b);
-        let p_bc = midpoint(p_b, p_c);
-        let p_ca = midpoint(p_c, p_a);
-
-        // 2./3. New nodes from their subdivided points triplets (centers are
-        // the centroids). Each child derives its own altitude and dimensions
-        // from its point triplet. Names derive from the parent name to stay
-        // unique.
-        let level = old_level + 1;
-        let node_i = child_node([p_a, p_ab, p_ca], origin, level, format!("{}.I", self.name));
-        let node_j = child_node([p_ab, p_b, p_bc], origin, level, format!("{}.J", self.name));
-        let node_k = child_node([p_ca, p_bc, p_c], origin, level, format!("{}.K", self.name));
-        let node_center = child_node(
-            [p_bc, p_ab, p_ca],
-            origin,
-            level,
-            format!("{}.C", self.name),
-        );
-
-        // 4. Internal interconnection (bidirectional). Each center port is
-        // linked to the corner node across its edge: center I (⊥ pBC–pAB)
-        // faces node J, center J (⊥ pAB–pCA) faces node I, center K
-        // (⊥ pCA–pBC) faces node K; the reciprocal corner port faces the
-        // center the same way.
-        link(&node_center, 0, &node_j, 2);
-        link(&node_center, 1, &node_i, 1);
-        link(&node_center, 2, &node_k, 0);
-
-        node_center
-    }
-
     /// Severs all bidirectional `children` links.
     ///
     /// For each linked neighbor, the reciprocal back-link is cleared first,
@@ -280,16 +188,16 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec3;
-    /// use planet_crafter_engine::node::Node;
+    /// use planet_crafter_engine::node::{split_node, Node};
     ///
     /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
-    /// let center = node.borrow().split();
+    /// let center = split_node(&node.borrow());
     /// center.borrow_mut().destroy();
     /// assert!(center.borrow().children.iter().all(|c| c.is_none()));
     /// ```
     pub fn destroy(&mut self) {
         // (link index on self, reciprocal back-link index on the neighbor),
-        // mirroring the interconnections established by `split()`.
+        // mirroring the interconnections established by `split_node`.
         for index in 0..3 {
             if let Some(child) = self.children[index].take() {
                 child.borrow_mut().children[reciprocal_index(index)] = None;

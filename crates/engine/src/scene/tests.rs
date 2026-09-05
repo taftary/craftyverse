@@ -2,7 +2,7 @@ use super::colors::{DIRECTION_COLORS, LEVEL_COLORS, hex_rgb, level_color};
 use super::geometry::DOT_SEGMENTS;
 use super::options::ATTRIBUTES;
 use super::*;
-use crate::node::Node;
+use crate::node::{Node, split_node};
 use glam::Vec3;
 
 fn point(x: f32, y: f32) -> Vec3 {
@@ -66,7 +66,7 @@ fn origin_arrow_is_skipped_when_node_is_at_origin() {
 #[test]
 fn split_scene_links_children_and_labels_all_nodes() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let mut nodes = vec![center.clone()];
     for corner in center.borrow().children.iter().flatten() {
         nodes.push(corner.clone());
@@ -87,7 +87,7 @@ fn split_scene_links_children_and_labels_all_nodes() {
 #[test]
 fn child_links_are_dashed_and_colored_by_direction() {
     let node = test_node();
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     // Child links only: every emitted line is part of a dashed link.
     let options = DisplayOptions {
         child_links: true,
@@ -135,7 +135,7 @@ fn open_ports_emit_bold_disc_per_null_port() {
     }
 
     // The split center node is fully linked: no markers.
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     let mesh = build_scene(
         std::slice::from_ref(&center),
         Vec2::new(800.0, 800.0),
@@ -208,7 +208,7 @@ fn per_port_switches_gate_each_group() {
     );
 
     // Child links: the split center has three links; keep only I and K.
-    let center = node.borrow().split();
+    let center = split_node(&node.borrow());
     options.directions = false;
     options.child_links = true;
     options.child_links_ijk = [true, false, true];
