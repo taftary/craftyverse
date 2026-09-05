@@ -4,7 +4,7 @@ use planet_crafter_engine::render::Scenario;
 
 fn main() {
     let origin = Vec3::new(0.0, 1000.0, 0.0);
-    // Equilateral triangles pointing up: height = base * √3 / 2.
+    // Equilateral triangles pointing up: height = base * sqrt(3) / 2.
     let height = 300.0 * 3.0_f32.sqrt() / 2.0;
     let points = [
         Vec3::new(0.0, 2.0 * height / 3.0, 0.0),

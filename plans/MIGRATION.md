@@ -17,7 +17,7 @@ links to adjacent nodes. The implementation lives in
 - `base_length: f32` is the length of `BC`.
 - `height: f32` is the perpendicular distance from `A` to `BC`.
 
-The constructor assumes a valid, non-degenerate non-degenerate triangle in one 3D
+The constructor assumes a valid, non-degenerate triangle in one 3D
 plane, with `A` as the apex and `B/C` as the base endpoints. B/C point order is
 significant: it determines the I/K direction labels.
 

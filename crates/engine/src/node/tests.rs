@@ -316,7 +316,8 @@ fn split_recomputes_directions_from_own_points() {
     let [i, j, k] = center_ref.directions;
 
     // The uniform rule is computed from the node's own points triplet:
-    // I ÃƒÂ¢Ã…Â Ã‚Â¥ AB, J ÃƒÂ¢Ã…Â Ã‚Â¥ BC, K ÃƒÂ¢Ã…Â Ã‚Â¥ CA, all pointing toward their edge.
+    // I perpendicular to AB, J perpendicular to BC, K perpendicular to CA,
+    // all pointing toward their edge.
     for (direction, edge_start, edge_end) in [(i, a, b), (j, b, c), (k, c, a)] {
         assert!(direction.dot(edge_end - edge_start).abs() < EPSILON);
         let edge_mid = (edge_start + edge_end) / 2.0;
