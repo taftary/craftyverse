@@ -56,7 +56,7 @@ Cargo.toml
 crates/
   engine/   — reusable geometry, topology, scene data, text, Vulkan viewer
   game/     — application binary and content policy
-  tools/    — asset/developer tooling (e.g. mesh-validator)
+  tools/    — asset/developer tooling
 assets/
   fonts/    — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/     — target architecture, handbook, and per-module specifications

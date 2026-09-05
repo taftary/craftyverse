@@ -63,6 +63,6 @@ today's node viewer:
 - Exactly 12 pentagons; all other cells are hexagons (unit test).
 - Every cell's neighbor count equals its side count (5 or 6); neighbor
   relation is symmetric (unit test).
-- `mesh-validator` exits 0; viewer shows the dual cells on the sphere.
+- Viewer shows the dual cells on the sphere.
 - Standard definition of done passes; spec written under
   `docs/book/specs/`.

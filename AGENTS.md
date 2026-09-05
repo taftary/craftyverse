@@ -24,8 +24,7 @@ Cargo workspace (edition 2024, resolver 3) defined in the root `Cargo.toml`:
   `plan`, `scene`, `text`, `render`.
 - `crates/game` — binary `planet-crafter` (the default workspace member).
   Application entry point and content policy.
-- `crates/tools` — binary `mesh-validator`. Asset/developer tooling. Not a
-  default workspace member: run it with `-p planet-crafter-tools`.
+- `crates/tools` — asset/developer tooling. Not a default workspace member.
 - `docs/examples` — package `planet-crafter-examples`. Compile-tested
   documentation examples; the `viewer` example is gated behind the `gpu`
   feature.
@@ -75,7 +74,6 @@ Validation that is local only (not run by CI, still expected to pass):
 
 ```text
 cargo test --doc --workspace                   # doc tests
-cargo run -p planet-crafter-tools --bin mesh-validator   # headless mesh-wiring check (exit 0/1)
 cargo run --example viewer -p planet-crafter-examples --features gpu    # needs a Vulkan display
 ```
 
@@ -161,11 +159,9 @@ Before considering a change complete:
 3. `cargo test --workspace --all-targets` and `cargo test --doc --workspace`
    pass.
 4. If docs changed: `docs/scripts/check-book.sh` passes.
-5. If node/plan wiring changed: `cargo run -p planet-crafter-tools --bin
-   mesh-validator` exits with code 0.
-6. If a module's behavior changed: its spec in `docs/book/specs/` is still
+5. If a module's behavior changed: its spec in `docs/book/specs/` is still
    accurate.
-7. If scene/viewer behavior changed: the viewer controls documented in
-   `README.md` (keys `1`-`4`, `S`, `R`) are still accurate.
-8. If the change affects anything this file documents (commands, workspace
+6. If scene/viewer behavior changed: the viewer controls documented in
+  `README.md` are still accurate.
+7. If the change affects anything this file documents (commands, workspace
    layout, conventions): `AGENTS.md` is updated to match.

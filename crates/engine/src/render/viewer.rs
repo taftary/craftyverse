@@ -72,35 +72,17 @@ impl Viewer {
         }
     }
 
-    /// S subdivides the current plan one level, R regenerates its initial
-    /// mesh, digit keys switch scenarios.
+    /// Digit keys switch scenarios.
     fn on_key_input(&mut self, event: KeyEvent) {
         if event.state != ElementState::Pressed || event.repeat {
             return;
         }
-        match event.physical_key {
-            // S: subdivide the current plan one level (IcosahedronPlan::split).
-            PhysicalKey::Code(KeyCode::KeyS) => {
-                if let Scenario::Plan { plan, .. } = &mut self.scenarios[self.current_scene] {
-                    plan.split();
-                    self.refresh_scene();
-                }
-            }
-            // R: regenerate the current plan's initial mesh.
-            PhysicalKey::Code(KeyCode::KeyR) => {
-                if let Scenario::Plan { plan, rebuild } = &mut self.scenarios[self.current_scene] {
-                    *plan = rebuild();
-                    self.refresh_scene();
-                }
-            }
-            key => {
-                if let Some(index) = scenario_index_of(&key, self.scenarios.len())
-                    .filter(|i| *i != self.current_scene)
-                {
-                    self.current_scene = index;
-                    self.refresh_scene();
-                }
-            }
+        let key = event.physical_key;
+        if let Some(index) =
+            scenario_index_of(&key, self.scenarios.len()).filter(|i| *i != self.current_scene)
+        {
+            self.current_scene = index;
+            self.refresh_scene();
         }
     }
 
@@ -116,9 +98,10 @@ impl ApplicationHandler for Viewer {
         if self.renderer.is_none() {
             let window = Arc::new(
                 event_loop
-                    .create_window(Window::default_attributes().with_title(
-                        "PlanetCrafter node viewer — 1-4: scenes, S: split level, R: reset",
-                    ))
+                    .create_window(
+                        Window::default_attributes()
+                            .with_title("PlanetCrafter node viewer — 1-N: scenes"),
+                    )
                     .expect("failed to create window"),
             );
             let mut renderer = Renderer::new(self.instance.clone(), window);

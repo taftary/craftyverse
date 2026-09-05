@@ -2,7 +2,7 @@
 
 - **Phase:** 1 — Geometry
 - **Status:** Next
-- **Depends on:** nothing (current code: `Node`, `IcosahedronPlan`)
+- **Depends on:** nothing (current code: `Node`)
 - **Plan reference:** notion.md Sections 4.2 (item 1), 4.3
 
 ## Goal
@@ -13,8 +13,8 @@ node carries a position with `v = R * normalize(v3)`.
 
 ## Design summary
 
-- Each of the 20 root nodes corresponds to one face of the icosahedron
-  (the dual-pentagon interlocked mesh, notion.md Section 2.2). Subdivided
+- Each of the 20 root nodes corresponds to one face of the icosahedron.
+  Subdivided
   nodes inherit positions inside their root face (barycentric on the face),
   then every position is projected: `normalize(v3) * R`.
 - **Open design choice (decide at implementation time, then update the
@@ -27,15 +27,12 @@ node carries a position with `v = R * normalize(v3)`.
 
 1. Record the design choice (extend `Node` to `Vec3` vs. separate 3D
    embedding) in the feature PR and in the module spec.
-2. Define the 20 icosahedron face vertex positions in 3D (constant table,
-   matching the North/South pentagon layout of `IcosahedronPlan::generate`).
+2. Define the 20 icosahedron face vertex positions in 3D (constant table).
 3. Map each root node to its face; compute subdivided-node positions
    barycentrically from the parent split geometry.
 4. Project all positions onto the sphere: `pos = R * normalize(pos)`.
-5. Update `scene`/`render` to draw the spherical mesh (existing keys `1`-`4`,
-   `S`, `R` keep working; wireframe over the sphere).
-6. Update the node spec (`docs/book/specs/node.md`) and the icosahedron plan
-   spec if `Node` fields changed.
+5. Update `scene`/`render` to draw the spherical mesh.
+6. Update the node spec (`docs/book/specs/node.md`) if `Node` fields changed.
 
 ## Debug visualization
 
@@ -58,7 +55,7 @@ baseline:
 
 - Every node position satisfies `|pos| == R` within float tolerance (unit
   test).
-- Link topology unchanged: `mesh-validator` exits 0 at split levels 0-3.
+- Link topology remains reciprocal and connected at split levels 0-3.
 - Viewer renders a sphere wireframe; documented controls still accurate.
 - `cargo fmt --check`, `cargo clippy --workspace --all-targets --all-features
   -- -D warnings`, `cargo test --workspace --all-targets` pass.

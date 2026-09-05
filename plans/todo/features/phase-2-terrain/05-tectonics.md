@@ -78,5 +78,5 @@ color, with today's overlay vocabulary mapped onto plates:
 - Boundary classification agrees with the sign of `v_rel . n` on synthetic
   two-plate fixtures (unit test).
 - All passes are O(n) over cells (no per-cell global searches).
-- `mesh-validator` exits 0; standard definition of done passes; spec
+- Standard definition of done passes; spec
   written under `docs/book/specs/`.

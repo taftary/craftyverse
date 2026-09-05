@@ -15,8 +15,7 @@ run(scenarios: Vec<Scenario>)
 ```
 
 `scenarios` are the scenes to display; number keys **1..N** switch between
-them. A `Scenario` is either a fixed node list (`Scenario::Static`) or a live
-plan (`Scenario::Plan`) that can be subdivided and regenerated at runtime.
+them. A `Scenario` contains a fixed node list (`Scenario::Static`).
 Left-clicking a checkbox of the display-options panel (top-left) toggles
 the display of the matching node attribute. The function returns when the
 window closes.
@@ -48,9 +47,6 @@ One render pass, three graphics pipelines, drawn in order:
 ### Interaction
 
 - **Number keys 1..N** — switch scenario.
-- **S** — split the current `Scenario::Plan` one level (no effect on static
-  scenarios).
-- **R** — regenerate the current `Scenario::Plan` via its `rebuild` function.
 - **Left click** — the cursor position (physical pixels, tracked from
   `CursorMoved` events) is hit-tested against the scene's `Checkbox`
   rectangles; on a hit the matching `DisplayOptions` flag is toggled and the

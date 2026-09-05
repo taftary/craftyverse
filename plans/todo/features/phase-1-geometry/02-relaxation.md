@@ -60,5 +60,5 @@ as today, plus:
   test).
 - All vertices remain at radius `R` after every pass (unit test).
 - Deterministic: same mesh in -> same mesh out.
-- Topology unchanged: `mesh-validator` exits 0.
+- Topology remains reciprocal and connected.
 - Standard definition of done passes (fmt, clippy, tests, spec updated).

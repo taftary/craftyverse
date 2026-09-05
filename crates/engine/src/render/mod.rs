@@ -30,38 +30,22 @@ mod tests;
 
 use winit::event_loop::{ControlFlow, EventLoop};
 
-use crate::icosahedron_plan::IcosahedronPlan;
-use crate::node::{NodeRef, collect_nodes};
+use crate::node::NodeRef;
 use viewer::Viewer;
 
-/// A viewer scenario: a fixed node list, or a live plan that can be
-/// subdivided interactively.
+/// A viewer scenario containing a fixed node list.
 pub enum Scenario {
-    /// Fixed node list. Not splittable; displayed as-is.
+    /// Nodes displayed as-is.
     Static(Vec<NodeRef>),
-    /// Live plan scenario.
-    ///
-    /// `IcosahedronPlan::split()` subdivides the plan one level when the user presses **S**.
-    /// `rebuild` regenerates the plan's initial mesh when the user presses **R**.
-    Plan {
-        /// Current plan state; mutated by `IcosahedronPlan::split()` and reset by `rebuild`.
-        plan: IcosahedronPlan,
-        /// Function that returns the plan's initial mesh.
-        rebuild: fn() -> IcosahedronPlan,
-    },
 }
 
 impl Scenario {
     /// Current node list to display.
     ///
-    /// For a static scenario this returns the stored nodes. For a plan scenario
-    /// it collects the nodes reachable from the plan's current `root_node`.
+    /// Returns the stored nodes.
     pub fn nodes(&self) -> Vec<NodeRef> {
         match self {
             Scenario::Static(nodes) => nodes.clone(),
-            Scenario::Plan { plan, .. } => {
-                collect_nodes(plan.root_node.as_ref().expect("generated plan"))
-            }
         }
     }
 }
@@ -71,8 +55,6 @@ impl Scenario {
 /// # Interaction
 ///
 /// - **Number keys 1..N** — switch between scenarios.
-/// - **S** — split the current `Scenario::Plan` one level.
-/// - **R** — regenerate the current `Scenario::Plan` via its `rebuild` function.
 /// - **Left click** — toggle the display attribute of the clicked checkbox.
 /// - **Close window** — exit the event loop.
 ///

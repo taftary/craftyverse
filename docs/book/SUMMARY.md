@@ -26,7 +26,6 @@
 
 - [Module specifications](specs/index.md)
 - [Node](specs/node.md)
-- [IcosahedronPlan](specs/icosahedron-plan.md)
 - [Scene](specs/scene.md)
 - [Text](specs/text.md)
 - [Render](specs/render.md)

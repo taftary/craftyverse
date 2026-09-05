@@ -1,27 +1,6 @@
 use glam::Vec2;
-use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
 use planet_crafter_engine::node::{Labeling, Node};
 use planet_crafter_engine::render::Scenario;
-
-/// Pentagonal base scenario: 5 inward base nodes + 5 outward reverted nodes.
-fn base_plan() -> IcosahedronPlan {
-    IcosahedronPlan {
-        root_node: Some(planet_crafter_engine::icosahedron_plan::generate_base(
-            "base_",
-            300.0,
-            Vec2::Y,
-            Vec2::ZERO,
-            Labeling::Normal,
-        )),
-    }
-}
-
-/// Full dual-pentagon interlocked mesh scenario (North + South, 20 nodes).
-fn dual_mesh_plan() -> IcosahedronPlan {
-    let mut plan = IcosahedronPlan::default();
-    plan.generate(300.0);
-    plan
-}
 
 fn main() {
     let origin = Vec2::new(0.0, 1000.0);
@@ -56,22 +35,8 @@ fn main() {
     }
     let split = Scenario::Static(split_nodes);
 
-    // 3. One pentagonal base — live plan: S subdivides it, R regenerates it.
-    let base = Scenario::Plan {
-        plan: base_plan(),
-        rebuild: base_plan,
-    };
-
-    // 4. Full dual-pentagon interlocked mesh — live plan: S subdivides it,
-    //    R regenerates it.
-    let dual_mesh = Scenario::Plan {
-        plan: dual_mesh_plan(),
-        rebuild: dual_mesh_plan,
-    };
-
-    // Opens the Vulkan viewer window; keys 1..4 select the scene, S splits
-    // the current plan one level, R regenerates it.
-    planet_crafter_engine::render::run(vec![no_split, split, base, dual_mesh]);
+    // Opens the Vulkan viewer window; number keys select the scene.
+    planet_crafter_engine::render::run(vec![no_split, split]);
 }
 
 #[cfg(test)]
@@ -101,33 +66,5 @@ mod tests {
         }
         let split = Scenario::Static(split_nodes);
         assert_eq!(split.nodes().len(), 4);
-
-        // Plan scenario: dual-pentagon mesh has 20 nodes.
-        let mut plan = IcosahedronPlan::default();
-        plan.generate(300.0);
-        let dual_mesh = Scenario::Plan {
-            plan,
-            rebuild: dual_mesh_plan,
-        };
-        assert_eq!(dual_mesh.nodes().len(), 20);
-    }
-
-    #[test]
-    fn plan_scenario_splits_without_window() {
-        let mut plan = IcosahedronPlan::default();
-        plan.generate(300.0);
-        let mut scenario = Scenario::Plan {
-            plan,
-            rebuild: dual_mesh_plan,
-        };
-
-        scenario.nodes(); // ensure initial collection works
-        if let Scenario::Plan { plan, .. } = &mut scenario {
-            plan.split();
-        }
-
-        let nodes = scenario.nodes();
-        assert_eq!(nodes.len(), 80);
-        assert!(nodes.iter().all(|n| n.borrow().level == 1));
     }
 }

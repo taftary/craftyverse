@@ -3,7 +3,6 @@
 
 #![warn(missing_docs)]
 
-pub mod icosahedron_plan;
 pub mod node;
 pub mod render;
 pub mod scene;
