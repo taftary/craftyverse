@@ -7,10 +7,10 @@ The `Node` class represents a geometric structure composed of a center point, di
 ### Structure
 
 * **Geometry**
-* `center` — `Point2` representing the center of the node.
+* `center` — `Vec2` representing the centroid of the node.
 * `direction_to_origin` — `Vector2` from the node center toward the origin.
 * `directions` — Fixed triplet of directional vectors (`[i, j, k]`).
-* `points` — Fixed triplet of `Point2` instances (`[A, B, C]`) representing the node's triangle corner points.
+* `points` — Fixed triplet of `Vec2` instances (`[A, B, C]`) representing the node's triangle corner points.
 * `direction_of_node` — `Vector2` defining the orientation of the isosceles triangle (points toward apex point A, with base BC perpendicular to it).
 * `baseLength` — Float representing the length of the base edge BC of the node's triangle.
 * `height` — Float representing the height of the node's isosceles triangle (distance from base BC to apex point A).
@@ -65,7 +65,7 @@ The node represents an **isosceles triangle** defined by points `[A, B, C]`, whe
 
 ### Methods
 
-* `new(direction_of_node, center, origin, baseLength, height, name, labeling)` — Creates a node and initializes its geometry (see Constructor below).
+* `new(name, points, origin)` — Creates a level-zero node and derives its geometry from the explicit points (see Constructor below).
 * `split()` — Splits the current node into four new nodes according to the geometric construction, direction rules, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
 * `destroy()` — Severs all bidirectional `children` links so the node can be freed (see destroy() specification below).
 
@@ -74,31 +74,27 @@ The node represents an **isosceles triangle** defined by points `[A, B, C]`, whe
 **Signature**
 
 ```
-new(direction_of_node: Vector2, center: Point2, origin: Vector2, baseLength: Float, height: Float, name: String, labeling: Labeling)
+new(name: String, points: [Vec2; 3], origin: Vec2)
 
 ```
 
 **Parameters**
 
-* `direction_of_node` — Direction `Vector2` for the isosceles triangle pointing toward point A (perpendicular to base BC).
-* `center` — Center `Point2` of the node.
-* `origin` — Position `Vector2` of the origin, used to orient the node.
-* `baseLength` — Length of the base edge BC of the node's triangle.
-* `height` — Height of the isosceles triangle from base BC to apex point A.
 * `name` — Unique name identifying the node. This value must be unique across all nodes.
-* `labeling` — Corner labeling convention (`Labeling::Normal` or `Labeling::Mirrored`). `Mirrored` swaps the B/C corner assignment (which endpoint of the base edge is labeled B), and therefore swaps the I/K direction vectors.
+* `points` — Triangle points `[A, B, C]`, with A as the apex and BC as the base.
+* `origin` — Position `Vec2` of the origin, used to compute `direction_to_origin`.
 
 **Initialization**
 
-* Stores `direction_of_node` (normalized), `center`, `baseLength`, and `height`.
+* Stores the explicit `points` and computes the centroid, normalized `direction_of_node`, `baseLength`, and `height`.
 * Stores the unique `name`.
 * Computes `direction_to_origin = origin - center`.
-* Builds the isosceles triangle from `center`, `direction_of_node`, `baseLength` (BC), and `height` as an isosceles triangle whose centroid is `center`: base `BC` is perpendicular to `direction_of_node`, and apex point `A` is aligned with `direction_of_node` at distance `height` from base `BC`. The B/C corner assignment follows `labeling`.
+* Treats point order as part of the labeling contract: A is the apex and B/C define the base. The caller supplies a valid, non-degenerate isosceles triangle.
 * Computes `points` (`[A, B, C]`) and `directions` (`[i, j, k]`) from that triangle.
 * `children` starts empty (no links).
 * `level` defaults to 0.
 
-`labeling` is a construction-time choice only — it is not stored. Afterwards it is implicit in the `points` triplet, and `split()` propagates it automatically through the child points triplets.
+There is no separate labeling value. B/C order in the supplied `points` triplet determines the I/K direction labels, and `split()` propagates that order through child point triplets.
 
 ### split() Method Specification
 
@@ -244,7 +240,7 @@ For each link, clear the neighbor's reciprocal back-link first, then the link it
 
 Folder module `crates/engine/src/node/`:
 
-- **`mod.rs`** — `Node`, `NodeRef`, `Labeling` and the `new`/`split`/`destroy` methods.
+- **`mod.rs`** — `Node`, `NodeRef` and the `new`/`split`/`destroy` methods.
 - **`geometry.rs`** — pure triangle-geometry helpers (`triangle_points`, `midpoint`, `perpendicular_toward`, `compute_directions`, `child_node`).
 - **`topology.rs`** — the child-link conventions in one place: `reciprocal_index` (the `0 <-> 2`, `1 <-> 1` mapping), `link` (reciprocal link setter) and `collect_nodes` (breadth-first traversal, deduplicated by pointer identity).
 

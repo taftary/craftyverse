@@ -14,17 +14,9 @@
 //!
 //! ```
 //! use glam::Vec2;
-//! use planet_crafter_engine::node::{Labeling, Node};
+//! use planet_crafter_engine::node::Node;
 //!
-//! let node = Node::new(
-//!     Vec2::Y,
-//!     Vec2::ZERO,
-//!     Vec2::ZERO,
-//!     2.0,
-//!     1.0,
-//!     "root",
-//!     Labeling::Normal,
-//! );
+//! let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
 //! let center = node.borrow().center;
 //! assert_eq!(center, Vec2::ZERO);
 //! ```
@@ -40,7 +32,7 @@ use std::rc::Rc;
 
 use glam::Vec2;
 
-use geometry::{child_node, compute_directions, midpoint, triangle_points};
+use geometry::{child_node, compute_directions, midpoint};
 use topology::{link, reciprocal_index};
 
 pub use topology::collect_nodes;
@@ -51,36 +43,6 @@ pub use topology::collect_nodes;
 /// same node, and the mutable borrow is deferred to runtime. This is the
 /// ownership model used for the bidirectional `children` links.
 pub type NodeRef = Rc<RefCell<Node>>;
-
-/// Corner labeling convention for a node's triangle.
-///
-/// - `Normal` keeps the default B/C corner assignment.
-/// - `Mirrored` swaps the B/C corner assignment, which also swaps the I and K
-///   direction vectors.
-///
-/// The labeling is a construction-time choice only. After construction the
-/// labeling is implicit in the stored [`points`](Node::points) triplet and
-/// propagates automatically through [`Node::split`].
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Labeling {
-    /// Default B/C corner assignment.
-    Normal,
-    /// Swapped B/C corner assignment, which also swaps the I and K directions.
-    Mirrored,
-}
-
-impl Labeling {
-    /// Returns the opposite labeling.
-    ///
-    /// Used to mirror paired nodes so that both nodes of a pair label the same
-    /// pentagon vertex with the same letter.
-    pub fn opposite(self) -> Self {
-        match self {
-            Labeling::Normal => Labeling::Mirrored,
-            Labeling::Mirrored => Labeling::Normal,
-        }
-    }
-}
 
 /// A geometric node: an isosceles triangle with directional vectors and
 /// bidirectional links to adjacent nodes.
@@ -134,28 +96,26 @@ pub struct Node {
 }
 
 impl Node {
-    /// Creates a new node and initializes its geometry.
+    /// Creates a level-zero node from an explicit isosceles triangle.
     ///
     /// # Parameters
     ///
-    /// - `direction_of_node` — direction pointing from base `BC` toward apex
-    ///   `A`. Stored normalized; the base is constructed perpendicular to it.
-    /// - `center` — centroid of the node's triangle.
+    /// - `name` — unique identifier for the node.
+    /// - `points` — triangle corners `[A, B, C]`, where `A` is the apex and
+    ///   `BC` is the base.
     /// - `origin` — position used to compute `direction_to_origin` for the node
     ///   and its descendants.
-    /// - `base_length` — length of the base edge `BC`.
-    /// - `height` — perpendicular distance from base `BC` to apex `A`.
-    /// - `name` — unique identifier for the node.
-    /// - `labeling` — corner labeling convention. `Mirrored` swaps the B/C
-    ///   assignment and therefore the I/K direction vectors.
+    ///
+    /// The caller must provide a non-degenerate isosceles triangle. The center,
+    /// orientation, dimensions, and edge directions are derived from `points`.
     ///
     /// # Example
     ///
     /// ```
     /// use glam::Vec2;
-    /// use planet_crafter_engine::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+    /// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
     /// assert_eq!(node.borrow().level, 0);
     /// ```
     ///
@@ -163,9 +123,9 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use planet_crafter_engine::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 6.0, 4.0, "root", Labeling::Normal);
+    /// let node = Node::new("root", [Vec2::new(0.0, 8.0 / 3.0), Vec2::new(3.0, -4.0 / 3.0), Vec2::new(-3.0, -4.0 / 3.0)], Vec2::ZERO);
     /// let node = node.borrow();
     /// let [a, b, c] = node.points;
     ///
@@ -183,23 +143,10 @@ impl Node {
     ///     assert!((dir.length() - 1.0).abs() < 1e-4);
     /// }
     /// ```
-    pub fn new(
-        direction_of_node: Vec2,
-        center: Vec2,
-        origin: Vec2,
-        base_length: f32,
-        height: f32,
-        name: impl Into<String>,
-        labeling: Labeling,
-    ) -> NodeRef {
-        let direction = direction_of_node.normalize();
-        let points = triangle_points(direction, center, base_length, height, labeling);
+    pub fn new(name: impl Into<String>, points: [Vec2; 3], origin: Vec2) -> NodeRef {
         Rc::new(RefCell::new(Self::from_points(
-            direction,
             points,
             origin,
-            base_length,
-            height,
             0,
             name.into(),
         )))
@@ -210,16 +157,10 @@ impl Node {
     /// The center is the centroid of the triplet, `direction_to_origin` and the
     /// `[i, j, k]` directions are derived from the points. This constructor is
     /// used internally by [`Node::new`] and [`Node::split`].
-    fn from_points(
-        direction_of_node: Vec2,
-        points: [Vec2; 3],
-        origin: Vec2,
-        base_length: f32,
-        height: f32,
-        level: u32,
-        name: String,
-    ) -> Self {
+    fn from_points(points: [Vec2; 3], origin: Vec2, level: u32, name: String) -> Self {
         let center = (points[0] + points[1] + points[2]) / 3.0;
+        let base_midpoint = midpoint(points[1], points[2]);
+        let direction_of_node = (points[0] - base_midpoint).normalize();
         Node {
             name,
             level,
@@ -228,8 +169,8 @@ impl Node {
             directions: compute_directions(&points, center),
             points,
             direction_of_node,
-            base_length,
-            height,
+            base_length: (points[1] - points[2]).length(),
+            height: (points[0] - base_midpoint).length(),
             children: [None, None, None],
         }
     }
@@ -257,9 +198,9 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use planet_crafter_engine::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+    /// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
     /// let center = node.borrow().split();
     /// assert_eq!(center.borrow().level, 1);
     /// assert!(center.borrow().children[0].is_some());
@@ -270,14 +211,14 @@ impl Node {
     /// ```
     /// use std::rc::Rc;
     /// use glam::Vec2;
-    /// use planet_crafter_engine::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 4.0, 2.0, "root", Labeling::Normal);
+    /// let node = Node::new("root", [Vec2::new(0.0, 4.0 / 3.0), Vec2::new(1.0, -2.0 / 3.0), Vec2::new(-1.0, -2.0 / 3.0)], Vec2::ZERO);
     /// let center = node.borrow().split();
     /// let center_ref = center.borrow();
     ///
     /// assert_eq!(center_ref.level, 1);
-    /// assert_eq!(center_ref.base_length, 2.0);
+    /// assert_eq!(center_ref.base_length, 1.0);
     /// assert_eq!(center_ref.height, 1.0);
     /// assert!(center_ref.children.iter().all(|c| c.is_some()));
     ///
@@ -313,41 +254,12 @@ impl Node {
         // is flipped. Each new node gets half the parent's base length and
         // height. Names derive from the parent name to stay unique.
         let level = old_level + 1;
-        let base_length = self.base_length / 2.0;
-        let height = self.height / 2.0;
-        let node_i = child_node(
-            [p_a, p_ab, p_ca],
-            self.direction_of_node,
-            origin,
-            base_length,
-            height,
-            level,
-            format!("{}.I", self.name),
-        );
-        let node_j = child_node(
-            [p_ab, p_b, p_bc],
-            self.direction_of_node,
-            origin,
-            base_length,
-            height,
-            level,
-            format!("{}.J", self.name),
-        );
-        let node_k = child_node(
-            [p_ca, p_bc, p_c],
-            self.direction_of_node,
-            origin,
-            base_length,
-            height,
-            level,
-            format!("{}.K", self.name),
-        );
+        let node_i = child_node([p_a, p_ab, p_ca], origin, level, format!("{}.I", self.name));
+        let node_j = child_node([p_ab, p_b, p_bc], origin, level, format!("{}.J", self.name));
+        let node_k = child_node([p_ca, p_bc, p_c], origin, level, format!("{}.K", self.name));
         let node_center = child_node(
             [p_bc, p_ab, p_ca],
-            -self.direction_of_node,
             origin,
-            base_length,
-            height,
             level,
             format!("{}.C", self.name),
         );
@@ -375,9 +287,9 @@ impl Node {
     ///
     /// ```
     /// use glam::Vec2;
-    /// use planet_crafter_engine::node::{Labeling, Node};
+    /// use planet_crafter_engine::node::Node;
     ///
-    /// let node = Node::new(Vec2::Y, Vec2::ZERO, Vec2::ZERO, 2.0, 1.0, "root", Labeling::Normal);
+    /// let node = Node::new("root", [Vec2::new(0.0, 2.0 / 3.0), Vec2::new(0.5, -1.0 / 3.0), Vec2::new(-0.5, -1.0 / 3.0)], Vec2::ZERO);
     /// let center = node.borrow().split();
     /// center.borrow_mut().destroy();
     /// assert!(center.borrow().children.iter().all(|c| c.is_none()));

@@ -6,7 +6,7 @@
 //! See `docs/book/specs/scene.md` and `docs/book/specs/render.md`.
 
 use glam::Vec2;
-use planet_crafter_engine::node::{Labeling, Node};
+use planet_crafter_engine::node::Node;
 use planet_crafter_engine::scene::build_scene;
 
 /// Runs the renderer-neutral-scene demonstration.
@@ -15,13 +15,13 @@ use planet_crafter_engine::scene::build_scene;
 /// checkboxes without touching any Vulkan object.
 pub fn run() {
     let node = Node::new(
-        Vec2::Y,
-        Vec2::ZERO,
-        Vec2::ZERO,
-        2.0,
-        1.0,
         "root",
-        Labeling::Normal,
+        [
+            Vec2::new(0.0, 2.0 / 3.0),
+            Vec2::new(0.5, -1.0 / 3.0),
+            Vec2::new(-0.5, -1.0 / 3.0),
+        ],
+        Vec2::ZERO,
     );
 
     let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &Default::default());

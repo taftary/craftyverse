@@ -10,13 +10,13 @@ fn approx_eq(a: Vec2, b: Vec2) -> bool {
 /// Equilateral test node (base 300, apex up, height = base * √3 / 2).
 fn test_node() -> NodeRef {
     Node::new(
-        Vec2::Y,
-        Vec2::ZERO,
-        Vec2::new(0.0, 1000.0),
-        300.0,
-        300.0 * 3.0_f32.sqrt() / 2.0,
         "root",
-        Labeling::Normal,
+        [
+            Vec2::new(0.0, 100.0 * 3.0_f32.sqrt()),
+            Vec2::new(150.0, -50.0 * 3.0_f32.sqrt()),
+            Vec2::new(-150.0, -50.0 * 3.0_f32.sqrt()),
+        ],
+        Vec2::new(0.0, 1000.0),
     )
 }
 
@@ -38,13 +38,13 @@ fn new_initializes_identity_and_geometry() {
 #[test]
 fn new_normalizes_direction_of_node() {
     let node = Node::new(
-        Vec2::new(0.0, 42.0),
-        Vec2::ZERO,
-        Vec2::ZERO,
-        300.0,
-        200.0,
         "scaled",
-        Labeling::Normal,
+        [
+            Vec2::new(0.0, 2.0),
+            Vec2::new(1.5, -1.0),
+            Vec2::new(-1.5, -1.0),
+        ],
+        Vec2::ZERO,
     );
     assert!(approx_eq(node.borrow().direction_of_node, Vec2::Y));
 }
@@ -71,13 +71,13 @@ fn new_builds_equilateral_triangle_around_center() {
 #[test]
 fn new_builds_isosceles_triangle_from_direction_and_dimensions() {
     let node = Node::new(
-        Vec2::X,
-        Vec2::ZERO,
-        Vec2::ZERO,
-        300.0,
-        200.0,
         "iso",
-        Labeling::Normal,
+        [
+            Vec2::new(2.0 * 200.0 / 3.0, 0.0),
+            Vec2::new(-200.0 / 3.0, -150.0),
+            Vec2::new(-200.0 / 3.0, 150.0),
+        ],
+        Vec2::ZERO,
     );
     let node = node.borrow();
     let [a, b, c] = node.points;
@@ -99,31 +99,28 @@ fn new_builds_isosceles_triangle_from_direction_and_dimensions() {
 }
 
 #[test]
-fn new_mirrored_labeling_swaps_b_c_and_i_k() {
+fn point_order_controls_direction_labels() {
     let normal = Node::new(
-        Vec2::X,
+        "normal",
+        [
+            Vec2::new(0.0, 2.0),
+            Vec2::new(1.5, -1.0),
+            Vec2::new(-1.5, -1.0),
+        ],
         Vec2::ZERO,
-        Vec2::ZERO,
-        300.0,
-        200.0,
-        "n",
-        Labeling::Normal,
     );
     let mirrored = Node::new(
-        Vec2::X,
+        "mirrored",
+        [
+            Vec2::new(0.0, 2.0),
+            Vec2::new(-1.5, -1.0),
+            Vec2::new(1.5, -1.0),
+        ],
         Vec2::ZERO,
-        Vec2::ZERO,
-        300.0,
-        200.0,
-        "m",
-        Labeling::Mirrored,
     );
     let normal = normal.borrow();
     let mirrored = mirrored.borrow();
 
-    // Same triangle, swapped B/C labels — hence swapped I/K directions,
-    // with J (perpendicular to the unchanged base edge) preserved.
-    assert!(approx_eq(normal.points[0], mirrored.points[0]));
     assert!(approx_eq(normal.points[1], mirrored.points[2]));
     assert!(approx_eq(normal.points[2], mirrored.points[1]));
     assert!(approx_eq(normal.directions[0], mirrored.directions[2]));
@@ -372,4 +369,49 @@ fn destroy_without_links_is_noop() {
     let node = test_node();
     node.borrow_mut().destroy();
     assert!(node.borrow().children.iter().all(|slot| slot.is_none()));
+}
+
+#[test]
+fn collect_nodes_deduplicates_reciprocal_cycles() {
+    let node = test_node();
+    let center = node.borrow().split();
+    let nodes = collect_nodes(&center);
+
+    assert_eq!(nodes.len(), 4);
+    assert_eq!(
+        nodes
+            .iter()
+            .map(Rc::as_ptr)
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        4
+    );
+}
+
+#[test]
+fn split_preserves_origin_for_descendants() {
+    let origin = Vec2::new(0.0, 1000.0);
+    let node = Node::new(
+        "root",
+        [
+            Vec2::new(0.0, 100.0 * 3.0_f32.sqrt()),
+            Vec2::new(150.0, -50.0 * 3.0_f32.sqrt()),
+            Vec2::new(-150.0, -50.0 * 3.0_f32.sqrt()),
+        ],
+        origin,
+    );
+    let center = node.borrow().split();
+    let grandchild = center.borrow().children[0]
+        .as_ref()
+        .unwrap()
+        .borrow()
+        .split();
+
+    for descendant in collect_nodes(&grandchild) {
+        let descendant = descendant.borrow();
+        assert!(approx_eq(
+            descendant.direction_to_origin,
+            origin - descendant.center
+        ));
+    }
 }

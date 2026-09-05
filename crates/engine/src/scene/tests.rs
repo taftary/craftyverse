@@ -2,18 +2,18 @@ use super::colors::{DIRECTION_COLORS, LEVEL_COLORS, hex_rgb, level_color};
 use super::geometry::DOT_SEGMENTS;
 use super::options::ATTRIBUTES;
 use super::*;
-use crate::node::{Labeling, Node};
+use crate::node::Node;
 
 /// Equilateral test node (base 300, apex up, height = base * √3 / 2).
 fn test_node() -> NodeRef {
     Node::new(
-        Vec2::Y,
-        Vec2::ZERO,
-        Vec2::new(0.0, 1000.0),
-        300.0,
-        300.0 * 3.0_f32.sqrt() / 2.0,
         "root",
-        Labeling::Normal,
+        [
+            Vec2::new(0.0, 100.0 * 3.0_f32.sqrt()),
+            Vec2::new(150.0, -50.0 * 3.0_f32.sqrt()),
+            Vec2::new(-150.0, -50.0 * 3.0_f32.sqrt()),
+        ],
+        Vec2::new(0.0, 1000.0),
     )
 }
 
@@ -39,13 +39,13 @@ fn single_node_emits_all_element_kinds() {
 #[test]
 fn origin_arrow_is_skipped_when_node_is_at_origin() {
     let node = Node::new(
-        Vec2::Y,
-        Vec2::ZERO,
-        Vec2::ZERO,
-        300.0,
-        200.0,
         "at_origin",
-        Labeling::Normal,
+        [
+            Vec2::new(0.0, 4.0 / 3.0),
+            Vec2::new(1.5, -2.0 / 3.0),
+            Vec2::new(-1.5, -2.0 / 3.0),
+        ],
+        Vec2::ZERO,
     );
     let mesh = build_scene(&[node], Vec2::new(800.0, 800.0), &DisplayOptions::default());
 
