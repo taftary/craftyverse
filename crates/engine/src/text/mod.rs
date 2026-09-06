@@ -22,23 +22,19 @@
 
 mod packing;
 
-#[cfg(test)]
-mod tests;
-
 use fontdue::{Font, FontSettings};
 use glam::Vec2;
 
-use packing::{ShelfPacker, blit, uv_rect};
+use packing::blit;
+
+#[cfg(feature = "test-internals")]
+pub use packing::{ATLAS_HEIGHT, ATLAS_WIDTH, GLYPH_PADDING, Glyph, ShelfPacker, uv_rect};
+#[cfg(not(feature = "test-internals"))]
+use packing::{ATLAS_HEIGHT, ATLAS_WIDTH, Glyph, ShelfPacker, uv_rect};
 
 /// Glyph rasterization size in the atlas. Layouts scale quads down from this
 /// size; linear sampling keeps small labels readable.
 const ATLAS_SIZE: f32 = 48.0;
-/// Width of the glyph atlas texture in pixels.
-const ATLAS_WIDTH: usize = 512;
-/// Height of the glyph atlas texture in pixels.
-const ATLAS_HEIGHT: usize = 512;
-/// Padding in pixels reserved around each packed glyph rectangle.
-const GLYPH_PADDING: usize = 2;
 
 /// Number of rasterized glyphs: the printable ASCII range `' '..='~'`.
 const GLYPH_COUNT: usize = ('~' as usize) - (' ' as usize) + 1;
@@ -80,19 +76,6 @@ impl std::fmt::Display for TextAtlasError {
 }
 
 impl std::error::Error for TextAtlasError {}
-
-#[derive(Clone, Copy, Default)]
-struct Glyph {
-    uv_min: Vec2,
-    uv_max: Vec2,
-    /// Bitmap size in pixels at [`ATLAS_SIZE`].
-    size: Vec2,
-    /// Bearing at [`ATLAS_SIZE`]: `x` is the left side bearing, `y` is
-    /// baseline→bottom (y-up).
-    bearing: Vec2,
-    advance: f32,
-    has_bitmap: bool,
-}
 
 /// Rasterized glyph atlas plus the metrics needed to lay out text runs.
 pub struct TextAtlas {
@@ -186,7 +169,7 @@ impl TextAtlas {
     }
 
     /// Glyph for `ch`; characters outside printable ASCII fall back to `'?'`.
-    fn glyph(&self, ch: char) -> Glyph {
+    pub(crate) fn glyph(&self, ch: char) -> Glyph {
         let index = (ch as usize).wrapping_sub(' ' as usize);
         self.glyphs
             .get(index)

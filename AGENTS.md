@@ -28,6 +28,8 @@ Cargo workspace (edition 2024, resolver 3) defined in the root `Cargo.toml`:
 - `docs/examples` - package `planet-crafter-examples`. Compile-tested
   documentation examples; the `viewer` example is gated behind the `gpu`
   feature.
+- `tests/` - package `planet-crafter-tests`. Consolidated engine and game
+  test suite, organized by engine module (see "Testing layout").
 - `assets/fonts` - bundled JetBrains Mono (SIL OFL), embedded via
   `include_bytes!`.
 - `docs/` - mdBook architecture book (`docs/book`, the target blueprint),
@@ -67,7 +69,7 @@ Validation enforced by CI (`.github/workflows/docs.yml`):
 ```text
 cargo fmt --check                              # formatting
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-targets           # unit tests + headless examples
+cargo test --workspace --all-targets           # test suite + headless examples
 cargo check --example viewer -p planet-crafter-examples --features gpu  # compile-check only
 docs/scripts/check-book.sh                     # docs: mdBook build + link/section checks
 ```
@@ -126,13 +128,21 @@ cargo run --example viewer -p planet-crafter-examples --features gpu    # needs 
 
 ## Testing layout
 
-- Unit tests live beside the implementation: each engine module declares
-  `#[cfg(test)] mod tests;` in its `mod.rs`, backed by a sibling `tests.rs`
-  (e.g. `crates/engine/src/node/tests.rs`). `crates/game/src/main.rs` uses an
-  inline `#[cfg(test)] mod tests` instead.
-- Test fixtures shared across engine modules live in
-  `crates/engine/src/test_utils.rs` (`#[cfg(test)]`-gated, `pub(crate)`).
-- There is no workspace-level `tests/` directory yet (planned addition).
+- All engine and game tests live in the workspace-root `tests/` package
+  (`planet-crafter-tests`): one integration-test target per engine module
+  (`node`, `scene`, `text`, `render`) plus one `game` target. Modules with
+  submodules are folders that split the tests one file per submodule (for
+  example `tests/node/subdivision.rs`); each folder's `main.rs` declares the
+  files as modules of its test target.
+- Test fixtures shared across targets live in `tests/src/fixtures.rs` (the
+  package's small library target).
+- Whitebox internals reach the tests through the engine's `test-internals`
+  feature, which adds the `planet_crafter_engine::testing` re-export module
+  plus feature-gated re-exports in each engine module. This is a test-only
+  surface, not a public API contract: builds without the feature expose
+  nothing extra.
+- `docs/examples` keeps its own inline tests: those are compile-tested
+  documentation examples, not application tests.
 - Tests and examples that need a window, GPU, or device are gated behind the
   `gpu` feature via `required-features`, so headless runs skip them
   automatically.

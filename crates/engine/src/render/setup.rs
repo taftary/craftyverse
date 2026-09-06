@@ -97,7 +97,7 @@ pub(crate) fn pick_physical_device(
 
 /// Preference rank of a physical device kind: discrete GPU first, then
 /// integrated, virtual, CPU, anything else last.
-pub(crate) fn device_type_rank(device_type: PhysicalDeviceType) -> u8 {
+pub fn device_type_rank(device_type: PhysicalDeviceType) -> u8 {
     match device_type {
         PhysicalDeviceType::DiscreteGpu => 0,
         PhysicalDeviceType::IntegratedGpu => 1,

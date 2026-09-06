@@ -28,9 +28,6 @@ mod shaders;
 mod vertices;
 mod viewer;
 
-#[cfg(test)]
-mod tests;
-
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use glam::Vec3;
@@ -39,6 +36,17 @@ use crate::node::{
     IcosphereMesh, NodeRef, build_icosphere, destroy_mesh, split_nodes, unsplit_nodes,
 };
 use viewer::Viewer;
+
+#[cfg(feature = "test-internals")]
+pub use renderer::checkbox_at;
+#[cfg(feature = "test-internals")]
+pub use setup::device_type_rank;
+#[cfg(feature = "test-internals")]
+pub use shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
+#[cfg(feature = "test-internals")]
+pub use vertices::{PushMatrix, PushTransform};
+#[cfg(feature = "test-internals")]
+pub use viewer::scenario_index_of;
 
 /// Maximum subdivision level an [`Scenario::Icosphere`] can be adjusted to
 /// from the viewer (bounds the per-rebuild CPU and GPU upload cost).

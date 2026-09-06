@@ -61,4 +61,4 @@ exactly why the back-port is stored rather than assumed.
 ### Files
 
 - `crates/engine/src/node/icosphere.rs` - geodesic sphere construction
-  (`build_icosphere`), with tests in `crates/engine/src/node/icosphere/tests.rs`.
+  (`build_icosphere`), with tests in `tests/node/icosphere.rs`.

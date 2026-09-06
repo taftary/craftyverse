@@ -3,15 +3,15 @@
 
 use glam::Vec3;
 
-use crate::node::{Node, NodeRef};
+use planet_crafter_engine::node::{Node, NodeRef};
 
 /// 2D point on the z = 0 plane.
-pub(crate) fn point(x: f32, y: f32) -> Vec3 {
+pub fn point(x: f32, y: f32) -> Vec3 {
     Vec3::new(x, y, 0.0)
 }
 
 /// Equilateral test node (base 300, apex up, height = base * sqrt(3) / 2).
-pub(crate) fn test_node() -> NodeRef {
+pub fn test_node() -> NodeRef {
     Node::new(
         "root",
         [

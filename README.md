@@ -58,7 +58,7 @@ only moves the camera, so the geometry is never rebuilt.
 ## Development
 
 ```
-cargo test --workspace    # unit tests (node geometry, scene generation, text layout, shader compilation)
+cargo test --workspace    # test suite in tests/ (node, scene, text, render, and game tests)
 cargo clippy --workspace  # lint
 ```
 
@@ -73,6 +73,7 @@ crates/
 assets/
   fonts/    - bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/     - target architecture, handbook, and per-module specifications
+tests/    - consolidated application test suite (planet-crafter-tests)
 ```
 
 ## Documentation

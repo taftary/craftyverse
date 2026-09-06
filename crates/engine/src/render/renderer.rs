@@ -495,7 +495,7 @@ fn pixel_matrix(viewport: Vec2) -> Mat4 {
 }
 
 /// Attribute of the first checkbox containing `point`, if any.
-pub(crate) fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attribute> {
+pub fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attribute> {
     checkboxes
         .iter()
         .find(|checkbox| checkbox.contains(point))

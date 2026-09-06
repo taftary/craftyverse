@@ -152,8 +152,9 @@ macro_rules! attribute_field {
 impl DisplayOptions {
     /// Returns an option set with every attribute disabled.
     ///
-    /// Test-only: gated to keep the non-test build free of dead code.
-    #[cfg(test)]
+    /// Test-only: gated behind the `test-internals` feature to keep the
+    /// default build free of dead code.
+    #[cfg(feature = "test-internals")]
     pub fn none() -> Self {
         Self {
             child_links: false,
@@ -196,7 +197,7 @@ impl DisplayOptions {
 
 /// Checkboxes of the display-options panel, in display order. Per-port
 /// sub-switches sit right under their group master.
-pub(crate) const ATTRIBUTES: [(Attribute, &str); 18] = [
+pub const ATTRIBUTES: [(Attribute, &str); 18] = [
     (Attribute::ChildLinks, "child links"),
     (Attribute::ChildLink(Port::I), "link I"),
     (Attribute::ChildLink(Port::J), "link J"),

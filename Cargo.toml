@@ -4,6 +4,7 @@ members = [
     "crates/game",
     "crates/tools",
     "docs/examples",
+    "tests",
 ]
 default-members = ["crates/game"]
 resolver = "3"

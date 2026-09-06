@@ -102,8 +102,9 @@ through `project_labels`, when the camera changes.
 
 The module is a folder module: public types and `build_scene` in `mod.rs`,
 the camera in `camera.rs`, colors in `colors.rs`, display options in
-`options.rs`, the per-node geometry builders in `geometry.rs`, the checkbox
-panel in `panel.rs`, and the unit tests in `tests.rs`.
+`options.rs`, the per-node geometry builders in `geometry.rs`, and the
+checkbox panel in `panel.rs`. Tests live in `tests/scene/`, split one file
+per submodule.
 
 ### Generated Elements (per node, each gated by its `DisplayOptions` flag)
 

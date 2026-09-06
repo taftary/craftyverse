@@ -9,21 +9,10 @@ use glam::Vec3;
 
 use super::NodeRef;
 
-/// Reciprocal port index of the historical `children` link convention: a
-/// link on port `index` backed by port `reciprocal_index(index)` on the
-/// neighbor — 0 ↔ 2 (I ↔ K) and 1 ↔ 1 (J ↔ J), mirroring the
-/// interconnections established by `split_node`. This is a common pattern,
-/// not an invariant: links carry an explicit `back_ports` record instead.
-/// Only tests measure where the pattern holds.
-#[cfg(test)]
-pub(crate) fn reciprocal_index(index: usize) -> usize {
-    2 - index
-}
-
 /// Wires a bidirectional link between two nodes: sets `a.children[port_a]`
 /// to `b` and `b.children[port_b]` to `a`, and records each side's
 /// back-port so `destroy` can sever the link exactly.
-pub(crate) fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
+pub fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
     a.borrow_mut().children[port_a] = Some(Rc::clone(b));
     a.borrow_mut().back_ports[port_a] = Some(port_b);
     b.borrow_mut().children[port_b] = Some(Rc::clone(a));

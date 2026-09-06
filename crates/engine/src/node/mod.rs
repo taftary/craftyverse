@@ -27,9 +27,6 @@ mod icosphere;
 mod subdivision;
 mod topology;
 
-#[cfg(test)]
-mod tests;
-
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -40,6 +37,9 @@ use geometry::{child_node, compute_directions};
 pub use icosphere::{IcosphereMesh, MAX_SUBDIVISIONS, build_icosphere};
 pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::{collect_nodes, destroy_mesh};
+
+#[cfg(feature = "test-internals")]
+pub use topology::link;
 
 /// Shared, mutable reference to a [`Node`].
 ///

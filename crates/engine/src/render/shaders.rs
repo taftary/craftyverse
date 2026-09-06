@@ -8,7 +8,7 @@ use vulkano::shader::{EntryPoint, ShaderModule, ShaderModuleCreateInfo};
 
 /// Geometry vertex shader: `mvp` push-constant view-projection transform,
 /// passes the vertex color through.
-pub(crate) const GEOM_VERT: &str = r#"
+pub const GEOM_VERT: &str = r#"
 #version 450
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 color;
@@ -21,7 +21,7 @@ void main() {
 "#;
 
 /// Geometry fragment shader: flat interpolated color.
-pub(crate) const GEOM_FRAG: &str = r#"
+pub const GEOM_FRAG: &str = r#"
 #version 450
 layout(location = 0) in vec3 color;
 layout(location = 0) out vec4 out_color;
@@ -31,7 +31,7 @@ void main() {
 "#;
 
 /// Text vertex shader: same transform as the geometry shader, plus atlas UV.
-pub(crate) const TEXT_VERT: &str = r#"
+pub const TEXT_VERT: &str = r#"
 #version 450
 layout(location = 0) in vec2 pos;
 layout(location = 1) in vec2 uv;
@@ -47,7 +47,7 @@ void main() {
 "#;
 
 /// Text fragment shader: glyph coverage from the atlas in the alpha channel.
-pub(crate) const TEXT_FRAG: &str = r#"
+pub const TEXT_FRAG: &str = r#"
 #version 450
 layout(location = 0) in vec2 uv;
 layout(location = 1) in vec3 color;
@@ -64,7 +64,7 @@ void main() {
 
 /// Compiles GLSL `source` for `stage` to SPIR-V words: naga parse, validate,
 /// write. Headless — no Vulkan device involved, so it is unit-testable.
-pub(crate) fn compile_spirv(source: &str, stage: naga::ShaderStage) -> Result<Vec<u32>, String> {
+pub fn compile_spirv(source: &str, stage: naga::ShaderStage) -> Result<Vec<u32>, String> {
     let module = naga::front::glsl::Frontend::default()
         .parse(&naga::front::glsl::Options::from(stage), source)
         .map_err(|err| format!("GLSL parse failed: {err}"))?;

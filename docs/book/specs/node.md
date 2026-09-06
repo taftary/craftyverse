@@ -156,8 +156,8 @@ or infinite traversal.
 - `crates/engine/src/node/topology.rs` - reciprocal links, graph traversal,
   mesh cleanup (`destroy_mesh`), and the corner-weld lookups shared by
   sphere construction and mesh-level splits.
-- `crates/engine/src/node/tests.rs` - geometry, topology, lifecycle, traversal,
-  and origin-propagation tests.
+- `tests/node/` - geometry, topology, subdivision, lifecycle, traversal, and
+  origin-propagation tests, split one file per submodule.
 
 ### Rules
 

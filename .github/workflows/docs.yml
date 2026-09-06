@@ -5,6 +5,7 @@ on:
     branches: [main, master]
     paths:
       - "crates/**"
+      - "tests/**"
       - "docs/**"
       - ".github/workflows/docs.yml"
       - "README.md"
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - "crates/**"
+      - "tests/**"
       - "docs/**"
       - ".github/workflows/docs.yml"
       - "README.md"

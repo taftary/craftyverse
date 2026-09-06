@@ -2,7 +2,7 @@
 //! level palette cycled by `level % 8` and the fixed element colors.
 
 /// Colors of the level palette, cycled by `level % 8` (same as the SVG one).
-pub(crate) const LEVEL_COLORS: [[f32; 3]; 8] = [
+pub const LEVEL_COLORS: [[f32; 3]; 8] = [
     hex_rgb("#1f77b4"),
     hex_rgb("#ff7f0e"),
     hex_rgb("#2ca02c"),
@@ -15,7 +15,7 @@ pub(crate) const LEVEL_COLORS: [[f32; 3]; 8] = [
 
 /// Colors of the I/J/K direction vectors (red/green/blue); also used for the
 /// per-port child links, open-port markers and sub-switch labels.
-pub(crate) const DIRECTION_COLORS: [[f32; 3]; 3] =
+pub const DIRECTION_COLORS: [[f32; 3]; 3] =
     [hex_rgb("#d32f2f"), hex_rgb("#388e3c"), hex_rgb("#1976d2")];
 /// Color of the `direction_of_node` arrow.
 pub(crate) const NODE_DIRECTION_COLOR: [f32; 3] = hex_rgb("#8e24aa");
@@ -28,7 +28,7 @@ pub(crate) const CORNER_LABEL_COLOR: [f32; 3] = hex_rgb("#757575");
 /// Color of the checkbox panel geometry (box outlines and fills).
 pub(crate) const UI_COLOR: [f32; 3] = hex_rgb("#424242");
 /// Color of the reciprocal-port-rule violation highlights.
-pub(crate) const VIOLATION_COLOR: [f32; 3] = hex_rgb("#ff5722");
+pub const VIOLATION_COLOR: [f32; 3] = hex_rgb("#ff5722");
 
 /// One hex digit → value; invalid digits map to 0.
 const fn hex_channel(byte: u8) -> u8 {
@@ -41,7 +41,7 @@ const fn hex_channel(byte: u8) -> u8 {
 }
 
 /// "#rrggbb" → RGB floats in [0, 1].
-pub(crate) const fn hex_rgb(color: &str) -> [f32; 3] {
+pub const fn hex_rgb(color: &str) -> [f32; 3] {
     let bytes = color.as_bytes();
     [
         (hex_channel(bytes[1]) * 16 + hex_channel(bytes[2])) as f32 / 255.0,
@@ -51,6 +51,6 @@ pub(crate) const fn hex_rgb(color: &str) -> [f32; 3] {
 }
 
 /// Level palette, cycled by `level % 8`.
-pub(crate) fn level_color(level: u32) -> [f32; 3] {
+pub fn level_color(level: u32) -> [f32; 3] {
     LEVEL_COLORS[(level % 8) as usize]
 }

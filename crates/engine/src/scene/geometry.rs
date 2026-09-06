@@ -20,7 +20,7 @@ const ARROW_SCALE: f32 = 0.5;
 
 /// Triangle-fan segment count of the filled discs (center dot, open-port
 /// markers).
-pub(crate) const DOT_SEGMENTS: usize = 16;
+pub const DOT_SEGMENTS: usize = 16;
 
 /// Pixel size of the name/level label.
 const LABEL_SIZE_PX: f32 = 12.0;
@@ -67,7 +67,7 @@ pub(crate) fn push_dashed_line(
 
 /// Appends a filled disc as a `segments`-triangle fan around `center`, in the
 /// plane perpendicular to `normal`.
-pub(crate) fn push_disc(
+pub fn push_disc(
     buf: &mut Vec<Vertex>,
     center: Vec3,
     normal: Vec3,
@@ -91,7 +91,7 @@ pub(crate) fn push_disc(
 
 /// Orthonormal basis `(u, v)` of the plane perpendicular to `direction`;
 /// degenerate directions fall back to the XY plane.
-pub(crate) fn plane_basis(direction: Vec3) -> (Vec3, Vec3) {
+pub fn plane_basis(direction: Vec3) -> (Vec3, Vec3) {
     let n = direction.try_normalize().unwrap_or(Vec3::Z);
     let reference = if n.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
     let u = n.cross(reference).normalize();
@@ -100,13 +100,7 @@ pub(crate) fn plane_basis(direction: Vec3) -> (Vec3, Vec3) {
 
 /// Appends a two-fin arrowhead at `tip`, pointing along `dir`: two triangles
 /// in perpendicular planes, so the head stays readable from any camera angle.
-pub(crate) fn push_arrowhead(
-    buf: &mut Vec<Vertex>,
-    tip: Vec3,
-    dir: Vec3,
-    size: f32,
-    color: [f32; 3],
-) {
+pub fn push_arrowhead(buf: &mut Vec<Vertex>, tip: Vec3, dir: Vec3, size: f32, color: [f32; 3]) {
     let dir = dir.try_normalize().unwrap_or(Vec3::Z);
     let back = dir * size;
     let (u, v) = plane_basis(dir);

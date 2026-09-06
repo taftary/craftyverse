@@ -20,11 +20,12 @@ pub(crate) const MIN_FIT_RADIUS: f32 = 1e-3;
 
 /// Pitch clamp: the camera never quite reaches the poles, where the up
 /// vector would be parallel to the view direction.
-pub(crate) const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
+pub const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 
-/// Zoom clamps (magnification factor on the fitted camera distance).
-pub(crate) const MIN_ZOOM: f32 = 0.05;
-pub(crate) const MAX_ZOOM: f32 = 20.0;
+/// Lower zoom clamp (magnification factor on the fitted camera distance).
+pub const MIN_ZOOM: f32 = 0.05;
+/// Upper zoom clamp (magnification factor on the fitted camera distance).
+pub const MAX_ZOOM: f32 = 20.0;
 
 /// Orbit camera around the content bounding sphere.
 ///

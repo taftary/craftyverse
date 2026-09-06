@@ -63,10 +63,11 @@ with alpha blending. The module contains no GPU code.
 
 Folder module `crates/engine/src/text/`:
 
-- **`mod.rs`** - `TextAtlas`, `TextAtlasError`, `TextVertex`, `Glyph`, the
-  atlas constants and `layout()`; `TextAtlas::new()` orchestrates the
-  packing helpers.
-- **`packing.rs`** - atlas-construction internals: `ShelfPacker` (shelf
-  packing), `blit()` (bitmap copy) and `uv_rect()` (half-texel UV inset).
-- **`tests.rs`** - atlas construction, layout and fallback tests, plus the
-  packing internals (shelf wrap, atlas overflow, `uv_rect` math).
+- **`mod.rs`** - `TextAtlas`, `TextAtlasError`, `TextVertex` and `layout()`;
+  `TextAtlas::new()` orchestrates the packing helpers.
+- **`packing.rs`** - atlas-construction internals: the atlas constants, the
+  `Glyph` metrics record, `ShelfPacker` (shelf packing), `blit()` (bitmap
+  copy) and `uv_rect()` (half-texel UV inset).
+- **Tests** - live in `tests/text/`: `atlas.rs` (atlas construction, layout
+  and fallback) and `packing.rs` (shelf wrap, atlas overflow, `uv_rect`
+  math).

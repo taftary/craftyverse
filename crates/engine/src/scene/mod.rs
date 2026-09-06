@@ -38,15 +38,21 @@ mod geometry;
 mod options;
 mod panel;
 
-#[cfg(test)]
-mod tests;
-
 use glam::{Vec2, Vec3};
 
 use crate::node::NodeRef;
 
 pub use camera::{OrbitCamera, project_labels};
 pub use options::{Attribute, Checkbox, DisplayOptions, Port};
+
+#[cfg(feature = "test-internals")]
+pub use camera::{MAX_PITCH, MAX_ZOOM, MIN_ZOOM};
+#[cfg(feature = "test-internals")]
+pub use colors::{DIRECTION_COLORS, LEVEL_COLORS, VIOLATION_COLOR, hex_rgb, level_color};
+#[cfg(feature = "test-internals")]
+pub use geometry::{DOT_SEGMENTS, plane_basis, push_arrowhead, push_disc};
+#[cfg(feature = "test-internals")]
+pub use options::ATTRIBUTES;
 
 /// Colored vertex: world-space (y-up) for the `lines`/`triangles` batches,
 /// pixel-space with `z = 0` for the UI batches.

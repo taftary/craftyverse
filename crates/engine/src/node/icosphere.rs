@@ -298,6 +298,3 @@ struct WeldEntry {
 fn cache_key(a: usize, b: usize) -> (usize, usize) {
     if a < b { (a, b) } else { (b, a) }
 }
-
-#[cfg(test)]
-mod tests;

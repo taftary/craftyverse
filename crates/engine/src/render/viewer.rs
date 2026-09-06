@@ -231,7 +231,7 @@ impl ApplicationHandler for Viewer {
 
 /// Scenario index selected by a digit key (Digit1 → 0, Digit2 → 1, …), or
 /// `None` for other keys and out-of-range digits (`count` scenarios).
-pub(crate) fn scenario_index_of(key: &PhysicalKey, count: usize) -> Option<usize> {
+pub fn scenario_index_of(key: &PhysicalKey, count: usize) -> Option<usize> {
     let index = match key {
         PhysicalKey::Code(KeyCode::Digit1) => Some(0),
         PhysicalKey::Code(KeyCode::Digit2) => Some(1),

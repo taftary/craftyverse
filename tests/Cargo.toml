@@ -1,0 +1,35 @@
+[package]
+name = "planet-crafter-tests"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+glam = { workspace = true }
+planet-crafter-engine = { path = "../crates/engine", features = ["test-internals"] }
+
+[dev-dependencies]
+naga = { version = "30.0.1", features = ["glsl-in", "spv-out", "spv-in"] }
+vulkano = "0.35.2"
+winit = "0.30.13"
+
+[[test]]
+name = "node"
+path = "node/main.rs"
+
+[[test]]
+name = "scene"
+path = "scene/main.rs"
+
+[[test]]
+name = "text"
+path = "text/main.rs"
+
+[[test]]
+name = "render"
+path = "render/main.rs"
+
+[[test]]
+name = "game"
+path = "game.rs"
