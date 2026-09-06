@@ -30,29 +30,20 @@ pub(crate) fn triangle_points(vertices: &[Vec3; 3], midpoints: [Vec3; 3]) -> [[V
     ]
 }
 
-/// Unit perpendicular of an edge, pointing from `center` toward the edge.
-pub(crate) fn perpendicular_toward(a: Vec3, b: Vec3, center: Vec3) -> Vec3 {
-    let edge = b - a;
-    let normal = (b - a).cross(center - a).normalize();
-    let candidate = edge.cross(normal);
-    let toward_edge = midpoint(a, b) - center;
-    let direction = if candidate.dot(toward_edge) >= 0.0 {
-        candidate
-    } else {
-        -candidate
-    };
-    direction.normalize()
+/// Unit direction from `center` toward the midpoint of edge `ab`.
+pub(crate) fn direction_toward_edge_midpoint(a: Vec3, b: Vec3, center: Vec3) -> Vec3 {
+    (midpoint(a, b) - center).normalize()
 }
 
 /// Computes the `[i, j, k]` direction triplet from the node's own vertices
-/// triplet: I ⊥ AB, J ⊥ BC, K ⊥ CA, each pointing from the center toward its
-/// edge.
+/// triplet: I toward the midpoint of AB, J toward the midpoint of BC, K toward
+/// the midpoint of CA, each pointing from the center toward its edge.
 pub(crate) fn compute_directions(vertices: &[Vec3; 3], center: Vec3) -> [Vec3; 3] {
     let [a, b, c] = *vertices;
     [
-        perpendicular_toward(a, b, center),
-        perpendicular_toward(b, c, center),
-        perpendicular_toward(c, a, center),
+        direction_toward_edge_midpoint(a, b, center),
+        direction_toward_edge_midpoint(b, c, center),
+        direction_toward_edge_midpoint(c, a, center),
     ]
 }
 

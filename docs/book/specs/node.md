@@ -66,12 +66,12 @@ and K labels.
 
 For every node, directions are computed from that node's own vertices:
 
-- `I` is in the triangle plane, perpendicular to `AB`, and points from the
-    center toward edge `AB`.
-- `J` is in the triangle plane, perpendicular to `BC`, and points from the
-    center toward edge `BC`.
-- `K` is in the triangle plane, perpendicular to `CA`, and points from the
-    center toward edge `CA`.
+- `I` is in the triangle plane, passes through the center of `AB`, and points
+    from the center toward edge `AB`.
+- `J` is in the triangle plane, passes through the center of `BC`, and points
+    from the center toward edge `BC`.
+- `K` is in the triangle plane, passes through the center of `CA`, and points
+    from the center toward edge `CA`.
 
 ### Methods
 

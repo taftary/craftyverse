@@ -120,24 +120,25 @@ fn equilateral_directions_match_expected_orientation() {
     let node = test_node();
     let [i, j, k] = node.borrow().directions;
 
-    // I up-right (perpendicular to AB), J straight down (perpendicular to BC),
+    // I up-right, J straight down, K up-left.
     assert!(approx_eq(i, point(SQRT_3_2, 0.5)));
     assert!(approx_eq(j, point(0.0, -1.0)));
     assert!(approx_eq(k, point(-SQRT_3_2, 0.5)));
 }
 
 #[test]
-fn directions_are_perpendicular_and_point_toward_edges() {
+fn directions_point_toward_edge_midpoints() {
     let node = test_node();
     let node = node.borrow();
     let [a, b, c] = node.vertices;
     let [i, j, k] = node.directions;
 
-    // Uniform rule: I perpendicular to AB, J perpendicular to BC, K
+    // Uniform rule: I toward midpoint of AB, J toward midpoint of BC,
+    // K toward midpoint of CA, all pointing outward from the center.
     for (direction, edge_start, edge_end) in [(i, a, b), (j, b, c), (k, c, a)] {
-        let edge = edge_end - edge_start;
-        assert!(direction.dot(edge).abs() < EPSILON);
         let edge_mid = (edge_start + edge_end) / 2.0;
+        let toward_mid = (edge_mid - node.center).normalize();
+        assert!(approx_eq(direction, toward_mid));
         assert!(direction.dot(edge_mid - node.center) > 0.0);
         assert!((direction.length() - 1.0).abs() < EPSILON);
     }

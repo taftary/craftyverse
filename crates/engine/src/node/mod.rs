@@ -64,11 +64,11 @@ pub struct Node {
     /// node. This is `origin - center` and is recomputed for each child during
     /// [`split_node`].
     pub direction_to_origin: Vec3,
-    /// Directional vectors `[i, j, k]`. Each vector is perpendicular to one
-    /// edge of the triangle and points from the center toward that edge:
-    /// - `i` is perpendicular to edge AB,
-    /// - `j` is perpendicular to edge BC,
-    /// - `k` is perpendicular to edge CA.
+    /// Directional vectors `[i, j, k]`. Each vector points from the center
+    /// toward the midpoint of one edge of the triangle:
+    /// - `i` points toward the midpoint of edge AB,
+    /// - `j` points toward the midpoint of edge BC,
+    /// - `k` points toward the midpoint of edge CA.
     pub directions: [Vec3; 3],
     /// Normalized altitude direction from the base edge `BC` toward `A`.
     pub direction_of_node: Vec3,
@@ -76,9 +76,9 @@ pub struct Node {
     // --- Topology ---
     /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
     ///
-    /// - `children[0]` is the link in direction `i` (perpendicular to edge AB).
-    /// - `children[1]` is the link in direction `j` (perpendicular to edge BC).
-    /// - `children[2]` is the link in direction `k` (perpendicular to edge CA).
+    /// - `children[0]` is the link in direction `i` (toward the midpoint of edge AB).
+    /// - `children[1]` is the link in direction `j` (toward the midpoint of edge BC).
+    /// - `children[2]` is the link in direction `k` (toward the midpoint of edge CA).
     ///
     /// Links are bidirectional with an explicitly recorded back-port: if
     /// `A.children[x] == B`, then `A.back_ports[x] == Some(y)` and
@@ -142,10 +142,11 @@ impl Node {
     /// assert!((node.direction_of_node.length() - 1.0).abs() < 1e-4);
     /// assert!(((a + b + c) / 3.0 - node.center).length() < 1e-4);
     ///
-    /// // I/J/K directions are perpendicular to their edge and point outward.
+    /// // I/J/K directions point through the edge midpoint and are normalized.
     /// for (dir, start, end) in [(node.directions[0], a, b), (node.directions[1], b, c), (node.directions[2], c, a)] {
-    ///     assert!(dir.dot(end - start).abs() < 1e-4);
     ///     let mid = (start + end) / 2.0;
+    ///     let toward_mid = (mid - node.center).normalize();
+    ///     assert!((dir - toward_mid).length() < 1e-4);
     ///     assert!(dir.dot(mid - node.center) > 0.0);
     ///     assert!((dir.length() - 1.0).abs() < 1e-4);
     /// }

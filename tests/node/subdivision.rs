@@ -114,8 +114,7 @@ fn split_corner_nodes_keep_parent_orientation() {
     let center_ref = center.borrow();
 
     // All corner nodes keep the parent's direction_of_node and have the
-    // I up-right (perpendicular to AB), J straight down (perpendicular to BC),
-    // K up-left (perpendicular to CA).
+    // I up-right, J straight down, K up-left.
     for slot in &center_ref.children {
         let corner = slot.as_ref().unwrap().borrow();
         assert!(approx_eq(corner.direction_of_node, Vec3::Y));
@@ -149,11 +148,12 @@ fn split_recomputes_directions_from_own_vertices() {
     let [i, j, k] = center_ref.directions;
 
     // The uniform rule is computed from the node's own vertices triplet:
-    // I perpendicular to AB, J perpendicular to BC, K perpendicular to CA,
-    // all pointing toward their edge.
+    // I toward the midpoint of AB, J toward the midpoint of BC, K toward the
+    // midpoint of CA, all pointing outward from the center.
     for (direction, edge_start, edge_end) in [(i, a, b), (j, b, c), (k, c, a)] {
-        assert!(direction.dot(edge_end - edge_start).abs() < EPSILON);
         let edge_mid = (edge_start + edge_end) / 2.0;
+        let toward_mid = (edge_mid - center_ref.center).normalize();
+        assert!(approx_eq(direction, toward_mid));
         assert!(direction.dot(edge_mid - center_ref.center) > 0.0);
     }
 }
