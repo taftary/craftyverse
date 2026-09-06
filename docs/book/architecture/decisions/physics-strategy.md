@@ -26,9 +26,9 @@ To be determined.
 
 ## Alternatives considered
 
-- `rapier` — pure Rust, no C++ dependencies.
-- `avian` — ECS-oriented physics, closely tied to Bevy.
-- Custom physics — acceptable if requirements are narrow and deterministic.
+- `rapier` - pure Rust, no C++ dependencies.
+- `avian` - ECS-oriented physics, closely tied to Bevy.
+- Custom physics - acceptable if requirements are narrow and deterministic.
 
 ## Related
 

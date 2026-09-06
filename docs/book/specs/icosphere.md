@@ -27,11 +27,11 @@ It returns an `IcosphereMesh` with the fully linked leaf `faces`
 
 Port pattern note: every welded link is fully correct (recorded back-port,
 exact `destroy()`), but the `0 <-> 2`, `1 <-> 1` pattern cannot hold on
-every edge of a closed icosahedron-based mesh — satisfying it on all 30 base
+every edge of a closed icosahedron-based mesh - satisfying it on all 30 base
 edges is a constraint system over the dodecahedron dual with no solution.
 The base face labeling maximizes conformance: only 6 of the 30 base edges
 (and their subdivision descendants) have a back-port different from
-`2 - index`. This is a topological curiosity, not a defect — which is
+`2 - index`. This is a topological curiosity, not a defect - which is
 exactly why the back-port is stored rather than assumed.
 
 ### Rules

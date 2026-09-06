@@ -12,14 +12,14 @@ Use these specifications when you need the exact contract, invariants, or
 behavior of a living module. When the migration moves a responsibility into a
 new crate, the corresponding spec page should move or be retired alongside it.
 
-- [Node](node.md) — 3D triangle geometry, directional vectors, and
+- [Node](node.md) - 3D triangle geometry, directional vectors, and
   bidirectional links.
-- [Subdivision](subdivision.md) — triangle and mesh refinement
+- [Subdivision](subdivision.md) - triangle and mesh refinement
   (`split_node`, `split_nodes`, `unsplit_nodes`).
-- [Icosphere](icosphere.md) — geodesic sphere construction on top of `Node`.
-- [Scene](scene.md) — CPU-side scene generation for the debug viewer.
-- [Text](text.md) — bitmap-font glyph atlas and text layout.
-- [Render](render.md) — Vulkan debug viewer and window integration.
+- [Icosphere](icosphere.md) - geodesic sphere construction on top of `Node`.
+- [Scene](scene.md) - CPU-side scene generation for the debug viewer.
+- [Text](text.md) - bitmap-font glyph atlas and text layout.
+- [Render](render.md) - Vulkan debug viewer and window integration.
 
 ## Rules
 

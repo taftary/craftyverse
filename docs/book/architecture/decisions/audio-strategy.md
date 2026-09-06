@@ -25,9 +25,9 @@ To be determined.
 
 ## Alternatives considered
 
-- `rodio` — pure Rust, simple API.
-- `cpal` — low-level audio I/O.
-- Platform audio APIs — maximum control, highest cost.
+- `rodio` - pure Rust, simple API.
+- `cpal` - low-level audio I/O.
+- Platform audio APIs - maximum control, highest cost.
 
 ## Related
 

@@ -11,18 +11,18 @@ crates and modules easy to change, not as dogma.
 
 ## Key points
 
-- **Single responsibility** — one module, one clear responsibility and one
+- **Single responsibility** - one module, one clear responsibility and one
   reason to change. Do not create a generic utility module when a domain
   module owns the behavior.
-- **Open/closed** — extend behavior with new trait implementations and new
+- **Open/closed** - extend behavior with new trait implementations and new
   generic instantiations, not by editing stable code paths. Enums are closed
   by design: adding a variant is a deliberate, compiler-checked change.
-- **Liskov substitution** — a trait implementation must honor the trait's
+- **Liskov substitution** - a trait implementation must honor the trait's
   documented contract (invariants, error behavior, panics) so any
   implementation can replace another behind the same bound.
-- **Interface segregation** — prefer many narrow traits over one broad trait;
+- **Interface segregation** - prefer many narrow traits over one broad trait;
   a consumer should depend only on the capability it uses.
-- **Dependency inversion** — high-level code depends on trait bounds, not
+- **Dependency inversion** - high-level code depends on trait bounds, not
   concrete types; concrete choices are made once at the composition root
   (the binary's entry point).
 

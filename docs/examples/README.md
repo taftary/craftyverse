@@ -24,22 +24,22 @@ cargo run --example viewer -p planet-crafter-examples --features gpu
 
 ## Headless examples
 
-- `engine_api` — game code consumes engine contracts without backend details.
+- `engine_api` - game code consumes engine contracts without backend details.
   Demonstrates [crate boundaries](../book/architecture/crate-boundaries.md).
-- `validated_resource` — resource construction validates input and reports
+- `validated_resource` - resource construction validates input and reports
   errors explicitly. Demonstrates [error handling](../book/practices/error-handling.md)
   and [type-driven design](../book/principles/type-driven-design.md).
-- `state_transitions` — a node is split one generation and the resulting
+- `state_transitions` - a node is split one generation and the resulting
   local topology is checked. Demonstrates the
   [`subdivision` specification](../book/specs/subdivision.md).
-- `message_flow` — domain events cross an ownership boundary through a channel.
+- `message_flow` - domain events cross an ownership boundary through a channel.
   Demonstrates the [events pattern](../book/patterns/events.md).
-- `renderer_neutral_scene` — nodes become GPU-independent vertex data without
+- `renderer_neutral_scene` - nodes become GPU-independent vertex data without
   opening a window. Demonstrates the [`scene` specification](../book/specs/scene.md)
   and the renderer-neutral boundary with [`render`](../book/specs/render.md).
 
 ## GPU/platform-specific example
 
-- `viewer` — opens the Vulkan debug viewer. Gated by the `gpu` feature and
+- `viewer` - opens the Vulkan debug viewer. Gated by the `gpu` feature and
   excluded from headless CI. See [Testing and doctests](../book/practices/testing.md)
   for how GPU checks are separated.

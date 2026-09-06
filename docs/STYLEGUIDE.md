@@ -11,7 +11,9 @@ planned crate, dependency, platform, or workflow as implemented.
 - Prefer `snake_case` for functions and modules and `PascalCase` for types.
 - Keep public APIs documented with contracts, errors, ownership, and examples.
 - Prefer small, named types over primitive values with implicit units.
-- Use ASCII in documentation unless a technical notation requires otherwise.
+- Use ASCII prose punctuation in documentation (hyphens, not em dashes).
+  Mathematical and technical notation (arrows, degree signs, set membership)
+  and box-drawing characters in directory trees are exempt.
 
 ## Page structure
 
