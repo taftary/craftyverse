@@ -44,7 +44,7 @@ fn face_and_vertex_counts_follow_euler() {
 
         let mut vertices = std::collections::HashSet::new();
         for face in &all {
-            for point in face.borrow().points {
+            for point in face.borrow().vertices {
                 vertices.insert(position_key(point));
             }
         }
@@ -58,7 +58,7 @@ fn every_vertex_lies_on_the_sphere() {
         let origin = Vec3::new(1.0, -2.0, 3.0);
         let mesh = build_icosphere("test", 2.5, subdivisions, origin);
         for face in all_faces(&mesh) {
-            for point in face.borrow().points {
+            for point in face.borrow().vertices {
                 assert!(
                     ((point - origin).length() - 2.5).abs() < EPSILON,
                     "vertex {point:?} is not at radius 2.5"
@@ -73,7 +73,7 @@ fn base_faces_have_outward_winding() {
     let mesh = build_icosphere("test", 1.0, 0, Vec3::ZERO);
     for face in all_faces(&mesh) {
         let node = face.borrow();
-        let [a, b, c] = node.points;
+        let [a, b, c] = node.vertices;
         let normal = (b - a).cross(c - a);
         assert!(
             normal.dot(node.center) > 0.0,
@@ -220,7 +220,7 @@ fn vertex_valences_are_five_or_six() {
     for face in all_faces(&mesh) {
         // Each triangle corner at a vertex corresponds to one incident
         // triangle, so the corner count at a vertex equals its valence.
-        for point in face.borrow().points {
+        for point in face.borrow().vertices {
             *valences.entry(position_key(point)).or_insert(0) += 1;
         }
     }

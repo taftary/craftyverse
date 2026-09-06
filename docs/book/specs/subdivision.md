@@ -39,11 +39,10 @@ NodeK      = [pCA, pBC, C]
 NodeCenter = [pBC, pAB, pCA]
 ```
 
-Each child derives its center, dimensions, orientation, directions, and origin
-vector from its own points. Child dimensions and orientations are not copied
-from `node`: they are recomputed from the child triangle. Every child
-receives level `node.level + 1` and a name with the suffix `.I`, `.J`, `.K`,
-or `.C`.
+Each child derives its center, orientation, directions, and origin vector
+from its own vertices. Child orientations are not copied from `node`: they
+are recomputed from the child triangle. Every child receives level
+`node.level + 1` and a name with the suffix `.I`, `.J`, `.K`, or `.C`.
 
 Only center-to-corner links are created:
 
@@ -100,9 +99,9 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
    mesh, a mesh that was never split, or a base name whose suffix appears
    twice (a name collision keeps the whole group, not just the duplicate).
 3. Rebuild each parent: name = base name, level = group level - 1,
-   `A = I.points[0]`, `B = J.points[1]`, `C = K.points[2]`, origin recovered
-   as `center + direction_to_origin`. The corners hold the exact parent
-   vertices, so this is exact even for sphere meshes with projected
+   `A = I.vertices[0]`, `B = J.vertices[1]`, `C = K.vertices[2]`, origin
+   recovered as `center + direction_to_origin`. The corners hold the exact
+   parent vertices, so this is exact even for sphere meshes with projected
    midpoints.
 4. Re-link the parents across the old edges: a corner's external port
    number equals its parent edge's port number, so every link between
@@ -121,7 +120,6 @@ nodes. Calling it on an unsplittable mesh returns the same nodes.
 ### Rules
 
 - Roots start at level `0`; each split generation increments the level by `1`.
-- `base_length` and `height` are derived independently for every child.
 - Welding resolves ports geometrically by exact vertex comparison and
   requires bit-identical shared vertices; open ports stay open.
 - A split group merges back only with exactly the four `.I` / `.J` / `.K` /

@@ -2,7 +2,7 @@
 //! bidirectional links to adjacent nodes.
 //!
 //! A [`Node`] represents one non-degenerate triangle in a hierarchical mesh. It stores
-//! its corner points, center, directional vectors, and up to three neighbors in
+//! its corner vertices, center, directional vectors, and up to three neighbors in
 //! the `children` array. Nodes are reference-counted and mutable via
 //! [`NodeRef`] so that bidirectional links can be shared.
 //!
@@ -39,7 +39,7 @@ pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::{collect_nodes, destroy_mesh};
 
 #[cfg(feature = "test-internals")]
-pub use topology::link;
+pub use topology::{link, reciprocal_index};
 
 /// Shared, mutable reference to a [`Node`].
 ///
@@ -54,17 +54,11 @@ pub type NodeRef = Rc<RefCell<Node>>;
 /// See `docs/book/specs/node.md` for the full specification of the
 /// geometry, topology, and identity rules.
 pub struct Node {
-    // --- Identity ---
-    /// Unique identifier across all nodes. The caller is responsible for
-    /// keeping names unique; duplicate names do not affect geometry but make
-    /// debugging and logging ambiguous.
-    pub name: String,
-    /// Split depth. `0` for a root node; incremented by one for every
-    /// generation produced by [`split_node`]. There is no upper bound.
-    pub level: u32,
-
     // --- Geometry ---
-    /// Centroid of the node's triangle, computed from the corner points.
+    /// Triangle corner vertices `[A, B, C]`, where `A` is the apex and `BC`
+    /// is the reference base edge.
+    pub vertices: [Vec3; 3],
+    /// Centroid of the node's triangle, computed from the corner vertices.
     pub center: Vec3,
     /// Vector from the node center toward the origin used to construct the
     /// node. This is `origin - center` and is recomputed for each child during
@@ -76,14 +70,8 @@ pub struct Node {
     /// - `j` is perpendicular to edge BC,
     /// - `k` is perpendicular to edge CA.
     pub directions: [Vec3; 3],
-    /// Triangle corner points `[A, B, C]`. `BC` is the reference base edge.
-    pub points: [Vec3; 3],
     /// Normalized altitude direction from the base edge `BC` toward `A`.
     pub direction_of_node: Vec3,
-    /// Length of the base edge `BC`.
-    pub base_length: f32,
-    /// Perpendicular distance from the line `BC` to `A`.
-    pub height: f32,
 
     // --- Topology ---
     /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
@@ -104,6 +92,15 @@ pub struct Node {
     /// `children[x]`'s neighbor that points back to this node. Recorded by
     /// the link wiring; `None` exactly where `children[x]` is `None`.
     pub back_ports: [Option<usize>; 3],
+
+    // --- Identity ---
+    /// Unique identifier across all nodes. The caller is responsible for
+    /// keeping names unique; duplicate names do not affect geometry but make
+    /// debugging and logging ambiguous.
+    pub name: String,
+    /// Split depth. `0` for a root node; incremented by one for every
+    /// generation produced by [`split_node`]. There is no upper bound.
+    pub level: u32,
 }
 
 impl Node {
@@ -114,13 +111,13 @@ impl Node {
     /// - `name` — unique identifier for the node. Names ending in `.I`,
     ///   `.J`, `.K`, or `.C` are reserved: [`split_node`] derives them for
     ///   its children and [`unsplit_nodes`] groups nodes by them.
-    /// - `points` — triangle corners `[A, B, C]`, where `A` is the apex and
+    /// - `vertices` — triangle corners `[A, B, C]`, where `A` is the apex and
     ///   `BC` is the base.
     /// - `origin` — position used to compute `direction_to_origin` for the node
     ///   and its descendants.
     ///
     /// The caller must provide a non-degenerate triangle. The center, altitude,
-    /// dimensions, and edge directions are derived from `points`.
+    /// and edge directions are derived from `vertices`.
     ///
     /// # Example
     ///
@@ -140,13 +137,11 @@ impl Node {
     ///
     /// let node = Node::new("root", [Vec3::new(0.0, 8.0 / 3.0, 0.0), Vec3::new(3.0, -4.0 / 3.0, 0.0), Vec3::new(-3.0, -4.0 / 3.0, 0.0)], Vec3::ZERO);
     /// let node = node.borrow();
-    /// let [a, b, c] = node.points;
+    /// let [a, b, c] = node.vertices;
     ///
-    /// // Direction is normalized; centroid and dimensions match the request.
+    /// // Direction is normalized and the centroid matches the request.
     /// assert!((node.direction_of_node.length() - 1.0).abs() < 1e-4);
     /// assert!(((a + b + c) / 3.0 - node.center).length() < 1e-4);
-    /// assert!(((b - c).length() - node.base_length).abs() < 1e-4);
-    /// assert!(((a - (b + c) / 2.0).length() - node.height).abs() < 1e-4);
     ///
     /// // I/J/K directions are perpendicular to their edge and point outward.
     /// for (dir, start, end) in [(node.directions[0], a, b), (node.directions[1], b, c), (node.directions[2], c, a)] {
@@ -156,33 +151,31 @@ impl Node {
     ///     assert!((dir.length() - 1.0).abs() < 1e-4);
     /// }
     /// ```
-    pub fn new(name: impl Into<String>, points: [Vec3; 3], origin: Vec3) -> NodeRef {
-        child_node(points, origin, 0, name.into())
+    pub fn new(name: impl Into<String>, vertices: [Vec3; 3], origin: Vec3) -> NodeRef {
+        child_node(vertices, origin, 0, name.into())
     }
 
-    /// Builds a node from an explicit points triplet.
+    /// Builds a node from an explicit vertices triplet.
     ///
     /// The center is the centroid of the triplet, `direction_to_origin` and the
-    /// `[i, j, k]` directions are derived from the points. This constructor is
+    /// `[i, j, k]` directions are derived from the vertices. This constructor is
     /// used internally by [`Node::new`] and [`split_node`].
-    fn from_points(points: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
-        let center = (points[0] + points[1] + points[2]) / 3.0;
-        let base_direction = (points[2] - points[1]).normalize();
+    fn from_vertices(vertices: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
+        let center = (vertices[0] + vertices[1] + vertices[2]) / 3.0;
+        let base_direction = (vertices[2] - vertices[1]).normalize();
         let base_projection =
-            points[1] + base_direction * (points[0] - points[1]).dot(base_direction);
-        let height_vector = points[0] - base_projection;
+            vertices[1] + base_direction * (vertices[0] - vertices[1]).dot(base_direction);
+        let height_vector = vertices[0] - base_projection;
         Node {
-            name,
-            level,
+            vertices,
             center,
             direction_to_origin: origin - center,
-            directions: compute_directions(&points, center),
-            points,
+            directions: compute_directions(&vertices, center),
             direction_of_node: height_vector.normalize(),
-            base_length: (points[1] - points[2]).length(),
-            height: height_vector.length(),
             children: [None, None, None],
             back_ports: [None, None, None],
+            name,
+            level,
         }
     }
 

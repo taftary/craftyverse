@@ -13,8 +13,10 @@ use glam::Vec3;
 
 use super::Node;
 use super::NodeRef;
-use crate::node::geometry::{child_node, midpoint};
-use crate::node::topology::{collect_nodes, corner_near, corner_nodes, link, port_on_edge};
+use crate::node::geometry::{child_node, midpoint, triangle_points};
+use crate::node::topology::{
+    collect_nodes, corner_near, corner_nodes, link, port_on_edge, reciprocal_index,
+};
 
 /// Splits `node` into four new nodes and returns the center node.
 ///
@@ -24,8 +26,8 @@ use crate::node::topology::{collect_nodes, corner_near, corner_nodes, link, port
 /// reciprocal `children` links. The caller is responsible for wiring the
 /// corner nodes to neighboring split centers across the subdivided edges.
 ///
-/// Each new node derives its dimensions and orientation from its own point
-/// triplet, and its [`level`](Node::level) is set to `node.level + 1`.
+/// Each new node derives its orientation from its own vertex triplet, and its
+/// [`level`](Node::level) is set to `node.level + 1`.
 ///
 /// See `docs/book/specs/node.md` for the full geometric construction
 /// and topology rules.
@@ -54,8 +56,6 @@ use crate::node::topology::{collect_nodes, corner_near, corner_nodes, link, port
 /// let center_ref = center.borrow();
 ///
 /// assert_eq!(center_ref.level, 1);
-/// assert_eq!(center_ref.base_length, 1.0);
-/// assert_eq!(center_ref.height, 1.0);
 /// assert!(center_ref.children.iter().all(|c| c.is_some()));
 ///
 /// // Reciprocity: each corner links back to the center on the expected port.
@@ -73,9 +73,9 @@ use crate::node::topology::{collect_nodes, corner_near, corner_nodes, link, port
 /// ));
 /// ```
 pub fn split_node(node: &Node) -> NodeRef {
-    let [p_a, p_b, p_c] = node.points;
+    let [p_a, p_b, p_c] = node.vertices;
 
-    // 1. Point midpoints.
+    // 1. Vertex midpoints.
     let p_ab = midpoint(p_a, p_b);
     let p_bc = midpoint(p_b, p_c);
     let p_ca = midpoint(p_c, p_a);
@@ -93,31 +93,26 @@ pub(crate) fn split_node_with_midpoints(node: &Node, midpoints: [Vec3; 3]) -> No
     let old_level = node.level;
     // The node stores no origin; recover it from center + direction_to_origin.
     let origin = node.center + node.direction_to_origin;
-    let [p_a, p_b, p_c] = node.points;
-    let [p_ab, p_bc, p_ca] = midpoints;
 
-    // 2./3. New nodes from their subdivided points triplets (centers are
-    // the centroids). Each child derives its own altitude and dimensions
-    // from its point triplet. Names derive from `node.name` to stay unique.
+    // 2./3. New nodes from their subdivided vertex triplets (centers are the
+    // centroids). Each child derives its own orientation from its vertex
+    // triplet. Names derive from `node.name` to stay unique.
     let level = old_level + 1;
-    let node_i = child_node([p_a, p_ab, p_ca], origin, level, format!("{}.I", node.name));
-    let node_j = child_node([p_ab, p_b, p_bc], origin, level, format!("{}.J", node.name));
-    let node_k = child_node([p_ca, p_bc, p_c], origin, level, format!("{}.K", node.name));
-    let node_center = child_node(
-        [p_bc, p_ab, p_ca],
-        origin,
-        level,
-        format!("{}.C", node.name),
-    );
+    let [vertices_i, vertices_j, vertices_k, vertices_center] =
+        triangle_points(&node.vertices, midpoints);
+    let node_i = child_node(vertices_i, origin, level, format!("{}.I", node.name));
+    let node_j = child_node(vertices_j, origin, level, format!("{}.J", node.name));
+    let node_k = child_node(vertices_k, origin, level, format!("{}.K", node.name));
+    let node_center = child_node(vertices_center, origin, level, format!("{}.C", node.name));
 
     // 4. Internal interconnection (bidirectional). Each center port is
     // linked to the corner node across its edge: center I (⊥ pBC–pAB)
     // faces node J, center J (⊥ pAB–pCA) faces node I, center K
     // (⊥ pCA–pBC) faces node K; the reciprocal corner port faces the
     // center the same way.
-    link(&node_center, 0, &node_j, 2);
-    link(&node_center, 1, &node_i, 1);
-    link(&node_center, 2, &node_k, 0);
+    link(&node_center, 0, &node_j, reciprocal_index(0));
+    link(&node_center, 1, &node_i, reciprocal_index(1));
+    link(&node_center, 2, &node_k, reciprocal_index(2));
 
     node_center
 }
@@ -205,7 +200,7 @@ pub fn split_nodes(first: &NodeRef) -> Vec<NodeRef> {
             if neighbor_index <= index {
                 continue;
             }
-            let endpoints = [old_node.points[port], old_node.points[(port + 1) % 3]];
+            let endpoints = [old_node.vertices[port], old_node.vertices[(port + 1) % 3]];
             let edge_midpoint = midpoint(endpoints[0], endpoints[1]);
             for endpoint in endpoints {
                 let near = &corners_of[index][corner_near(&corners_of[index], endpoint)];
@@ -346,12 +341,12 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
             let node = node_i.borrow();
             (node.center + node.direction_to_origin, node.level - 1)
         };
-        let points = [
-            node_i.borrow().points[0],
-            node_j.borrow().points[1],
-            node_k.borrow().points[2],
+        let vertices = [
+            node_i.borrow().vertices[0],
+            node_j.borrow().vertices[1],
+            node_k.borrow().vertices[2],
         ];
-        let parent = child_node(points, origin, level, base);
+        let parent = child_node(vertices, origin, level, base);
         for child in [&node_i, &node_j, &node_k, &node_c] {
             parent_of.insert(Rc::as_ptr(child) as usize, Rc::clone(&parent));
             merged.push(Rc::clone(child));

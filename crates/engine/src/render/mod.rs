@@ -255,12 +255,11 @@ impl IcosphereConfig {
 }
 
 /// Moves a node by `delta`, keeping its derived geometry consistent:
-/// `points` and `center` shift, `direction_to_origin` (`origin - center`)
-/// compensates, and the normalized directions and dimensions are
-/// translation-invariant.
+/// `vertices` and `center` shift, `direction_to_origin` (`origin - center`)
+/// compensates, and the normalized directions are translation-invariant.
 fn translate_node(node: &NodeRef, delta: Vec3) {
     let mut node = node.borrow_mut();
-    node.points = node.points.map(|p| p + delta);
+    node.vertices = node.vertices.map(|p| p + delta);
     node.center += delta;
     node.direction_to_origin -= delta;
 }

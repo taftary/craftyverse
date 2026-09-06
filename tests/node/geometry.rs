@@ -20,8 +20,6 @@ fn new_initializes_identity_and_geometry() {
     assert!(approx_eq(node.center, Vec3::ZERO));
     assert!(approx_eq(node.direction_to_origin, point(0.0, 1000.0)));
     assert!(approx_eq(node.direction_of_node, Vec3::Y));
-    assert_eq!(node.base_length, 300.0);
-    assert_eq!(node.height, 300.0 * 3.0_f32.sqrt() / 2.0);
     assert!(node.children.iter().all(|slot| slot.is_none()));
 }
 
@@ -39,7 +37,7 @@ fn new_normalizes_direction_of_node() {
 fn new_builds_equilateral_triangle_around_center() {
     let node = test_node();
     let node = node.borrow();
-    let [a, b, c] = node.points;
+    let [a, b, c] = node.vertices;
 
     // Centroid is the center, base BC has the requested length.
     assert!(approx_eq((a + b + c) / 3.0, node.center));
@@ -55,7 +53,7 @@ fn new_builds_equilateral_triangle_around_center() {
 }
 
 #[test]
-fn new_derives_altitude_and_dimensions_from_triangle_points() {
+fn new_derives_altitude_from_triangle_vertices() {
     let node = Node::new(
         "iso",
         [
@@ -66,7 +64,7 @@ fn new_derives_altitude_and_dimensions_from_triangle_points() {
         Vec3::ZERO,
     );
     let node = node.borrow();
-    let [a, b, c] = node.points;
+    let [a, b, c] = node.vertices;
 
     // Direction stored normalized, centroid is the center.
     assert!(approx_eq(node.direction_of_node, Vec3::X));
@@ -93,8 +91,6 @@ fn new_supports_scalene_triangles() {
     let node = node.borrow();
 
     assert!(approx_eq(node.direction_of_node, Vec3::Y));
-    assert_eq!(node.base_length, 4.0);
-    assert_eq!(node.height, 3.0);
 }
 
 #[test]
@@ -112,8 +108,8 @@ fn point_order_controls_direction_labels() {
     let normal = normal.borrow();
     let mirrored = mirrored.borrow();
 
-    assert!(approx_eq(normal.points[1], mirrored.points[2]));
-    assert!(approx_eq(normal.points[2], mirrored.points[1]));
+    assert!(approx_eq(normal.vertices[1], mirrored.vertices[2]));
+    assert!(approx_eq(normal.vertices[2], mirrored.vertices[1]));
     assert!(approx_eq(normal.directions[0], mirrored.directions[2]));
     assert!(approx_eq(normal.directions[2], mirrored.directions[0]));
     assert!(approx_eq(normal.directions[1], mirrored.directions[1]));
@@ -134,7 +130,7 @@ fn equilateral_directions_match_expected_orientation() {
 fn directions_are_perpendicular_and_point_toward_edges() {
     let node = test_node();
     let node = node.borrow();
-    let [a, b, c] = node.points;
+    let [a, b, c] = node.vertices;
     let [i, j, k] = node.directions;
 
     // Uniform rule: I perpendicular to AB, J perpendicular to BC, K

@@ -185,18 +185,18 @@ pub fn build_icosphere(
         edge_cache.reserve(3 * leaves.len() / 2);
 
         for leaf in &leaves {
-            let (points, neighbors) = {
+            let (vertices, neighbors) = {
                 let node = leaf.borrow();
-                (node.points, node.children.clone())
+                (node.vertices, node.children.clone())
             };
             let parent_key = Rc::as_ptr(leaf) as usize;
 
             // Resolve the three edge midpoints through the cache so each
             // shared edge is projected exactly once.
             let flat = [
-                midpoint(points[0], points[1]),
-                midpoint(points[1], points[2]),
-                midpoint(points[2], points[0]),
+                midpoint(vertices[0], vertices[1]),
+                midpoint(vertices[1], vertices[2]),
+                midpoint(vertices[2], vertices[0]),
             ];
             let mut projected = [Vec3::ZERO; 3];
             for (edge, flat_midpoint) in flat.iter().enumerate() {
@@ -231,7 +231,7 @@ pub fn build_icosphere(
                     .expect("icosphere leaf is missing a neighbor link");
                 let key = cache_key(parent_key, Rc::as_ptr(neighbor) as usize);
                 // The two endpoints of this parent edge, in triplet order.
-                let endpoints = [points[edge], points[(edge + 1) % 3]];
+                let endpoints = [vertices[edge], vertices[(edge + 1) % 3]];
                 let entry = edge_cache.get_mut(&key).expect("edge cache entry missing");
                 let projected_midpoint = entry.projected_midpoint;
                 match entry.waiting.take() {

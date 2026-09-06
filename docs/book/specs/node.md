@@ -4,23 +4,21 @@
 
 `Node` is the engine's 3D geometric and topological unit. It represents one
 non-degenerate triangle in a 3D plane, derives its geometry from
-explicit points, and stores up to three reciprocal links to adjacent nodes.
+explicit vertices, and stores up to three reciprocal links to adjacent nodes.
 
 The Rust implementation uses `Vec3` and the shared reference type
-`NodeRef = Rc<RefCell<Node>>`. The caller supplies valid triangle points and
+`NodeRef = Rc<RefCell<Node>>`. The caller supplies valid triangle vertices and
 keeps node names unique.
 
 ### Structure
 
 #### Geometry
 
-- `center: Vec3` - centroid of `points`.
+- `vertices: [Vec3; 3]` - triangle corners `[A, B, C]`.
+- `center: Vec3` - centroid of `vertices`.
 - `direction_to_origin: Vec3` - `origin - center`.
 - `directions: [Vec3; 3]` - outward perpendicular directions `[I, J, K]`.
-- `points: [Vec3; 3]` - triangle corners `[A, B, C]`.
 - `direction_of_node: Vec3` - normalized altitude from line `BC` toward `A`.
-- `base_length: f32` - length of base `BC`.
-- `height: f32` - perpendicular distance from apex `A` to base `BC`.
 
 #### Topology
 
@@ -33,7 +31,9 @@ keeps node names unique.
   [`split_node`](subdivision.md) also follow the
   `0 <-> 2`, `1 <-> 1` port pattern, but that pattern is not an invariant -
   it cannot hold on every edge of a welded sphere (see
-  [`build_icosphere()`](icosphere.md)).
+  [`build_icosphere()`](icosphere.md)). Deliberate deviation from
+  `plans/MIGRATION.md` (which specifies reciprocal ports only): the back-port
+  is stored because the sphere makes the pattern unsatisfiable.
 
 #### Identity
 
@@ -44,13 +44,11 @@ keeps node names unique.
 
 ```text
 struct Node {
+    Vec3[3] vertices            // [A, B, C]
     Vec3 center
     Vec3 direction_to_origin
     Vec3[3] directions
-    Vec3[3] points              // [A, B, C]
     Vec3 direction_of_node
-    Float base_length
-    Float height
     NodeRef[3] children
     Integer[3]? back_ports
     String name
@@ -66,7 +64,7 @@ triangle in a single 3D plane.
 Point order is part of the labeling contract: reversing B and C reverses the I
 and K labels.
 
-For every node, directions are computed from that node's own points:
+For every node, directions are computed from that node's own vertices:
 
 - `I` is in the triangle plane, perpendicular to `AB`, and points from the
     center toward edge `AB`.
@@ -77,7 +75,7 @@ For every node, directions are computed from that node's own points:
 
 ### Methods
 
-- `Node::new(name, points, origin) -> NodeRef` creates a level-zero node.
+- `Node::new(name, vertices, origin) -> NodeRef` creates a level-zero node.
 - [`split_node(node: &Node) -> NodeRef`](subdivision.md) creates four
   level-plus-one nodes.
 - [`split_nodes(first: &NodeRef) -> Vec<NodeRef>`](subdivision.md) splits a
@@ -99,7 +97,7 @@ There is no `Labeling` argument and no direction/center/dimension constructor.
 **Signature**
 
 ```text
-Node::new(name, points, origin) -> NodeRef
+Node::new(name, vertices, origin) -> NodeRef
 ```
 
 **Parameters**
@@ -108,16 +106,16 @@ Node::new(name, points, origin) -> NodeRef
   `.I`, `.J`, `.K`, or `.C` are reserved by the subdivision machinery:
   `split_node` derives them for its children and `unsplit_nodes` groups
   nodes by them.
-- `points: [Vec3; 3]` - triangle points `[A, B, C]`.
+- `vertices: [Vec3; 3]` - triangle corners `[A, B, C]`.
 - `origin: Vec3` - position used to compute `direction_to_origin`.
 
 **Initialization**
 
-1. Store `name` and `points`.
-2. Compute `center` as the centroid of the three points.
+1. Store `name` and `vertices`.
+2. Compute `center` as the centroid of the three vertices.
 3. Compute `direction_of_node` from the perpendicular projection of `A` onto
     line `BC` and normalize the resulting altitude.
-4. Compute `base_length`, the perpendicular `height`, and the I/J/K directions.
+4. Compute the I/J/K directions.
 5. Set `direction_to_origin = origin - center`.
 6. Set `children` to `[None, None, None]` and `level` to `0`.
 
@@ -152,10 +150,11 @@ or infinite traversal.
 - `crates/engine/src/node/mod.rs` - `Node`, `NodeRef`, construction, and
   destruction.
 - `crates/engine/src/node/geometry.rs` - midpoint, perpendicular-direction,
-  and child-node helpers.
-- `crates/engine/src/node/topology.rs` - reciprocal links, graph traversal,
-  mesh cleanup (`destroy_mesh`), and the corner-weld lookups shared by
-  sphere construction and mesh-level splits.
+  child triangle-points (`triangle_points`), and child-node helpers.
+- `crates/engine/src/node/topology.rs` - reciprocal links, the reciprocal
+  port convention (`reciprocal_index`), graph traversal, mesh cleanup
+  (`destroy_mesh`), and the corner-weld lookups shared by sphere construction
+  and mesh-level splits.
 - `tests/node/` - geometry, topology, subdivision, lifecycle, traversal, and
   origin-propagation tests, split one file per submodule.
 
