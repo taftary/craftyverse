@@ -21,7 +21,7 @@ Cargo workspace (edition 2024, resolver 3) defined in the root `Cargo.toml`:
 
 - `crates/engine` — library `planet-crafter-engine`. Reusable geometry,
   topology, scene data, text, and the Vulkan viewer. Source modules: `node`,
-  `plan`, `scene`, `text`, `render`.
+  `scene`, `text`, `render`.
 - `crates/game` — binary `planet-crafter` (the default workspace member).
   Application entry point and content policy.
 - `crates/tools` — asset/developer tooling. Not a default workspace member.
@@ -43,11 +43,13 @@ runtime by naga.
 Before changing a module, read its specification and the relevant book pages:
 
 - Module specs (current implementation): `docs/book/specs/` — one page per
-  engine module (`node`, `plan`, `scene`, `text`, `render`).
+  engine module area (`node`, `subdivision`, `icosphere`, `scene`, `text`,
+  `render`); a module may grow focused subpages when a submodule owns a
+  self-contained contract.
 - Engineering practices: `docs/book/practices/` — project structure, error
   handling, testing, public APIs, dependencies, performance.
 - Design principles: `docs/book/principles/` — ownership, safety, type-driven
-  design.
+  design, SOLID, and DRY.
 - Patterns: `docs/book/patterns/` — adopt one only when a concrete problem
   justifies it; patterns must be validated before they become project APIs.
 

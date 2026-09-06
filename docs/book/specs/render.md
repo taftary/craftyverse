@@ -64,7 +64,8 @@ One render pass with a depth buffer, five graphics pipelines, drawn in order:
 - **Number keys 1..N** — switch scenario.
 - **E / Q** — split the whole scene one generation deeper / merge it back
   (all scenarios). Static scenarios split and re-weld their mesh with
-  `node::split_nodes` / merge with `node::unsplit_nodes`; icosphere
+  [`node::split_nodes`](subdivision.md) / merge with
+  [`node::unsplit_nodes`](subdivision.md); icosphere
   scenarios rebuild with one more / one less subdivision level, identical
   to the Right / Left arrow keys.
 - **Left / Right arrows** — decrease / increase the subdivision level of the

@@ -58,7 +58,7 @@ only moves the camera, so the geometry is never rebuilt.
 ## Development
 
 ```
-cargo test --workspace    # unit tests (node geometry, plan wiring, scene generation, text layout, shader compilation)
+cargo test --workspace    # unit tests (node geometry, scene generation, text layout, shader compilation)
 cargo clippy --workspace  # lint
 ```
 
@@ -88,7 +88,7 @@ docs/     — target architecture, handbook, and per-module specifications
 - [Style guide](docs/STYLEGUIDE.md) — status language, Rust conventions,
   page structure, and validation commands
 - [Module specifications](docs/book/specs/index.md) — current implementation
-  specs for `node`, `plan`, `scene`, `text`, and `render`
+  specs for `node`, `scene`, `text`, and `render`
 
 ## Main dependencies
 
