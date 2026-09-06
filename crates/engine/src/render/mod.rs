@@ -40,6 +40,8 @@ use viewer::Viewer;
 #[cfg(feature = "test-internals")]
 pub use renderer::checkbox_at;
 #[cfg(feature = "test-internals")]
+pub use renderer::pixel_matrix;
+#[cfg(feature = "test-internals")]
 pub use setup::device_type_rank;
 #[cfg(feature = "test-internals")]
 pub use shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};

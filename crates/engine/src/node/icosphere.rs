@@ -9,19 +9,21 @@
 //!
 //! # Link correctness and the reciprocal port pattern
 //!
-//! Every link welded here is fully correct: each carries an explicitly
-//! recorded back-port (see the `back_ports` field of
-//! [`Node`](super::Node)), so traversal, pruning, and cleanup are exact for
-//! every edge of the mesh.
+//! Every link welded here follows the `0 <-> 2`, `1 <-> 1` reciprocal port
+//! pattern: a link through port `x` on one side uses port `2 - x` on the
+//! other, on every edge of every subdivision level. Each link still carries
+//! an explicitly recorded back-port (see the `back_ports` field of
+//! [`Node`](super::Node)), so traversal, pruning, and cleanup stay exact and
+//! never assume the pattern.
 //!
-//! The historical `0 <-> 2`, `1 <-> 1` port *pattern* is a different story:
-//! it cannot hold on every edge of a closed icosahedron-based mesh —
-//! satisfying it on all 30 base edges is a constraint system over the
+//! Full conformance has a price: with all faces wound outward, satisfying
+//! the pattern on all 30 base edges is a constraint system over the
 //! dodecahedron dual with no solution. The base face labeling used here
-//! maximizes conformance: only 6 of the 30 base edges (and their
-//! subdivision descendants) have a back-port different from `2 - index`.
-//! This is a topological curiosity, not a defect — which is exactly why the
-//! back-port is stored rather than assumed.
+//! solves it by winding 5 of the 20 faces inward (reversed vertex order,
+//! `abc -> acb`). Winding is therefore not a mesh invariant — corner
+//! children inherit their parent's winding and the center child reverses
+//! it — and nothing may rely on it; the renderer uses no backface culling,
+//! and every derived direction is winding-independent by construction.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -72,11 +74,13 @@ const ICOSAHEDRON_VERTICES: [Vec3; 12] = [
     Vec3::new(-PHI, 0.0, -1.0),
 ];
 
-/// The 20 base faces as vertex index triplets `[A, B, C]` with consistent
-/// outward winding. The per-face rotations are chosen so that the reciprocal
-/// port rule (`local_edge_a + local_edge_b == 2` on every shared edge) holds
-/// on 24 of the 30 base edges; the remaining 6 cannot be satisfied by any
-/// labeling (see the module documentation).
+/// The 20 base faces as vertex index triplets `[A, B, C]`. 15 faces are
+/// wound outward; faces 6, 8, 11, 14 and 18 are deliberately reversed
+/// (`abc -> acb`, inward) so the reciprocal port rule
+/// (`local_edge_a + local_edge_b == 2` on every shared edge) holds on all 30
+/// base edges — with all-outward winding the constraint system has no
+/// solution (see the module documentation). The vertex sets are the canonical
+/// icosahedron faces; only the local A/B/C assignment differs.
 const ICOSAHEDRON_FACES: [[usize; 3]; 20] = [
     [0, 2, 1],
     [0, 1, 7],
@@ -84,20 +88,20 @@ const ICOSAHEDRON_FACES: [[usize; 3]; 20] = [
     [0, 8, 6],
     [0, 7, 8],
     [5, 1, 2],
-    [5, 3, 1],
-    [1, 3, 7],
-    [5, 2, 4],
-    [6, 4, 2],
-    [5, 9, 3],
-    [11, 7, 3],
-    [11, 3, 9],
-    [5, 4, 9],
-    [6, 10, 4],
-    [10, 9, 4],
-    [6, 8, 10],
+    [1, 3, 5],
+    [3, 7, 1],
+    [2, 5, 4],
+    [4, 2, 6],
+    [9, 3, 5],
+    [7, 11, 3],
+    [9, 11, 3],
+    [9, 5, 4],
+    [6, 4, 10],
+    [9, 4, 10],
+    [10, 6, 8],
     [11, 8, 7],
-    [11, 10, 8],
-    [11, 9, 10],
+    [8, 10, 11],
+    [9, 10, 11],
 ];
 
 /// Builds a closed, watertight geodesic sphere of `radius` around `origin`.

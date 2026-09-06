@@ -28,12 +28,12 @@ keeps node names unique.
 - Links are bidirectional with an explicit back-port: if
   `A.children[x] == B` then `A.back_ports[x] == Some(y)` and
   `B.children[y] == A`. Links created by
-  [`split_node`](subdivision.md) also follow the
-  `0 <-> 2`, `1 <-> 1` port pattern, but that pattern is not an invariant -
-  it cannot hold on every edge of a welded sphere (see
-  [`build_icosphere()`](icosphere.md)). Deliberate deviation from
-  `plans/MIGRATION.md` (which specifies reciprocal ports only): the back-port
-  is stored because the sphere makes the pattern unsatisfiable.
+  [`split_node`](subdivision.md) and by the sphere welds also follow the
+  `0 <-> 2`, `1 <-> 1` port pattern - the abc/acb base-face labeling makes
+  it satisfiable on every sphere edge (see
+  [`build_icosphere()`](icosphere.md)). The back-port is stored rather
+  than assumed so the wiring and `destroy()` stay exact for any link,
+  including hand-wired ones.
 
 #### Identity
 

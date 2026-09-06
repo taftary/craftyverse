@@ -69,16 +69,21 @@ fn every_vertex_lies_on_the_sphere() {
 }
 
 #[test]
-fn base_faces_have_outward_winding() {
+fn base_face_winding_matches_the_port_pattern_labeling() {
+    // Full port-pattern conformance on all 30 base edges requires 5 of the
+    // 20 base faces to be wound inward (see the icosphere module docs).
+    const INWARD: [usize; 5] = [6, 8, 11, 14, 18];
     let mesh = build_icosphere("test", 1.0, 0, Vec3::ZERO);
     for face in all_faces(&mesh) {
         let node = face.borrow();
+        let index: usize = node.name.rsplit('.').next().unwrap().parse().unwrap();
         let [a, b, c] = node.vertices;
         let normal = (b - a).cross(c - a);
-        assert!(
-            normal.dot(node.center) > 0.0,
-            "face {} has inward winding",
-            node.name
+        let outward = normal.dot(node.center) > 0.0;
+        assert_eq!(
+            outward,
+            !INWARD.contains(&index),
+            "face {index} has unexpected winding"
         );
     }
 }
@@ -121,58 +126,35 @@ fn links_are_bidirectional() {
 }
 
 #[test]
-fn reciprocal_port_pattern_holds_where_topology_allows() {
-    // The `0 <-> 2`, `1 <-> 1` port pattern is not an invariant — it cannot
-    // hold on every edge of a closed icosahedron-based mesh (see the module
-    // documentation) — but it must still hold on the 24 satisfiable base
-    // edges and all internal `split_node` edges. Links are correct
-    // regardless, because every link carries a recorded back-port.
-    let mesh = build_icosphere("test", 1.0, 1, Vec3::ZERO);
-    let all = all_faces(&mesh);
-    let mut conforming = 0;
-    let mut total = 0;
-    for face in &all {
-        let node = face.borrow();
-        for (port, child) in node.children.iter().enumerate() {
-            let child = child.as_ref().unwrap();
-            total += 1;
-            let back = &child.borrow().children[2 - port];
-            if back.as_ref().is_some_and(|back| Rc::ptr_eq(back, face)) {
-                conforming += 1;
+fn reciprocal_port_pattern_holds_on_every_link() {
+    // The abc/acb base-face labeling makes the `0 <-> 2`, `1 <-> 1` port
+    // pattern satisfiable on all 30 base edges, and every split/weld keeps
+    // it: at every level, a link through port `x` uses port `2 - x` on the
+    // other side. Links still carry a recorded back-port; the pattern is
+    // asserted here, not assumed by the code.
+    for subdivisions in 0..=3 {
+        let mesh = build_icosphere("test", 1.0, subdivisions, Vec3::ZERO);
+        for face in all_faces(&mesh) {
+            let node = face.borrow();
+            for (port, child) in node.children.iter().enumerate() {
+                let child = child.as_ref().unwrap();
+                assert!(
+                    child.borrow().children[2 - port]
+                        .as_ref()
+                        .is_some_and(|back| Rc::ptr_eq(back, &face)),
+                    "link {} port {port} breaks the reciprocal port pattern",
+                    node.name,
+                );
             }
         }
     }
-    assert_eq!(total, 3 * all.len());
-    // The 6 non-conforming base edges each split into 2 half-edges with 2
-    // directed links apiece, so at most 6 x 2 x 2 = 24 of the 240 directed
-    // links may miss the conventional pattern.
-    assert!(conforming >= total - 24, "{conforming}/{total} conforming");
 }
 
 #[test]
 fn destroy_severs_links_via_recorded_back_ports() {
-    // Find a face incident to a link whose back-port is not the
-    // conventional `2 - port`.
     let mesh = build_icosphere("test", 1.0, 0, Vec3::ZERO);
     let all = all_faces(&mesh);
-    let mut found = None;
-    for face in &all {
-        let node = face.borrow();
-        for (port, child) in node.children.iter().enumerate() {
-            let child = child.as_ref().unwrap();
-            let conforming = child.borrow().children[2 - port]
-                .as_ref()
-                .is_some_and(|back| Rc::ptr_eq(back, face));
-            if !conforming {
-                found = Some(Rc::clone(face));
-                break;
-            }
-        }
-        if found.is_some() {
-            break;
-        }
-    }
-    let face = found.expect("level-0 icosphere has non-conforming links");
+    let face = Rc::clone(&mesh.faces[0]);
 
     let neighbors: Vec<_> = face
         .borrow()
@@ -183,8 +165,7 @@ fn destroy_severs_links_via_recorded_back_ports() {
         .collect();
     face.borrow_mut().destroy();
 
-    // All three of the face's links are gone on both sides — including the
-    // non-conforming one, whose back-link does not sit at `2 - port`.
+    // All three of the face's links are gone on both sides.
     assert!(face.borrow().children.iter().all(|c| c.is_none()));
     for neighbor in &neighbors {
         let node = neighbor.borrow();

@@ -68,7 +68,9 @@ pub struct PushTransform {
 }
 
 impl PushTransform {
-    /// Pixel-space → clip transform for `viewport` pixels (y-down).
+    /// Pixel-space → clip transform for `viewport` pixels (y-down), in the
+    /// project's y-up NDC convention: pixel `(0, 0)` maps to clip `(-1, 1)`,
+    /// the top-left of the window, and pixel `(w, h)` to clip `(1, -1)`.
     pub fn for_viewport(viewport: glam::Vec2) -> Self {
         PushTransform {
             scale: [2.0 / viewport.x, -2.0 / viewport.y],

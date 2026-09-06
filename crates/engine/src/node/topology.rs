@@ -13,9 +13,10 @@ use super::NodeRef;
 /// `1 <-> 1`): a link wired by a split through port `x` on one side uses port
 /// `2 - x` on the other.
 ///
-/// The convention cannot hold on every edge of a welded sphere (see
-/// `icosphere`), so links record their back-ports explicitly instead of
-/// assuming this mapping.
+/// The convention holds on every edge of the welded icosphere (see
+/// `icosphere`), but links still record their back-ports explicitly instead
+/// of assuming this mapping, keeping the wiring and `destroy` exact for any
+/// link, including hand-wired ones.
 pub fn reciprocal_index(port: usize) -> usize {
     2 - port
 }
@@ -24,10 +25,10 @@ pub fn reciprocal_index(port: usize) -> usize {
 /// to `b` and `b.children[port_b]` to `a`, and records each side's
 /// back-port so `destroy` can sever the link exactly.
 ///
-/// Links created by splits follow the reciprocal port pattern
-/// `port_b == reciprocal_index(port_a)`; welds across icosphere base edges
-/// may use arbitrary port pairs, which is why the back-port is recorded
-/// rather than assumed.
+/// Links created by splits and icosphere welds follow the reciprocal port
+/// pattern `port_b == reciprocal_index(port_a)`; the back-port is recorded
+/// rather than assumed so `link`/`destroy` stay exact for arbitrary port
+/// pairs.
 pub fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
     a.borrow_mut().children[port_a] = Some(Rc::clone(b));
     a.borrow_mut().back_ports[port_a] = Some(port_b);

@@ -483,8 +483,10 @@ impl Renderer {
 }
 
 /// Pixel-space → clip matrix for `viewport` pixels (y-down, z → 0.5); the
-/// UI counterpart of the world view-projection matrix.
-fn pixel_matrix(viewport: Vec2) -> Mat4 {
+/// UI counterpart of the world view-projection matrix. Uses the project's
+/// y-up NDC convention: pixel `(0, 0)` maps to clip `(-1, 1)`, the top-left
+/// of the window.
+pub fn pixel_matrix(viewport: Vec2) -> Mat4 {
     let viewport = viewport.max(Vec2::ONE);
     Mat4::from_cols(
         Vec4::new(2.0 / viewport.x, 0.0, 0.0, 0.0),

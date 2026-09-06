@@ -83,10 +83,9 @@ pub struct Node {
     /// Links are bidirectional with an explicitly recorded back-port: if
     /// `A.children[x] == B`, then `A.back_ports[x] == Some(y)` and
     /// `B.children[y] == A` (and `B.back_ports[y] == Some(x)`). Links
-    /// created by [`split_node`] also follow the reciprocal port pattern
-    /// `y == 2 - x`, but that pattern cannot hold on every edge of a welded
-    /// sphere (see `icosphere`), so the back-port is stored rather than
-    /// assumed.
+    /// created by [`split_node`] and by the icosphere welds also follow the
+    /// reciprocal port pattern `y == 2 - x`; the back-port is stored rather
+    /// than assumed so wiring and cleanup stay exact for any link.
     pub children: [Option<NodeRef>; 3],
     /// Port of the back-link on the neighbor: `back_ports[x]` is the slot of
     /// `children[x]`'s neighbor that points back to this node. Recorded by
@@ -184,10 +183,10 @@ impl Node {
     /// For each occupied port, the local port and back-port record are
     /// taken first, then the neighbor's recorded back-port slot is cleared.
     /// Because the back-port is stored explicitly by the link
-    /// wiring, `destroy` is exact for any link, including welded sphere
-    /// links that do not follow the `0 <-> 2`, `1 <-> 1` pattern. The node
-    /// itself is freed automatically once its last `Rc` reference is
-    /// dropped; there is no explicit self-destruction in Rust.
+    /// wiring, `destroy` is exact for any link, without assuming the
+    /// `0 <-> 2`, `1 <-> 1` pattern. The node itself is freed automatically
+    /// once its last `Rc` reference is dropped; there is no explicit
+    /// self-destruction in Rust.
     ///
     /// # Panics
     ///

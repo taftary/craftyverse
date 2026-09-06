@@ -10,7 +10,7 @@ use crate::text::TextAtlas;
 pub use crate::node::link;
 pub use crate::render::{
     GEOM_FRAG, GEOM_VERT, PushMatrix, PushTransform, TEXT_FRAG, TEXT_VERT, checkbox_at,
-    compile_spirv, device_type_rank, scenario_index_of,
+    compile_spirv, device_type_rank, pixel_matrix, scenario_index_of,
 };
 pub use crate::scene::{
     ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS, LEVEL_COLORS, MAX_PITCH, MAX_ZOOM, MIN_ZOOM,
