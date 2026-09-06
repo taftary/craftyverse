@@ -20,10 +20,21 @@ shared edge through a transient weld cache keyed by parent-node identity.
 After each generation the outgoing level is `destroy()`ed and dropped.
 `subdivisions = 0` returns the linked 20-face icosahedron.
 
+`radius` must be greater than `0.0` and `subdivisions` at most
+`MAX_SUBDIVISIONS` (8): each generation multiplies the face count by four,
+so 8 generations already produce `20 * 4^8 = 1.3M` faces, and the cap keeps
+the closed-form counts far from `usize` overflow. Both are enforced with
+asserts (panic). The viewer's own policy cap
+(`render::MAX_ICOSPHERE_SUBDIVISIONS`, 5) is lower and independent.
+
+Base faces are named `"{name_prefix}.{face_index}"` and extended with the
+`.I` / `.J` / `.K` / `.C` suffixes per generation - the naming scheme
+`unsplit_nodes` groups by.
+
 It returns an `IcosphereMesh` with the fully linked leaf `faces`
-(`20 * 4^subdivisions`) and the closed-form `face_count` / `vertex_count`
-(`10 * 4^subdivisions + 2`). Cleanup uses the existing `collect_nodes` +
-`destroy()` pattern.
+(`20 * 4^subdivisions` entries) and the closed-form `vertex_count`
+(`10 * 4^subdivisions + 2`). Cleanup: `destroy_mesh` on any face before
+dropping the mesh, or the reciprocal-link cycles leak every node.
 
 Port pattern note: every welded link is fully correct (recorded back-port,
 exact `destroy()`), but the `0 <-> 2`, `1 <-> 1` pattern cannot hold on
@@ -38,6 +49,8 @@ exactly why the back-port is stored rather than assumed.
 
 - Edge midpoints are projected back onto the sphere and computed exactly once
   per shared edge through the transient weld cache.
+- `radius` must be greater than `0.0`; `subdivisions` is capped at
+  `MAX_SUBDIVISIONS` (8).
 - `subdivisions = 0` returns the linked 20-face icosahedron; each additional
   level multiplies the face count by four.
 - The welded mesh is watertight: every port is linked, with an explicit

@@ -7,3 +7,6 @@ pub mod node;
 pub mod render;
 pub mod scene;
 pub mod text;
+
+#[cfg(test)]
+pub(crate) mod test_utils;

@@ -61,11 +61,11 @@ impl SceneBuilder {
 
     /// One panel row for `attribute` with text `label` at row index `row`:
     /// box outline, inset fill when on, label and clickable rectangle.
-    fn add_checkbox_row(&mut self, row: usize, attribute: Attribute, label: &str) {
+    fn add_checkbox_row(&mut self, row: usize, attribute: Attribute, label: &'static str) {
         let indent = attribute.port().map_or(0.0, |_| CHECKBOX_SUB_INDENT);
         let label_color = attribute
             .port()
-            .map_or(LABEL_COLOR, |i| DIRECTION_COLORS[i]);
+            .map_or(LABEL_COLOR, |port| DIRECTION_COLORS[port.index()]);
         let min = Vec2::new(
             PANEL_PAD + indent,
             PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT,
@@ -85,7 +85,7 @@ impl SceneBuilder {
             min.y + (CHECKBOX_SIZE - CHECKBOX_LABEL_SIZE) / 2.0,
         );
         self.ui_labels.push(TextRun {
-            text: label.to_string(),
+            text: label,
             anchor,
             size: CHECKBOX_LABEL_SIZE,
             color: label_color,

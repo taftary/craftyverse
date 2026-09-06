@@ -44,7 +44,7 @@ pub(crate) fn push_triangle(buf: &mut Vec<Vertex>, a: Vec3, b: Vec3, c: Vec3, co
 }
 
 /// Appends a dashed line segment. The gap is half the dash, like the SVG
-/// `stroke-dasharray="4 2"`.
+/// `stroke-dasharray="4 2"`. Coincident endpoints emit nothing.
 pub(crate) fn push_dashed_line(
     buf: &mut Vec<Vertex>,
     from: Vec3,
@@ -53,7 +53,9 @@ pub(crate) fn push_dashed_line(
     color: [f32; 3],
 ) {
     let gap = dash / 2.0;
-    let dir = (to - from).normalize();
+    let Some(dir) = (to - from).try_normalize() else {
+        return;
+    };
     let total = (to - from).length();
     let mut d = 0.0;
     while d < total {
@@ -301,16 +303,14 @@ impl SceneBuilder {
 
     /// One arrow per direction vector, starting at the node's center. Each
     /// port's arrow is gated by its own switch on top of the group master.
+    /// The directions are normalized by construction (see `Node::new`).
     fn add_direction_arrows(&mut self, node: &Node, center: Vec3, arrow_len: f32) {
         self.bounds.track(center);
         for (index, direction) in node.directions.iter().enumerate() {
             if !self.options.directions_ijk[index] {
                 continue;
             }
-            let end = tracked(
-                &mut self.bounds,
-                node.center + direction.normalize() * arrow_len,
-            );
+            let end = tracked(&mut self.bounds, node.center + direction * arrow_len);
             let color = DIRECTION_COLORS[index];
             push_arrow(
                 &mut self.lines,
@@ -395,7 +395,10 @@ impl SceneBuilder {
             self.labels.push(WorldLabel {
                 text: corner_label.to_string(),
                 world_pos: corner,
-                offset: LabelOffset::Outward(center, CORNER_LABEL_OFFSET_PX),
+                offset: LabelOffset::Outward {
+                    from: center,
+                    distance_px: CORNER_LABEL_OFFSET_PX,
+                },
                 size_px: CORNER_LABEL_SIZE_PX,
                 color: CORNER_LABEL_COLOR,
                 centered: true,

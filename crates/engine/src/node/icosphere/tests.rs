@@ -8,8 +8,8 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use super::{IcosphereMesh, build_icosphere};
-use crate::node::collect_nodes;
 use crate::node::topology::reciprocal_index;
+use crate::node::{collect_nodes, destroy_mesh};
 
 const EPSILON: f32 = 1e-3;
 
@@ -36,7 +36,6 @@ fn face_and_vertex_counts_follow_euler() {
     for subdivisions in 0..=3 {
         let mesh = build_icosphere("test", 1.0, subdivisions, Vec3::ZERO);
         let expected_faces = 20 * 4_usize.pow(subdivisions);
-        assert_eq!(mesh.face_count, expected_faces);
         assert_eq!(mesh.vertex_count, 10 * 4_usize.pow(subdivisions) + 2);
         assert_eq!(mesh.faces.len(), expected_faces);
 
@@ -258,9 +257,7 @@ fn subdivisions_zero_returns_the_linked_base_mesh() {
 fn cleanup_clears_every_link() {
     let mesh = build_icosphere("test", 1.0, 2, Vec3::ZERO);
     let all = all_faces(&mesh);
-    for face in &all {
-        face.borrow_mut().destroy();
-    }
+    destroy_mesh(&mesh.faces[0]);
     for face in &all {
         assert!(face.borrow().children.iter().all(|c| c.is_none()));
     }

@@ -75,6 +75,11 @@ component in one call.
    both sides of a shared edge). Open ports stay open.
 4. `destroy()` every old node so the old generation can deallocate.
 
+Precondition: the two sides of a shared edge must hold bit-identical
+vertices - the weld lookups compare vertices with exact `==` and panic
+otherwise. Meshes produced by `split_nodes` and `build_icosphere` satisfy
+this by construction.
+
 Returns `[I, J, K, C]` per old node, in old-node order. References kept to
 old nodes point at unlinked nodes.
 
@@ -91,8 +96,9 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
 1. Collect every node reachable from `first`.
 2. Group nodes by base name (name without a trailing `.I` / `.J` / `.K` /
    `.C` suffix). A group merges only when it has exactly those four members,
-   all at the same level `>= 1`; anything else (a base mesh, a mesh that was
-   never split, name collisions) is kept unchanged.
+   all at the same level `>= 1`; anything else is kept unchanged - a base
+   mesh, a mesh that was never split, or a base name whose suffix appears
+   twice (a name collision keeps the whole group, not just the duplicate).
 3. Rebuild each parent: name = base name, level = group level - 1,
    `A = I.points[0]`, `B = J.points[1]`, `C = K.points[2]`, origin recovered
    as `center + direction_to_origin`. The corners hold the exact parent
@@ -103,7 +109,11 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
    corners of different groups maps verbatim to a parent link with the
    recorded back-port.
 5. `destroy()` the four children of every merged group. Links from kept
-   nodes into a merged group are severed by the same cleanup.
+   nodes into a merged group are then re-targeted to the surviving parent
+   instead of being severed: the kept node keeps its port, and the parent
+   inherits the merged corner's external port (its parent edge's port
+   number). The re-targeting happens after the destroy pass so the cleanup
+   cannot sever the new links.
 
 Returns the new parents in group discovery order, followed by the unchanged
 nodes. Calling it on an unsplittable mesh returns the same nodes.
@@ -112,10 +122,13 @@ nodes. Calling it on an unsplittable mesh returns the same nodes.
 
 - Roots start at level `0`; each split generation increments the level by `1`.
 - `base_length` and `height` are derived independently for every child.
-- Welding resolves ports geometrically by exact vertex comparison; open ports
-  stay open.
+- Welding resolves ports geometrically by exact vertex comparison and
+  requires bit-identical shared vertices; open ports stay open.
 - A split group merges back only with exactly the four `.I` / `.J` / `.K` /
-  `.C` members, all at the same level `>= 1`.
+  `.C` members, all at the same level `>= 1`; a duplicate suffix poisons
+  the whole group.
+- On merge, links from kept (unmerged) nodes into a merged group are
+  re-targeted to the surviving parent, preserving both port numbers.
 
 ### Files
 

@@ -1,27 +1,11 @@
 use super::*;
+use crate::test_utils::{point, test_node};
 
 const EPSILON: f32 = 1e-4;
 const SQRT_3_2: f32 = 0.866_025_4; // sqrt(3) / 2
 
-fn point(x: f32, y: f32) -> Vec3 {
-    Vec3::new(x, y, 0.0)
-}
-
 fn approx_eq(a: Vec3, b: Vec3) -> bool {
     (a - b).length() < EPSILON
-}
-
-/// Equilateral test node (base 300, apex up, height = base * sqrt(3) / 2).
-fn test_node() -> NodeRef {
-    Node::new(
-        "root",
-        [
-            point(0.0, 100.0 * 3.0_f32.sqrt()),
-            point(150.0, -50.0 * 3.0_f32.sqrt()),
-            point(-150.0, -50.0 * 3.0_f32.sqrt()),
-        ],
-        point(0.0, 1000.0),
-    )
 }
 
 #[test]
@@ -480,9 +464,7 @@ fn split_nodes_welds_corners_across_old_links() {
     assert!(root.borrow().children.iter().all(|slot| slot.is_none()));
     assert!(neighbor.borrow().children.iter().all(|slot| slot.is_none()));
 
-    for leaf in &leaves {
-        leaf.borrow_mut().destroy();
-    }
+    destroy_mesh(&leaves[0]);
 }
 
 #[test]
@@ -529,6 +511,80 @@ fn unsplit_nodes_keeps_unsplittable_mesh() {
 }
 
 #[test]
+fn unsplit_nodes_relinks_kept_neighbors_to_the_parent() {
+    // Mixed-level mesh: `root` is split, `neighbor` is not. The neighbor
+    // links into the split group through one half-edge of the old shared
+    // edge (corner J's port 1, like a `split_nodes` weld near B).
+    let root = test_node();
+    let [a, b, c] = root.borrow().points;
+    let mirrored = Vec3::new(a.x, 2.0 * b.y - a.y, a.z);
+    let neighbor = Node::new("neighbor", [mirrored, c, b], point(0.0, 1000.0));
+
+    let center = split_node(&root.borrow());
+    let root_j = Rc::clone(center.borrow().children[0].as_ref().unwrap());
+    super::topology::link(&root_j, 1, &neighbor, 1);
+
+    let parents = unsplit_nodes(&root_j);
+    assert_eq!(parents.len(), 2);
+    let new_root = by_name(&parents, "root");
+    // The kept neighbor's port is re-targeted to the surviving parent, on
+    // the same ports the merged corner used.
+    assert!(Rc::ptr_eq(
+        new_root.borrow().children[1].as_ref().unwrap(),
+        &neighbor
+    ));
+    assert_eq!(new_root.borrow().back_ports[1], Some(1));
+    assert!(Rc::ptr_eq(
+        neighbor.borrow().children[1].as_ref().unwrap(),
+        &new_root
+    ));
+    assert_eq!(neighbor.borrow().back_ports[1], Some(1));
+    // The other parent ports stay open, and the mesh is fully reachable.
+    assert!(new_root.borrow().children[0].is_none());
+    assert!(new_root.borrow().children[2].is_none());
+    assert_eq!(collect_nodes(&new_root).len(), 2);
+    // The merged children are destroyed.
+    assert!(center.borrow().children.iter().all(|slot| slot.is_none()));
+    assert!(root_j.borrow().children.iter().all(|slot| slot.is_none()));
+
+    destroy_mesh(&new_root);
+}
+
+#[test]
+fn unsplit_nodes_keeps_the_whole_group_on_name_collisions() {
+    let node = test_node();
+    let leaves = split_nodes(&node);
+    // A second node named "root.I": a name collision, not a split group.
+    let duplicate = Node::new(
+        "root.I",
+        [point(0.0, 2.0), point(1.5, -1.0), point(-1.5, -1.0)],
+        point(0.0, 1000.0),
+    );
+    let root_i = by_name(&leaves, "root.I");
+    super::topology::link(&root_i, 0, &duplicate, 1);
+
+    let parents = unsplit_nodes(&root_i);
+
+    // Nothing merges: the four group members and the duplicate are kept.
+    assert_eq!(parents.len(), 5);
+    assert!(parents.iter().all(|node| node.borrow().name != "root"));
+    assert_eq!(
+        parents
+            .iter()
+            .filter(|node| node.borrow().name == "root.I")
+            .count(),
+        2
+    );
+    // The split group is untouched: levels and links are unchanged.
+    let root_c = by_name(&parents, "root.C");
+    assert_eq!(root_c.borrow().level, 1);
+    assert!(root_c.borrow().children.iter().all(|slot| slot.is_some()));
+    assert_eq!(collect_nodes(&root_i).len(), 5);
+
+    destroy_mesh(&root_i);
+}
+
+#[test]
 fn split_unsplit_round_trip_over_two_generations() {
     let root = test_node();
     let first = split_nodes(&root);
@@ -558,7 +614,5 @@ fn unsplit_nodes_merges_an_icosphere_generation() {
         assert!(parent.children.iter().all(|slot| slot.is_some()));
     }
 
-    for parent in &parents {
-        parent.borrow_mut().destroy();
-    }
+    destroy_mesh(&parents[0]);
 }

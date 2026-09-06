@@ -25,8 +25,6 @@ mod packing;
 #[cfg(test)]
 mod tests;
 
-use std::collections::HashMap;
-
 use fontdue::{Font, FontSettings};
 use glam::Vec2;
 
@@ -42,6 +40,11 @@ const ATLAS_HEIGHT: usize = 512;
 /// Padding in pixels reserved around each packed glyph rectangle.
 const GLYPH_PADDING: usize = 2;
 
+/// Number of rasterized glyphs: the printable ASCII range `' '..='~'`.
+const GLYPH_COUNT: usize = ('~' as usize) - (' ' as usize) + 1;
+/// Glyph index of the fallback character for text outside printable ASCII.
+const FALLBACK_GLYPH: usize = ('?' as usize) - (' ' as usize);
+
 /// Vertex of a text quad, positioned in pixels (y-down).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct TextVertex {
@@ -52,6 +55,31 @@ pub struct TextVertex {
     /// RGB color.
     pub color: [f32; 3],
 }
+
+/// Failure modes of [`TextAtlas::new`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextAtlasError {
+    /// The font bytes could not be parsed (carries the parser's message).
+    InvalidFont(String),
+    /// The font provides no horizontal line metrics.
+    NoHorizontalLineMetrics,
+    /// The rasterized glyphs do not fit the fixed-size atlas.
+    AtlasOverflow,
+}
+
+impl std::fmt::Display for TextAtlasError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TextAtlasError::InvalidFont(message) => write!(f, "failed to load font: {message}"),
+            TextAtlasError::NoHorizontalLineMetrics => {
+                write!(f, "font has no horizontal line metrics")
+            }
+            TextAtlasError::AtlasOverflow => write!(f, "text atlas overflow"),
+        }
+    }
+}
+
+impl std::error::Error for TextAtlasError {}
 
 #[derive(Clone, Copy, Default)]
 struct Glyph {
@@ -68,7 +96,9 @@ struct Glyph {
 
 /// Rasterized glyph atlas plus the metrics needed to lay out text runs.
 pub struct TextAtlas {
-    glyphs: HashMap<char, Glyph>,
+    /// One glyph per printable ASCII character, indexed by
+    /// `ch as usize - ' ' as usize`.
+    glyphs: [Glyph; GLYPH_COUNT],
     /// Baseline distance from the top of the line box at [`ATLAS_SIZE`].
     ascent: f32,
     /// Atlas width in pixels.
@@ -87,10 +117,11 @@ impl TextAtlas {
     ///
     /// # Errors
     ///
-    /// Returns `Err` if:
-    /// - `font_bytes` is not a valid font.
-    /// - the font has no horizontal line metrics.
-    /// - the glyph atlas overflows its fixed size.
+    /// - [`TextAtlasError::InvalidFont`] — `font_bytes` is not a valid font.
+    /// - [`TextAtlasError::NoHorizontalLineMetrics`] — the font has no
+    ///   horizontal line metrics.
+    /// - [`TextAtlasError::AtlasOverflow`] — the glyph atlas overflows its
+    ///   fixed size.
     ///
     /// # Example
     ///
@@ -101,33 +132,30 @@ impl TextAtlas {
     /// let atlas = TextAtlas::new(font).expect("bundled font is valid");
     /// assert_eq!(atlas.width, 512);
     /// ```
-    pub fn new(font_bytes: &[u8]) -> Result<Self, String> {
+    pub fn new(font_bytes: &[u8]) -> Result<Self, TextAtlasError> {
         let font = Font::from_bytes(font_bytes, FontSettings::default())
-            .map_err(|err| format!("failed to load font: {err}"))?;
+            .map_err(|err| TextAtlasError::InvalidFont(err.to_string()))?;
         let ascent = font
             .horizontal_line_metrics(ATLAS_SIZE)
-            .ok_or("font has no horizontal line metrics")?
+            .ok_or(TextAtlasError::NoHorizontalLineMetrics)?
             .ascent;
 
         let mut pixels = vec![0u8; ATLAS_WIDTH * ATLAS_HEIGHT];
-        let mut glyphs = HashMap::new();
+        let mut glyphs = [Glyph::default(); GLYPH_COUNT];
         let mut packer = ShelfPacker::new();
         for ch in ' '..='~' {
             let (metrics, bitmap) = font.rasterize(ch, ATLAS_SIZE);
             if metrics.width == 0 || metrics.height == 0 {
                 // Whitespace: advance only, no quad.
-                glyphs.insert(
-                    ch,
-                    Glyph {
-                        advance: metrics.advance_width,
-                        ..Default::default()
-                    },
-                );
+                glyphs[ch as usize - ' ' as usize] = Glyph {
+                    advance: metrics.advance_width,
+                    ..Default::default()
+                };
                 continue;
             }
             let (x, y) = packer
                 .reserve(metrics.width, metrics.height)
-                .ok_or("text atlas overflow")?;
+                .ok_or(TextAtlasError::AtlasOverflow)?;
             blit(
                 &mut pixels,
                 ATLAS_WIDTH,
@@ -138,17 +166,14 @@ impl TextAtlas {
                 metrics.height,
             );
             let (uv_min, uv_max) = uv_rect(x, y, metrics.width, metrics.height);
-            glyphs.insert(
-                ch,
-                Glyph {
-                    uv_min,
-                    uv_max,
-                    size: Vec2::new(metrics.width as f32, metrics.height as f32),
-                    bearing: Vec2::new(metrics.xmin as f32, metrics.ymin as f32),
-                    advance: metrics.advance_width,
-                    has_bitmap: true,
-                },
-            );
+            glyphs[ch as usize - ' ' as usize] = Glyph {
+                uv_min,
+                uv_max,
+                size: Vec2::new(metrics.width as f32, metrics.height as f32),
+                bearing: Vec2::new(metrics.xmin as f32, metrics.ymin as f32),
+                advance: metrics.advance_width,
+                has_bitmap: true,
+            };
         }
 
         Ok(TextAtlas {
@@ -160,12 +185,13 @@ impl TextAtlas {
         })
     }
 
+    /// Glyph for `ch`; characters outside printable ASCII fall back to `'?'`.
     fn glyph(&self, ch: char) -> Glyph {
+        let index = (ch as usize).wrapping_sub(' ' as usize);
         self.glyphs
-            .get(&ch)
-            .or_else(|| self.glyphs.get(&'?'))
+            .get(index)
             .copied()
-            .unwrap_or_default()
+            .unwrap_or(self.glyphs[FALLBACK_GLYPH])
     }
 
     /// Total advance width of `text` at `scale`, used to center a text run.
@@ -173,7 +199,7 @@ impl TextAtlas {
         text.chars().map(|ch| self.glyph(ch).advance * scale).sum()
     }
 
-    /// Lays out `text` into two triangles per glyph.
+    /// Lays out `text` into two triangles per glyph, appending to `out`.
     ///
     /// # Parameters
     ///
@@ -183,13 +209,11 @@ impl TextAtlas {
     /// - `size` — font size in pixels.
     /// - `color` — RGB color.
     /// - `centered` — when `true`, the anchor is the top-center of the block.
+    /// - `out` — buffer the six [`TextVertex`] instances per glyph (two
+    ///   triangles) are appended to; clear it first to reuse it.
     ///
-    /// # Returns
-    ///
-    /// Six [`TextVertex`] instances per glyph (two triangles), ready to be
-    /// uploaded as a vertex buffer.
-    ///
-    /// Whitespace produces no quads; unknown characters fall back to `'?'`.
+    /// Whitespace produces no quads; characters outside printable ASCII fall
+    /// back to `'?'`.
     ///
     /// # Example
     ///
@@ -199,7 +223,8 @@ impl TextAtlas {
     ///
     /// let font = include_bytes!("../../../../assets/fonts/JetBrainsMono-Regular.ttf");
     /// let atlas = TextAtlas::new(font).expect("bundled font is valid");
-    /// let vertices = atlas.layout("Hi", Vec2::new(10.0, 10.0), 16.0, [0.0, 0.0, 0.0], false);
+    /// let mut vertices = Vec::new();
+    /// atlas.layout("Hi", Vec2::new(10.0, 10.0), 16.0, [0.0, 0.0, 0.0], false, &mut vertices);
     /// assert_eq!(vertices.len(), 2 * 6);
     /// ```
     pub fn layout(
@@ -209,13 +234,14 @@ impl TextAtlas {
         size: f32,
         color: [f32; 3],
         centered: bool,
-    ) -> Vec<TextVertex> {
+        out: &mut Vec<TextVertex>,
+    ) {
         let scale = size / ATLAS_SIZE;
         let width = self.measure(text, scale);
         let mut pen_x = anchor.x - if centered { width / 2.0 } else { 0.0 };
         let baseline = anchor.y + self.ascent * scale;
 
-        let mut vertices = Vec::with_capacity(text.len() * 6);
+        out.reserve(text.len() * 6);
         for ch in text.chars() {
             let glyph = self.glyph(ch);
             if glyph.has_bitmap {
@@ -224,7 +250,7 @@ impl TextAtlas {
                 let x1 = x0 + glyph.size.x * scale;
                 let y1 = y0 + glyph.size.y * scale;
                 push_quad(
-                    &mut vertices,
+                    out,
                     [
                         Vec2::new(x0, y0),
                         Vec2::new(x1, y0),
@@ -237,7 +263,6 @@ impl TextAtlas {
             }
             pen_x += glyph.advance * scale;
         }
-        vertices
     }
 }
 

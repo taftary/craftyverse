@@ -99,3 +99,31 @@ pub fn collect_nodes(root: &NodeRef) -> Vec<NodeRef> {
     }
     nodes
 }
+
+/// Destroys every node reachable from `root`, breaking the reciprocal-link
+/// cycles of the mesh so it can deallocate.
+///
+/// Meshes built by [`build_icosphere`](super::build_icosphere) or
+/// [`split_nodes`](super::split_nodes) are `Rc` cycle graphs: dropping them
+/// without severing the links leaks every node. This is the prescribed
+/// cleanup: collect the whole component with [`collect_nodes`], then
+/// [`destroy`](super::Node::destroy) each node.
+///
+/// References kept to the nodes point at unlinked nodes afterwards.
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec3;
+/// use planet_crafter_engine::node::{Node, destroy_mesh, split_nodes};
+///
+/// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
+/// let leaves = split_nodes(&node);
+/// destroy_mesh(&leaves[0]);
+/// assert!(leaves.iter().all(|leaf| leaf.borrow().children.iter().all(|c| c.is_none())));
+/// ```
+pub fn destroy_mesh(root: &NodeRef) {
+    for node in collect_nodes(root) {
+        node.borrow_mut().destroy();
+    }
+}

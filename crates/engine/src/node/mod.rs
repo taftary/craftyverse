@@ -25,7 +25,7 @@
 mod geometry;
 mod icosphere;
 mod subdivision;
-pub(crate) mod topology;
+mod topology;
 
 #[cfg(test)]
 mod tests;
@@ -35,11 +35,11 @@ use std::rc::Rc;
 
 use glam::Vec3;
 
-use geometry::compute_directions;
+use geometry::{child_node, compute_directions};
 
-pub use icosphere::{IcosphereMesh, build_icosphere};
+pub use icosphere::{IcosphereMesh, MAX_SUBDIVISIONS, build_icosphere};
 pub use subdivision::{split_node, split_nodes, unsplit_nodes};
-pub use topology::collect_nodes;
+pub use topology::{collect_nodes, destroy_mesh};
 
 /// Shared, mutable reference to a [`Node`].
 ///
@@ -111,7 +111,9 @@ impl Node {
     ///
     /// # Parameters
     ///
-    /// - `name` — unique identifier for the node.
+    /// - `name` — unique identifier for the node. Names ending in `.I`,
+    ///   `.J`, `.K`, or `.C` are reserved: [`split_node`] derives them for
+    ///   its children and [`unsplit_nodes`] groups nodes by them.
     /// - `points` — triangle corners `[A, B, C]`, where `A` is the apex and
     ///   `BC` is the base.
     /// - `origin` — position used to compute `direction_to_origin` for the node
@@ -155,12 +157,7 @@ impl Node {
     /// }
     /// ```
     pub fn new(name: impl Into<String>, points: [Vec3; 3], origin: Vec3) -> NodeRef {
-        Rc::new(RefCell::new(Self::from_points(
-            points,
-            origin,
-            0,
-            name.into(),
-        )))
+        child_node(points, origin, 0, name.into())
     }
 
     /// Builds a node from an explicit points triplet.
@@ -191,13 +188,19 @@ impl Node {
 
     /// Severs all bidirectional `children` links.
     ///
-    /// For each occupied port, the neighbor's recorded back-port
-    /// (`back_ports`) is cleared first, then the local port and back-port
-    /// record. Because the back-port is stored explicitly by the link
+    /// For each occupied port, the local port and back-port record are
+    /// taken first, then the neighbor's recorded back-port slot is cleared.
+    /// Because the back-port is stored explicitly by the link
     /// wiring, `destroy` is exact for any link, including welded sphere
     /// links that do not follow the `0 <-> 2`, `1 <-> 1` pattern. The node
     /// itself is freed automatically once its last `Rc` reference is
     /// dropped; there is no explicit self-destruction in Rust.
+    ///
+    /// # Panics
+    ///
+    /// Panics when an occupied port has no recorded back-port. Links wired
+    /// through the topology helpers always record one, so a panic means the
+    /// `children` array was modified by hand.
     ///
     /// # Example
     ///

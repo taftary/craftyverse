@@ -4,24 +4,8 @@ use super::geometry::{DOT_SEGMENTS, plane_basis, push_arrowhead, push_disc};
 use super::options::ATTRIBUTES;
 use super::*;
 use crate::node::{Node, split_node};
+use crate::test_utils::{point, test_node};
 use glam::{Mat4, Vec2, Vec3};
-
-fn point(x: f32, y: f32) -> Vec3 {
-    Vec3::new(x, y, 0.0)
-}
-
-/// Equilateral test node (base 300, apex up, height = base * √3 / 2).
-fn test_node() -> NodeRef {
-    Node::new(
-        "root",
-        [
-            point(0.0, 100.0 * 3.0_f32.sqrt()),
-            point(150.0, -50.0 * 3.0_f32.sqrt()),
-            point(-150.0, -50.0 * 3.0_f32.sqrt()),
-        ],
-        Vec3::new(0.0, 1000.0, 0.0),
-    )
-}
 
 /// Projects `point` with `mvp` into `viewport` pixels (same mapping as
 /// `project_labels`).
@@ -169,7 +153,7 @@ fn per_port_switches_gate_each_group() {
     };
 
     // One port off: two discs remain, none in the disabled port's color.
-    options.toggle(Attribute::OpenPort(1));
+    options.toggle(Attribute::OpenPort(Port::J));
     let mesh = build_scene(std::slice::from_ref(&node), &options);
     assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
     assert!(
@@ -304,6 +288,35 @@ fn empty_scene_produces_unit_fit_sphere() {
     assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
     assert_eq!(mesh.fit_center, Vec3::ZERO);
     assert_eq!(mesh.fit_radius, 1.0);
+}
+
+#[test]
+fn labels_only_scene_fits_label_anchors_on_screen() {
+    // Labels on, every geometry attribute off: no world vertices are
+    // emitted, but the label anchors must still drive the camera fit.
+    let node = test_node();
+    let options = DisplayOptions {
+        labels: true,
+        ..DisplayOptions::none()
+    };
+    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
+    assert_eq!(mesh.labels.len(), 4);
+    // The fit covers the node's extent, not the collapsed MIN_FIT_RADIUS.
+    assert!(mesh.fit_radius > 100.0, "fit radius {}", mesh.fit_radius);
+
+    // Every label projects inside the viewport with the default camera.
+    let viewport = Vec2::new(800.0, 600.0);
+    let mvp = OrbitCamera::default().view_projection(mesh.fit_center, mesh.fit_radius, viewport);
+    let runs = project_labels(&mesh.labels, &mvp, viewport);
+    assert_eq!(runs.len(), mesh.labels.len());
+    for run in &runs {
+        assert!(
+            run.anchor.cmpge(Vec2::ZERO).all() && run.anchor.cmple(viewport).all(),
+            "label anchor {:?} outside the viewport",
+            run.anchor
+        );
+    }
 }
 
 #[test]
@@ -473,7 +486,10 @@ fn project_labels_pushes_corner_labels_outward() {
         WorldLabel {
             text: "corner".into(),
             world_pos: corner,
-            offset: LabelOffset::Outward(center, 8.0),
+            offset: LabelOffset::Outward {
+                from: center,
+                distance_px: 8.0,
+            },
             size_px: 10.0,
             color: [0.0; 3],
             centered: true,

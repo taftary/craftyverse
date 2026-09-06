@@ -130,6 +130,8 @@ cargo run --example viewer -p planet-crafter-examples --features gpu    # needs 
   `#[cfg(test)] mod tests;` in its `mod.rs`, backed by a sibling `tests.rs`
   (e.g. `crates/engine/src/node/tests.rs`). `crates/game/src/main.rs` uses an
   inline `#[cfg(test)] mod tests` instead.
+- Test fixtures shared across engine modules live in
+  `crates/engine/src/test_utils.rs` (`#[cfg(test)]`-gated, `pub(crate)`).
 - There is no workspace-level `tests/` directory yet (planned addition).
 - Tests and examples that need a window, GPU, or device are gated behind the
   `gpu` feature via `required-features`, so headless runs skip them

@@ -85,6 +85,11 @@ For every node, directions are computed from that node's own points:
 - [`unsplit_nodes(first: &NodeRef) -> Vec<NodeRef>`](subdivision.md) merges a
   split generation back into its parents.
 - `Node::destroy(&mut self)` clears reciprocal child links.
+- `destroy_mesh(root)` collects every node reachable from `root` and
+  destroys each one, breaking the reciprocal-link cycles so the mesh can
+  deallocate. This is the prescribed cleanup for meshes built by
+  `split_nodes` or `build_icosphere`; dropping them without it leaks every
+  node.
 - `collect_nodes(root)` breadth-first traverses reachable nodes once each.
 
 There is no `Labeling` argument and no direction/center/dimension constructor.
@@ -99,7 +104,10 @@ Node::new(name, points, origin) -> NodeRef
 
 **Parameters**
 
-- `name: impl Into<String>` - unique node identifier.
+- `name: impl Into<String>` - unique node identifier. Names ending in
+  `.I`, `.J`, `.K`, or `.C` are reserved by the subdivision machinery:
+  `split_node` derives them for its children and `unsplit_nodes` groups
+  nodes by them.
 - `points: [Vec3; 3]` - triangle points `[A, B, C]`.
 - `origin: Vec3` - position used to compute `direction_to_origin`.
 
@@ -123,9 +131,12 @@ The constructor assumes valid input rather than returning a validation error.
 Node::destroy(&mut self)
 ```
 
-For each occupied child port, `destroy()` clears the neighbor's recorded
-back-port slot first, then the local port and back-port record. Because the
-back-port is stored explicitly, `destroy()` is exact for any link. Rust
+For each occupied child port, `destroy()` takes the local port and
+back-port record first, then clears the neighbor's recorded back-port
+slot. Because the back-port is stored explicitly, `destroy()` is exact for
+any link. Each occupied port must carry a recorded back-port: `destroy()`
+panics on a link without one, which can only arise from hand-modified
+`children` - the topology link wiring always records one. Rust
 does not explicitly destroy `self`;
 the node is released when its final `Rc` reference is dropped. This operation is
 required to break cycles formed by reciprocal links.
@@ -143,8 +154,8 @@ or infinite traversal.
 - `crates/engine/src/node/geometry.rs` - midpoint, perpendicular-direction,
   and child-node helpers.
 - `crates/engine/src/node/topology.rs` - reciprocal links, graph traversal,
-  and the corner-weld lookups shared by sphere construction and mesh-level
-  splits.
+  mesh cleanup (`destroy_mesh`), and the corner-weld lookups shared by
+  sphere construction and mesh-level splits.
 - `crates/engine/src/node/tests.rs` - geometry, topology, lifecycle, traversal,
   and origin-propagation tests.
 
@@ -152,4 +163,7 @@ or infinite traversal.
 
 - `direction_of_node` is the normalized altitude from line `BC` toward `A`.
 - Child links are bidirectional and carry an explicit `back_ports` record.
-- `destroy()` clears the recorded back-port slot before local links.
+- `destroy()` takes the local port and back-port record, then clears the
+  neighbor's recorded back-port slot.
+- Node names ending in `.I`, `.J`, `.K`, `.C` are reserved for the
+  subdivision machinery.

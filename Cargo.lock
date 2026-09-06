@@ -1224,9 +1224,6 @@ dependencies = [
 [[package]]
 name = "planet-crafter-tools"
 version = "0.1.0"
-dependencies = [
- "planet-crafter-engine",
-]
 
 [[package]]
 name = "polling"

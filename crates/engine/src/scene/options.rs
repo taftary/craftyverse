@@ -3,14 +3,37 @@
 
 use glam::Vec2;
 
+/// One of the three node ports, labeling the I/J/K direction slots.
+///
+/// `I` is perpendicular to edge AB, `J` to BC, `K` to CA. Carrying a `Port`
+/// instead of a raw index makes invalid ports unrepresentable.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Port {
+    /// Port I (perpendicular to edge AB).
+    I,
+    /// Port J (perpendicular to edge BC).
+    J,
+    /// Port K (perpendicular to edge CA).
+    K,
+}
+
+impl Port {
+    /// Position of the port in I/J/K order, for array indexing.
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Port::I => 0,
+            Port::J => 1,
+            Port::K => 2,
+        }
+    }
+}
+
 /// One toggleable node attribute of the visualization.
 ///
 /// Each variant corresponds to a row in the display-options panel.
 /// `ChildLinks`, `OpenPorts`, and `Directions` are group masters that gate
-/// their per-port sub-switches:
-///
-/// - `ChildLink(i)`, `OpenPort(i)`, `Direction(i)` where `i` is `0` for I,
-///   `1` for J, and `2` for K.
+/// their per-port sub-switches `ChildLink(port)`, `OpenPort(port)`, and
+/// `Direction(port)`.
 ///
 /// An element is drawn only when both its group master and its per-port switch
 /// are enabled.
@@ -19,17 +42,17 @@ pub enum Attribute {
     /// Master switch for child-link lines.
     ChildLinks,
     /// Per-port child-link switch.
-    ChildLink(usize),
+    ChildLink(Port),
     /// Master switch for open-port markers.
     OpenPorts,
     /// Per-port open-port switch.
-    OpenPort(usize),
+    OpenPort(Port),
     /// Triangle outline.
     Outline,
     /// Master switch for I/J/K direction arrows.
     Directions,
     /// Per-port direction arrow switch.
-    Direction(usize),
+    Direction(Port),
     /// Node direction arrow (base to apex).
     DirectionOfNode,
     /// Dashed origin arrow.
@@ -43,10 +66,12 @@ pub enum Attribute {
 }
 
 impl Attribute {
-    /// Port index when the attribute is a per-port sub-switch of a group.
-    pub(crate) fn port(self) -> Option<usize> {
+    /// Port when the attribute is a per-port sub-switch of a group.
+    pub(crate) fn port(self) -> Option<Port> {
         match self {
-            Attribute::ChildLink(i) | Attribute::OpenPort(i) | Attribute::Direction(i) => Some(i),
+            Attribute::ChildLink(port) | Attribute::OpenPort(port) | Attribute::Direction(port) => {
+                Some(port)
+            }
             _ => None,
         }
     }
@@ -103,6 +128,27 @@ impl Default for DisplayOptions {
     }
 }
 
+/// Maps an [`Attribute`] to its backing flag: `attribute_field!(self, attr)`
+/// yields `&flag`, `attribute_field!(self, attr, mut)` yields `&mut flag`.
+macro_rules! attribute_field {
+    ($self:ident, $attribute:ident $(, $mut:tt)?) => {
+        match $attribute {
+            Attribute::ChildLinks => &$($mut)? $self.child_links,
+            Attribute::ChildLink(port) => &$($mut)? $self.child_links_ijk[port.index()],
+            Attribute::OpenPorts => &$($mut)? $self.open_ports,
+            Attribute::OpenPort(port) => &$($mut)? $self.open_ports_ijk[port.index()],
+            Attribute::Outline => &$($mut)? $self.outline,
+            Attribute::Directions => &$($mut)? $self.directions,
+            Attribute::Direction(port) => &$($mut)? $self.directions_ijk[port.index()],
+            Attribute::DirectionOfNode => &$($mut)? $self.direction_of_node,
+            Attribute::Origin => &$($mut)? $self.origin,
+            Attribute::CenterDot => &$($mut)? $self.center_dot,
+            Attribute::Labels => &$($mut)? $self.labels,
+            Attribute::LinkViolations => &$($mut)? $self.link_violations,
+        }
+    };
+}
+
 impl DisplayOptions {
     /// Returns an option set with every attribute disabled.
     ///
@@ -136,41 +182,15 @@ impl DisplayOptions {
         *field = !*field;
     }
 
-    /// The flag backing `attribute`; the single attribute → field mapping,
-    /// mirrored by `field_mut`.
+    /// The flag backing `attribute`.
     fn field(&self, attribute: Attribute) -> &bool {
-        match attribute {
-            Attribute::ChildLinks => &self.child_links,
-            Attribute::ChildLink(i) => &self.child_links_ijk[i],
-            Attribute::OpenPorts => &self.open_ports,
-            Attribute::OpenPort(i) => &self.open_ports_ijk[i],
-            Attribute::Outline => &self.outline,
-            Attribute::Directions => &self.directions,
-            Attribute::Direction(i) => &self.directions_ijk[i],
-            Attribute::DirectionOfNode => &self.direction_of_node,
-            Attribute::Origin => &self.origin,
-            Attribute::CenterDot => &self.center_dot,
-            Attribute::Labels => &self.labels,
-            Attribute::LinkViolations => &self.link_violations,
-        }
+        attribute_field!(self, attribute)
     }
 
-    /// Mutable variant of `field`; the two matches must stay in sync.
+    /// Mutable variant of `field`; the shared macro keeps the two mappings
+    /// in sync by construction.
     fn field_mut(&mut self, attribute: Attribute) -> &mut bool {
-        match attribute {
-            Attribute::ChildLinks => &mut self.child_links,
-            Attribute::ChildLink(i) => &mut self.child_links_ijk[i],
-            Attribute::OpenPorts => &mut self.open_ports,
-            Attribute::OpenPort(i) => &mut self.open_ports_ijk[i],
-            Attribute::Outline => &mut self.outline,
-            Attribute::Directions => &mut self.directions,
-            Attribute::Direction(i) => &mut self.directions_ijk[i],
-            Attribute::DirectionOfNode => &mut self.direction_of_node,
-            Attribute::Origin => &mut self.origin,
-            Attribute::CenterDot => &mut self.center_dot,
-            Attribute::Labels => &mut self.labels,
-            Attribute::LinkViolations => &mut self.link_violations,
-        }
+        attribute_field!(self, attribute, mut)
     }
 }
 
@@ -178,18 +198,18 @@ impl DisplayOptions {
 /// sub-switches sit right under their group master.
 pub(crate) const ATTRIBUTES: [(Attribute, &str); 18] = [
     (Attribute::ChildLinks, "child links"),
-    (Attribute::ChildLink(0), "link I"),
-    (Attribute::ChildLink(1), "link J"),
-    (Attribute::ChildLink(2), "link K"),
+    (Attribute::ChildLink(Port::I), "link I"),
+    (Attribute::ChildLink(Port::J), "link J"),
+    (Attribute::ChildLink(Port::K), "link K"),
     (Attribute::OpenPorts, "open ports"),
-    (Attribute::OpenPort(0), "port I"),
-    (Attribute::OpenPort(1), "port J"),
-    (Attribute::OpenPort(2), "port K"),
+    (Attribute::OpenPort(Port::I), "port I"),
+    (Attribute::OpenPort(Port::J), "port J"),
+    (Attribute::OpenPort(Port::K), "port K"),
     (Attribute::Outline, "outline"),
     (Attribute::Directions, "directions ijk"),
-    (Attribute::Direction(0), "dir I"),
-    (Attribute::Direction(1), "dir J"),
-    (Attribute::Direction(2), "dir K"),
+    (Attribute::Direction(Port::I), "dir I"),
+    (Attribute::Direction(Port::J), "dir J"),
+    (Attribute::Direction(Port::K), "dir K"),
     (Attribute::DirectionOfNode, "direction of node"),
     (Attribute::Origin, "origin arrow"),
     (Attribute::CenterDot, "center dot"),

@@ -37,14 +37,17 @@ through `project_labels`, when the camera changes.
     - `checkboxes: Vec<Checkbox>` - hit rectangles, one per panel row.
     - `fit_center: Vec3` / `fit_radius: f32` - content bounding sphere, the
       camera fit target (`(Vec3::ZERO, 1.0)` for an empty scene).
-  - `TextRun { text, anchor, size, color, centered }` - one pixel-space label.
-    `anchor` is the top-left of the text block (top-center when `centered`),
-    in pixels, so glyphs keep a constant pixel size regardless of the camera.
+  - `TextRun<'a> { text: &'a str, anchor, size, color, centered }` - one
+    pixel-space label; the text is borrowed (static attribute names for the
+    panel, the source `WorldLabel` for projected labels). `anchor` is the
+    top-left of the text block (top-center when `centered`), in pixels, so
+    glyphs keep a constant pixel size regardless of the camera.
   - `WorldLabel { text, world_pos, offset, size_px, color, centered }` - one
     world-anchored label; `offset` is a `LabelOffset`:
     - `LabelOffset::Fixed(Vec2)` - fixed pixel offset after projection.
-    - `LabelOffset::Outward(Vec3, f32)` - push this many pixels away from the
-      projected world point (corner labels pushed outward from the node
+    - `LabelOffset::Outward { from: Vec3, distance_px: f32 }` - push the
+      label `distance_px` pixels away from the projection of the world
+      reference point `from` (corner labels pushed outward from the node
       center).
 - **Camera** (`camera.rs`)
   - `OrbitCamera { yaw, pitch, zoom }` - orbit state around the content
@@ -57,17 +60,27 @@ through `project_labels`, when the camera changes.
     view-projection matrix fitting the content sphere into the viewport: the
     camera sits on the yaw/pitch sphere around `center` at a distance that
     frames the sphere in the smaller of the horizontal/vertical fields of
-    view (45° vertical FOV, 5% margin), scaled by `1 / zoom`. Uses glam's
+    view (45° vertical FOV, 5% margin), scaled by `1 / zoom`. The viewport
+    is clamped to at least 1x1 pixels and `radius` to `MIN_FIT_RADIUS`
+    (1e-3), keeping the camera distance finite. The near plane sits at
+    `distance - 2 * radius` (clamped to a small positive value), the far
+    plane at `distance + 2 * radius`. Uses glam's
     Vulkan clip convention (depth `z ∈ [0, 1]`, y-down NDC).
   - `project_labels(labels, mvp, viewport) -> Vec<TextRun>` - projects the
     world anchors to pixels, resolves each `LabelOffset`, and drops labels
-    behind the camera.
+    behind the camera; the returned runs borrow their text from the labels.
+    An `Outward` label is also dropped when its reference point is behind
+    the camera, and falls back to a straight-up `(0, -1)` push when its
+    projected anchor coincides with the projected reference point.
 - **Display options**
+  - `Port` - one of the three node ports `I`, `J`, `K` (`I` perpendicular to
+    edge AB, `J` to BC, `K` to CA). Carried by the per-port attributes
+    instead of a raw index, making invalid ports unrepresentable.
   - `Attribute` - the toggleable attributes, one checkbox each: `ChildLinks`,
     `OpenPorts`, `Outline`, `Directions`, `DirectionOfNode`, `Origin`,
     `CenterDot`, `Labels`, `LinkViolations`, plus per-port
-    sub-switches `ChildLink(i)`,
-    `OpenPort(i)` and `Direction(i)` (0 = I, 1 = J, 2 = K). `ChildLinks`,
+    sub-switches `ChildLink(port)`,
+    `OpenPort(port)` and `Direction(port)` carrying a `Port`. `ChildLinks`,
     `OpenPorts` and `Directions` are group masters: an element is drawn only
     when both the master and its per-port switch are on.
   - `DisplayOptions` - one `bool` per master and single attribute plus a
@@ -90,7 +103,7 @@ through `project_labels`, when the camera changes.
 The module is a folder module: public types and `build_scene` in `mod.rs`,
 the camera in `camera.rs`, colors in `colors.rs`, display options in
 `options.rs`, the per-node geometry builders in `geometry.rs`, the checkbox
-panel in `panel.rs`.
+panel in `panel.rs`, and the unit tests in `tests.rs`.
 
 ### Generated Elements (per node, each gated by its `DisplayOptions` flag)
 
@@ -150,8 +163,10 @@ reachable.
   in the node's triangle plane (perpendicular to its A,B,C normal), as
   painted-on-surface markers that stay stable under camera rotation.
 - **View fit** - all emitted world points contribute to a running bounding
-  box; the content bounding sphere (box center, maximal emitted-point
-  distance) is what `OrbitCamera::view_projection` frames, with a 5 % margin.
+  box; the content bounding sphere (box center, maximal distance over the
+  emitted world-space vertices and the world label anchors) is what
+  `OrbitCamera::view_projection` frames, with a 5 % margin. Including the
+  anchors keeps a labels-only scene (no emitted geometry) fitted correctly.
   A sphere fit is angle-independent, so orbiting never rescales the view. The
   checkbox panel is a pixel-space overlay and does not contribute to the fit.
 - **Text space** - world label anchors are projected with the same
