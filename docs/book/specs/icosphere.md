@@ -36,14 +36,18 @@ It returns an `IcosphereMesh` with the fully linked leaf `faces`
 (`10 * 4^subdivisions + 2`). Cleanup: `destroy_mesh` on any face before
 dropping the mesh, or the reciprocal-link cycles leak every node.
 
-Port pattern note: every welded link is fully correct (recorded back-port,
-exact `destroy()`), but the `0 <-> 2`, `1 <-> 1` pattern cannot hold on
-every edge of a closed icosahedron-based mesh - satisfying it on all 30 base
-edges is a constraint system over the dodecahedron dual with no solution.
-The base face labeling maximizes conformance: only 6 of the 30 base edges
-(and their subdivision descendants) have a back-port different from
-`2 - index`. This is a topological curiosity, not a defect - which is
-exactly why the back-port is stored rather than assumed.
+Port pattern note: every welded link follows the `0 <-> 2`, `1 <-> 1`
+reciprocal port pattern - a link through port `x` on one side uses port
+`2 - x` on the other - on every edge of every subdivision level, and each
+link still carries a recorded back-port (exact `destroy()` never assumes
+the pattern). Full conformance has a price: with all faces wound outward,
+satisfying the pattern on all 30 base edges is a constraint system over
+the dodecahedron dual with no solution. The base face labeling solves it
+by winding 5 of the 20 faces inward (reversed vertex order, `abc -> acb`:
+faces 6, 8, 11, 14, 18). Winding is therefore not a mesh invariant -
+corner children inherit their parent's winding and the center child
+reverses it - and nothing may rely on it; every derived direction is
+winding-independent by construction.
 
 ### Rules
 
@@ -55,8 +59,11 @@ exactly why the back-port is stored rather than assumed.
   level multiplies the face count by four.
 - The welded mesh is watertight: every port is linked, with an explicit
   recorded back-port.
-- The `0 <-> 2`, `1 <-> 1` port pattern is not assumed on sphere edges; the
-  back-port is always read from the record.
+- The `0 <-> 2`, `1 <-> 1` port pattern holds on every sphere edge; the
+  back-port is still recorded and read from the record, never assumed.
+- 5 of the 20 base faces are deliberately wound inward to make the port
+  pattern satisfiable; winding is not a mesh invariant and nothing may
+  rely on it.
 
 ### Files
 

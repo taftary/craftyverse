@@ -2,7 +2,7 @@
 //! bidirectional links to adjacent nodes.
 //!
 //! A [`Node`] represents one non-degenerate triangle in a hierarchical mesh. It stores
-//! its corner points, center, directional vectors, and up to three neighbors in
+//! its corner vertices, center, directional vectors, and up to three neighbors in
 //! the `children` array. Nodes are reference-counted and mutable via
 //! [`NodeRef`] so that bidirectional links can be shared.
 //!
@@ -39,7 +39,7 @@ pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::{collect_nodes, destroy_mesh};
 
 #[cfg(feature = "test-internals")]
-pub use topology::link;
+pub use topology::{link, reciprocal_index};
 
 /// Shared, mutable reference to a [`Node`].
 ///
@@ -54,6 +54,44 @@ pub type NodeRef = Rc<RefCell<Node>>;
 /// See `docs/book/specs/node.md` for the full specification of the
 /// geometry, topology, and identity rules.
 pub struct Node {
+    // --- Geometry ---
+    /// Triangle corner vertices `[A, B, C]`, where `A` is the apex and `BC`
+    /// is the reference base edge.
+    pub vertices: [Vec3; 3],
+    /// Centroid of the node's triangle, computed from the corner vertices.
+    pub center: Vec3,
+    /// Vector from the node center toward the origin used to construct the
+    /// node. This is `origin - center` and is recomputed for each child during
+    /// [`split_node`].
+    pub direction_to_origin: Vec3,
+    /// Directional vectors `[i, j, k]`. Each vector points from the center
+    /// toward the midpoint of one edge of the triangle:
+    /// - `i` points toward the midpoint of edge AB,
+    /// - `j` points toward the midpoint of edge BC,
+    /// - `k` points toward the midpoint of edge CA.
+    pub directions: [Vec3; 3],
+    /// Normalized altitude direction from the base edge `BC` toward `A`.
+    pub direction_of_node: Vec3,
+
+    // --- Topology ---
+    /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
+    ///
+    /// - `children[0]` is the link in direction `i` (toward the midpoint of edge AB).
+    /// - `children[1]` is the link in direction `j` (toward the midpoint of edge BC).
+    /// - `children[2]` is the link in direction `k` (toward the midpoint of edge CA).
+    ///
+    /// Links are bidirectional with an explicitly recorded back-port: if
+    /// `A.children[x] == B`, then `A.back_ports[x] == Some(y)` and
+    /// `B.children[y] == A` (and `B.back_ports[y] == Some(x)`). Links
+    /// created by [`split_node`] and by the icosphere welds also follow the
+    /// reciprocal port pattern `y == 2 - x`; the back-port is stored rather
+    /// than assumed so wiring and cleanup stay exact for any link.
+    pub children: [Option<NodeRef>; 3],
+    /// Port of the back-link on the neighbor: `back_ports[x]` is the slot of
+    /// `children[x]`'s neighbor that points back to this node. Recorded by
+    /// the link wiring; `None` exactly where `children[x]` is `None`.
+    pub back_ports: [Option<usize>; 3],
+
     // --- Identity ---
     /// Unique identifier across all nodes. The caller is responsible for
     /// keeping names unique; duplicate names do not affect geometry but make
@@ -62,48 +100,6 @@ pub struct Node {
     /// Split depth. `0` for a root node; incremented by one for every
     /// generation produced by [`split_node`]. There is no upper bound.
     pub level: u32,
-
-    // --- Geometry ---
-    /// Centroid of the node's triangle, computed from the corner points.
-    pub center: Vec3,
-    /// Vector from the node center toward the origin used to construct the
-    /// node. This is `origin - center` and is recomputed for each child during
-    /// [`split_node`].
-    pub direction_to_origin: Vec3,
-    /// Directional vectors `[i, j, k]`. Each vector is perpendicular to one
-    /// edge of the triangle and points from the center toward that edge:
-    /// - `i` is perpendicular to edge AB,
-    /// - `j` is perpendicular to edge BC,
-    /// - `k` is perpendicular to edge CA.
-    pub directions: [Vec3; 3],
-    /// Triangle corner points `[A, B, C]`. `BC` is the reference base edge.
-    pub points: [Vec3; 3],
-    /// Normalized altitude direction from the base edge `BC` toward `A`.
-    pub direction_of_node: Vec3,
-    /// Length of the base edge `BC`.
-    pub base_length: f32,
-    /// Perpendicular distance from the line `BC` to `A`.
-    pub height: f32,
-
-    // --- Topology ---
-    /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
-    ///
-    /// - `children[0]` is the link in direction `i` (perpendicular to edge AB).
-    /// - `children[1]` is the link in direction `j` (perpendicular to edge BC).
-    /// - `children[2]` is the link in direction `k` (perpendicular to edge CA).
-    ///
-    /// Links are bidirectional with an explicitly recorded back-port: if
-    /// `A.children[x] == B`, then `A.back_ports[x] == Some(y)` and
-    /// `B.children[y] == A` (and `B.back_ports[y] == Some(x)`). Links
-    /// created by [`split_node`] also follow the reciprocal port pattern
-    /// `y == 2 - x`, but that pattern cannot hold on every edge of a welded
-    /// sphere (see `icosphere`), so the back-port is stored rather than
-    /// assumed.
-    pub children: [Option<NodeRef>; 3],
-    /// Port of the back-link on the neighbor: `back_ports[x]` is the slot of
-    /// `children[x]`'s neighbor that points back to this node. Recorded by
-    /// the link wiring; `None` exactly where `children[x]` is `None`.
-    pub back_ports: [Option<usize>; 3],
 }
 
 impl Node {
@@ -114,13 +110,13 @@ impl Node {
     /// - `name` — unique identifier for the node. Names ending in `.I`,
     ///   `.J`, `.K`, or `.C` are reserved: [`split_node`] derives them for
     ///   its children and [`unsplit_nodes`] groups nodes by them.
-    /// - `points` — triangle corners `[A, B, C]`, where `A` is the apex and
+    /// - `vertices` — triangle corners `[A, B, C]`, where `A` is the apex and
     ///   `BC` is the base.
     /// - `origin` — position used to compute `direction_to_origin` for the node
     ///   and its descendants.
     ///
     /// The caller must provide a non-degenerate triangle. The center, altitude,
-    /// dimensions, and edge directions are derived from `points`.
+    /// and edge directions are derived from `vertices`.
     ///
     /// # Example
     ///
@@ -140,49 +136,46 @@ impl Node {
     ///
     /// let node = Node::new("root", [Vec3::new(0.0, 8.0 / 3.0, 0.0), Vec3::new(3.0, -4.0 / 3.0, 0.0), Vec3::new(-3.0, -4.0 / 3.0, 0.0)], Vec3::ZERO);
     /// let node = node.borrow();
-    /// let [a, b, c] = node.points;
+    /// let [a, b, c] = node.vertices;
     ///
-    /// // Direction is normalized; centroid and dimensions match the request.
+    /// // Direction is normalized and the centroid matches the request.
     /// assert!((node.direction_of_node.length() - 1.0).abs() < 1e-4);
     /// assert!(((a + b + c) / 3.0 - node.center).length() < 1e-4);
-    /// assert!(((b - c).length() - node.base_length).abs() < 1e-4);
-    /// assert!(((a - (b + c) / 2.0).length() - node.height).abs() < 1e-4);
     ///
-    /// // I/J/K directions are perpendicular to their edge and point outward.
+    /// // I/J/K directions point through the edge midpoint and are normalized.
     /// for (dir, start, end) in [(node.directions[0], a, b), (node.directions[1], b, c), (node.directions[2], c, a)] {
-    ///     assert!(dir.dot(end - start).abs() < 1e-4);
     ///     let mid = (start + end) / 2.0;
+    ///     let toward_mid = (mid - node.center).normalize();
+    ///     assert!((dir - toward_mid).length() < 1e-4);
     ///     assert!(dir.dot(mid - node.center) > 0.0);
     ///     assert!((dir.length() - 1.0).abs() < 1e-4);
     /// }
     /// ```
-    pub fn new(name: impl Into<String>, points: [Vec3; 3], origin: Vec3) -> NodeRef {
-        child_node(points, origin, 0, name.into())
+    pub fn new(name: impl Into<String>, vertices: [Vec3; 3], origin: Vec3) -> NodeRef {
+        child_node(vertices, origin, 0, name.into())
     }
 
-    /// Builds a node from an explicit points triplet.
+    /// Builds a node from an explicit vertices triplet.
     ///
     /// The center is the centroid of the triplet, `direction_to_origin` and the
-    /// `[i, j, k]` directions are derived from the points. This constructor is
+    /// `[i, j, k]` directions are derived from the vertices. This constructor is
     /// used internally by [`Node::new`] and [`split_node`].
-    fn from_points(points: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
-        let center = (points[0] + points[1] + points[2]) / 3.0;
-        let base_direction = (points[2] - points[1]).normalize();
+    fn from_vertices(vertices: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
+        let center = (vertices[0] + vertices[1] + vertices[2]) / 3.0;
+        let base_direction = (vertices[2] - vertices[1]).normalize();
         let base_projection =
-            points[1] + base_direction * (points[0] - points[1]).dot(base_direction);
-        let height_vector = points[0] - base_projection;
+            vertices[1] + base_direction * (vertices[0] - vertices[1]).dot(base_direction);
+        let height_vector = vertices[0] - base_projection;
         Node {
-            name,
-            level,
+            vertices,
             center,
             direction_to_origin: origin - center,
-            directions: compute_directions(&points, center),
-            points,
+            directions: compute_directions(&vertices, center),
             direction_of_node: height_vector.normalize(),
-            base_length: (points[1] - points[2]).length(),
-            height: height_vector.length(),
             children: [None, None, None],
             back_ports: [None, None, None],
+            name,
+            level,
         }
     }
 
@@ -191,10 +184,10 @@ impl Node {
     /// For each occupied port, the local port and back-port record are
     /// taken first, then the neighbor's recorded back-port slot is cleared.
     /// Because the back-port is stored explicitly by the link
-    /// wiring, `destroy` is exact for any link, including welded sphere
-    /// links that do not follow the `0 <-> 2`, `1 <-> 1` pattern. The node
-    /// itself is freed automatically once its last `Rc` reference is
-    /// dropped; there is no explicit self-destruction in Rust.
+    /// wiring, `destroy` is exact for any link, without assuming the
+    /// `0 <-> 2`, `1 <-> 1` pattern. The node itself is freed automatically
+    /// once its last `Rc` reference is dropped; there is no explicit
+    /// self-destruction in Rust.
     ///
     /// # Panics
     ///

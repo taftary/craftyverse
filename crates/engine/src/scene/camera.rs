@@ -2,7 +2,7 @@
 //! world-label projection. Pure glam math — no GPU code — so every piece is
 //! unit-testable.
 
-use glam::camera::rh::proj::vulkan;
+use glam::camera::rh::proj::directx;
 use glam::camera::rh::view::look_at_mat4;
 use glam::{Mat4, Vec2, Vec3};
 
@@ -95,9 +95,13 @@ impl OrbitCamera {
     /// plane sits at `distance - 2 * radius` (clamped to a small positive
     /// value), the far plane at `distance + 2 * radius`. At identity angles
     /// the eye is at `center + Z * distance` looking at `center` with up +Y,
-    /// so world +X appears right and world +Y up. The projection uses
-    /// Vulkan's clip convention (depth `z ∈ [0,1]`, y-down NDC) so world up
-    /// lands at the top of the viewport.
+    /// so world +X appears right and world +Y up. The projection uses the
+    /// y-up NDC convention (DirectX/WebGPU clip: depth `z ∈ [0,1]`, no
+    /// y-flip) — the same convention the pixel-space pipelines (text,
+    /// checkbox panel) are authored in, and the one the viewer's swapchain
+    /// presentation renders with NDC y+ toward the top of the window — so
+    /// world geometry, labels and UI stay aligned and world up lands at the
+    /// top of the viewport.
     pub fn view_projection(&self, center: Vec3, radius: f32, viewport: Vec2) -> Mat4 {
         let viewport = viewport.max(Vec2::ONE);
         let radius = radius.max(MIN_FIT_RADIUS);
@@ -112,7 +116,7 @@ impl OrbitCamera {
         let eye =
             center + Vec3::new(sin_yaw * cos_pitch, sin_pitch, cos_yaw * cos_pitch) * distance;
         let view = look_at_mat4(eye, center, Vec3::Y);
-        vulkan::perspective(FIELD_OF_VIEW, aspect, near, far) * view
+        directx::perspective(FIELD_OF_VIEW, aspect, near, far) * view
     }
 }
 
@@ -134,9 +138,10 @@ pub fn project_labels<'a>(
             return None;
         }
         let ndc = clip.truncate() / clip.w;
+        // y-up NDC: NDC y+ is the top of the window, pixel space is y-down.
         Some(Vec2::new(
             (ndc.x + 1.0) * 0.5 * viewport.x,
-            (ndc.y + 1.0) * 0.5 * viewport.y,
+            (1.0 - ndc.y) * 0.5 * viewport.y,
         ))
     };
     labels

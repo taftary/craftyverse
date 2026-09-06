@@ -9,9 +9,26 @@ use glam::Vec3;
 
 use super::NodeRef;
 
+/// Reciprocal port of `port` under the split-link convention (`0 <-> 2`,
+/// `1 <-> 1`): a link wired by a split through port `x` on one side uses port
+/// `2 - x` on the other.
+///
+/// The convention holds on every edge of the welded icosphere (see
+/// `icosphere`), but links still record their back-ports explicitly instead
+/// of assuming this mapping, keeping the wiring and `destroy` exact for any
+/// link, including hand-wired ones.
+pub fn reciprocal_index(port: usize) -> usize {
+    2 - port
+}
+
 /// Wires a bidirectional link between two nodes: sets `a.children[port_a]`
 /// to `b` and `b.children[port_b]` to `a`, and records each side's
 /// back-port so `destroy` can sever the link exactly.
+///
+/// Links created by splits and icosphere welds follow the reciprocal port
+/// pattern `port_b == reciprocal_index(port_a)`; the back-port is recorded
+/// rather than assumed so `link`/`destroy` stay exact for arbitrary port
+/// pairs.
 pub fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
     a.borrow_mut().children[port_a] = Some(Rc::clone(b));
     a.borrow_mut().back_ports[port_a] = Some(port_b);
@@ -41,7 +58,7 @@ pub(crate) fn corner_nodes(center: &NodeRef) -> [NodeRef; 3] {
 pub(crate) fn corner_near(corners: &[NodeRef; 3], endpoint: Vec3) -> usize {
     corners
         .iter()
-        .position(|corner| corner.borrow().points.contains(&endpoint))
+        .position(|corner| corner.borrow().vertices.contains(&endpoint))
         .expect("no corner child at the shared endpoint")
 }
 
@@ -49,7 +66,7 @@ pub(crate) fn corner_near(corners: &[NodeRef; 3], endpoint: Vec3) -> usize {
 /// the port whose perpendicular edge has exactly those two endpoints.
 pub(crate) fn port_on_edge(corner: &NodeRef, endpoint: Vec3, midpoint: Vec3) -> usize {
     let node = corner.borrow();
-    let [a, b, c] = node.points;
+    let [a, b, c] = node.vertices;
     [(a, b), (b, c), (c, a)]
         .iter()
         .position(|(u, v)| (*u == endpoint && *v == midpoint) || (*u == midpoint && *v == endpoint))

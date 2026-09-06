@@ -139,7 +139,7 @@ fn tracked(bounds: &mut Bounds, point: Vec3) -> Vec3 {
 /// repeated `split()` calls (same rule as the SVG viewer).
 pub(crate) fn arrow_length(node: &Node) -> f32 {
     let min_corner_distance = node
-        .points
+        .vertices
         .iter()
         .map(|point| (*point - node.center).length())
         .fold(f32::INFINITY, f32::min);
@@ -151,7 +151,7 @@ pub(crate) fn arrow_length(node: &Node) -> f32 {
 /// markers) are built in the plane perpendicular to it — painted-on-surface
 /// markers that stay stable under camera rotation.
 fn node_normal(node: &Node) -> Vec3 {
-    let [a, b, c] = node.points;
+    let [a, b, c] = node.vertices;
     (b - a).cross(c - a).try_normalize().unwrap_or(Vec3::Z)
 }
 
@@ -205,7 +205,7 @@ impl SceneBuilder {
         normal: Vec3,
         arrow_len: f32,
     ) {
-        let [a, b, c] = node.points;
+        let [a, b, c] = node.vertices;
         let edge_endpoints = [(a, b), (b, c), (c, a)];
         for (index, child) in node.children.iter().enumerate() {
             let Some(child) = child else { continue };
@@ -263,7 +263,7 @@ impl SceneBuilder {
     /// marker — not a thin line — so they stand out instead of being the
     /// mere absence of a child link. Port I/J/K faces edge AB/BC/CA.
     fn add_open_port_markers(&mut self, node: &Node, normal: Vec3, arrow_len: f32) {
-        let [a, b, c] = node.points;
+        let [a, b, c] = node.vertices;
         let edge_midpoints = [(a + b) / 2.0, (b + c) / 2.0, (c + a) / 2.0];
         let radius = arrow_len * 0.18;
         for (index, child) in node.children.iter().enumerate() {
@@ -289,7 +289,7 @@ impl SceneBuilder {
     /// Triangle outline through the corner points A → B → C → A, colored by level.
     fn add_triangle_outline(&mut self, node: &Node) {
         let color = level_color(node.level);
-        let [a, b, c] = node.points.map(|point| tracked(&mut self.bounds, point));
+        let [a, b, c] = node.vertices.map(|point| tracked(&mut self.bounds, point));
         push_line(&mut self.lines, a, b, color);
         push_line(&mut self.lines, b, c, color);
         push_line(&mut self.lines, c, a, color);
@@ -384,7 +384,7 @@ impl SceneBuilder {
             color: LABEL_COLOR,
             centered: false,
         });
-        for (point, corner_label) in node.points.iter().zip(['A', 'B', 'C']) {
+        for (point, corner_label) in node.vertices.iter().zip(['A', 'B', 'C']) {
             let corner = tracked(&mut self.bounds, *point);
             self.labels.push(WorldLabel {
                 text: corner_label.to_string(),

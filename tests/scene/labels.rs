@@ -12,7 +12,7 @@ fn to_pixel(mvp: &Mat4, point: Vec3, viewport: Vec2) -> Vec2 {
     let ndc = clip.truncate() / clip.w;
     Vec2::new(
         (ndc.x + 1.0) * 0.5 * viewport.x,
-        (ndc.y + 1.0) * 0.5 * viewport.y,
+        (1.0 - ndc.y) * 0.5 * viewport.y,
     )
 }
 

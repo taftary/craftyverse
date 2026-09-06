@@ -77,9 +77,9 @@ fn split_connects_center_and_corner_nodes_bidirectionally() {
 }
 
 #[test]
-fn split_subdivides_points() {
+fn split_subdivides_vertices() {
     let node = test_node();
-    let [p_a, p_b, p_c] = node.borrow().points;
+    let [p_a, p_b, p_c] = node.borrow().vertices;
     let center = split_node(&node.borrow());
 
     let p_ab = (p_a + p_b) / 2.0;
@@ -88,45 +88,23 @@ fn split_subdivides_points() {
 
     let center_ref = center.borrow();
     // Center node: inverted orientation [pBC, pAB, pCA].
-    for (actual, expected) in center_ref.points.iter().zip([p_bc, p_ab, p_ca]) {
+    for (actual, expected) in center_ref.vertices.iter().zip([p_bc, p_ab, p_ca]) {
         assert!(approx_eq(*actual, expected));
     }
-    // Corner nodes: the corner point keeps its letter, the midpoint toward
+    // Corner nodes: the corner vertex keeps its letter, the midpoint toward
     // a neighbor takes that neighbor's letter.
     let node_i = center_ref.children[1].as_ref().unwrap().borrow();
-    for (actual, expected) in node_i.points.iter().zip([p_a, p_ab, p_ca]) {
+    for (actual, expected) in node_i.vertices.iter().zip([p_a, p_ab, p_ca]) {
         assert!(approx_eq(*actual, expected));
     }
     let node_j = center_ref.children[0].as_ref().unwrap().borrow();
-    for (actual, expected) in node_j.points.iter().zip([p_ab, p_b, p_bc]) {
+    for (actual, expected) in node_j.vertices.iter().zip([p_ab, p_b, p_bc]) {
         assert!(approx_eq(*actual, expected));
     }
     let node_k = center_ref.children[2].as_ref().unwrap().borrow();
-    for (actual, expected) in node_k.points.iter().zip([p_ca, p_bc, p_c]) {
+    for (actual, expected) in node_k.vertices.iter().zip([p_ca, p_bc, p_c]) {
         assert!(approx_eq(*actual, expected));
     }
-}
-
-#[test]
-fn split_derives_dimensions_from_child_points() {
-    let node = test_node();
-    let center = split_node(&node.borrow());
-    let center_ref = center.borrow();
-
-    // Stored dimensions match each child's actual point geometry.
-    for slot in &center_ref.children {
-        let corner = slot.as_ref().unwrap().borrow();
-        let [a, b, c] = corner.points;
-        assert!(((b - c).length() - corner.base_length).abs() < EPSILON);
-        let base_direction = (c - b).normalize();
-        let base_projection = b + base_direction * (a - b).dot(base_direction);
-        assert!(((a - base_projection).length() - corner.height).abs() < EPSILON);
-    }
-    let [a, b, c] = center_ref.points;
-    assert!(((b - c).length() - center_ref.base_length).abs() < EPSILON);
-    let base_direction = (c - b).normalize();
-    let base_projection = b + base_direction * (a - b).dot(base_direction);
-    assert!(((a - base_projection).length() - center_ref.height).abs() < EPSILON);
 }
 
 #[test]
@@ -136,8 +114,7 @@ fn split_corner_nodes_keep_parent_orientation() {
     let center_ref = center.borrow();
 
     // All corner nodes keep the parent's direction_of_node and have the
-    // I up-right (perpendicular to AB), J straight down (perpendicular to BC),
-    // K up-left (perpendicular to CA).
+    // I up-right, J straight down, K up-left.
     for slot in &center_ref.children {
         let corner = slot.as_ref().unwrap().borrow();
         assert!(approx_eq(corner.direction_of_node, Vec3::Y));
@@ -163,19 +140,20 @@ fn split_center_node_has_mirrored_orientation() {
 }
 
 #[test]
-fn split_recomputes_directions_from_own_points() {
+fn split_recomputes_directions_from_own_vertices() {
     let node = test_node();
     let center = split_node(&node.borrow());
     let center_ref = center.borrow();
-    let [a, b, c] = center_ref.points;
+    let [a, b, c] = center_ref.vertices;
     let [i, j, k] = center_ref.directions;
 
-    // The uniform rule is computed from the node's own points triplet:
-    // I perpendicular to AB, J perpendicular to BC, K perpendicular to CA,
-    // all pointing toward their edge.
+    // The uniform rule is computed from the node's own vertices triplet:
+    // I toward the midpoint of AB, J toward the midpoint of BC, K toward the
+    // midpoint of CA, all pointing outward from the center.
     for (direction, edge_start, edge_end) in [(i, a, b), (j, b, c), (k, c, a)] {
-        assert!(direction.dot(edge_end - edge_start).abs() < EPSILON);
         let edge_mid = (edge_start + edge_end) / 2.0;
+        let toward_mid = (edge_mid - center_ref.center).normalize();
+        assert!(approx_eq(direction, toward_mid));
         assert!(direction.dot(edge_mid - center_ref.center) > 0.0);
     }
 }
@@ -196,7 +174,7 @@ fn split_can_be_called_multiple_times() {
 /// mirrored across the base edge BC, linked `root.1 <-> neighbor.1`.
 fn linked_pair() -> (NodeRef, NodeRef) {
     let root = test_node();
-    let [a, b, c] = root.borrow().points;
+    let [a, b, c] = root.borrow().vertices;
     // Mirror of A across the horizontal base edge BC.
     let mirrored = Vec3::new(a.x, 2.0 * b.y - a.y, a.z);
     let neighbor = Node::new("neighbor", [mirrored, c, b], point(0.0, 1000.0));
@@ -265,18 +243,18 @@ fn split_nodes_welds_corners_across_old_links() {
 #[test]
 fn unsplit_nodes_rebuilds_parents_and_their_links() {
     let (root, neighbor) = linked_pair();
-    let root_points = root.borrow().points;
-    let neighbor_points = neighbor.borrow().points;
+    let root_vertices = root.borrow().vertices;
+    let neighbor_vertices = neighbor.borrow().vertices;
     let leaves = split_nodes(&root);
 
     let parents = unsplit_nodes(&leaves[0]);
     assert_eq!(parents.len(), 2);
     let new_root = by_name(&parents, "root");
     let new_neighbor = by_name(&parents, "neighbor");
-    for (actual, expected) in new_root.borrow().points.iter().zip(root_points) {
+    for (actual, expected) in new_root.borrow().vertices.iter().zip(root_vertices) {
         assert!(approx_eq(*actual, expected));
     }
-    for (actual, expected) in new_neighbor.borrow().points.iter().zip(neighbor_points) {
+    for (actual, expected) in new_neighbor.borrow().vertices.iter().zip(neighbor_vertices) {
         assert!(approx_eq(*actual, expected));
     }
     assert_eq!(new_root.borrow().level, 0);
@@ -311,7 +289,7 @@ fn unsplit_nodes_relinks_kept_neighbors_to_the_parent() {
     // links into the split group through one half-edge of the old shared
     // edge (corner J's port 1, like a `split_nodes` weld near B).
     let root = test_node();
-    let [a, b, c] = root.borrow().points;
+    let [a, b, c] = root.borrow().vertices;
     let mirrored = Vec3::new(a.x, 2.0 * b.y - a.y, a.z);
     let neighbor = Node::new("neighbor", [mirrored, c, b], point(0.0, 1000.0));
 

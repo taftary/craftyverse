@@ -64,8 +64,10 @@ through `project_labels`, when the camera changes.
     is clamped to at least 1x1 pixels and `radius` to `MIN_FIT_RADIUS`
     (1e-3), keeping the camera distance finite. The near plane sits at
     `distance - 2 * radius` (clamped to a small positive value), the far
-    plane at `distance + 2 * radius`. Uses glam's
-    Vulkan clip convention (depth `z ∈ [0, 1]`, y-down NDC).
+    plane at `distance + 2 * radius`. Uses glam's DirectX/WebGPU clip
+    convention (depth `z ∈ [0, 1]`, y-up NDC) - the same convention the
+    pixel-space pipelines (text, checkbox panel) are authored in - so
+    world geometry, labels and UI stay aligned.
   - `project_labels(labels, mvp, viewport) -> Vec<TextRun>` - projects the
     world anchors to pixels, resolves each `LabelOffset`, and drops labels
     behind the camera; the returned runs borrow their text from the labels.
@@ -73,9 +75,10 @@ through `project_labels`, when the camera changes.
     the camera, and falls back to a straight-up `(0, -1)` push when its
     projected anchor coincides with the projected reference point.
 - **Display options**
-  - `Port` - one of the three node ports `I`, `J`, `K` (`I` perpendicular to
-    edge AB, `J` to BC, `K` to CA). Carried by the per-port attributes
-    instead of a raw index, making invalid ports unrepresentable.
+  - `Port` - one of the three node ports `I`, `J`, `K` (`I` toward the
+    midpoint of edge AB, `J` toward the midpoint of BC, `K` toward the
+    midpoint of CA). Carried by the per-port attributes instead of a raw
+    index, making invalid ports unrepresentable.
   - `Attribute` - the toggleable attributes, one checkbox each: `ChildLinks`,
     `OpenPorts`, `Outline`, `Directions`, `DirectionOfNode`, `Origin`,
     `CenterDot`, `Labels`, `LinkViolations`, plus per-port
