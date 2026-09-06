@@ -7,3 +7,6 @@ pub mod node;
 pub mod render;
 pub mod scene;
 pub mod text;
+
+#[cfg(feature = "test-internals")]
+pub mod testing;

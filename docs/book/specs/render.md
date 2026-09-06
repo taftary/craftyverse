@@ -29,20 +29,20 @@ window closes.
 
 One render pass with a depth buffer, five graphics pipelines, drawn in order:
 
-1. **World lines** (`LineList`, depth-tested) — child links, triangle
+1. **World lines** (`LineList`, depth-tested) - child links, triangle
    outlines, arrow shafts, dashes. Vertex: `pos: vec3` + `color`.
-2. **World triangles** (`TriangleList`, depth-tested) — arrowheads and discs.
+2. **World triangles** (`TriangleList`, depth-tested) - arrowheads and discs.
    Same shaders and vertex format as lines.
-3. **Checkbox panel** (no depth test) — the scene's UI geometry, drawn with
+3. **Checkbox panel** (no depth test) - the scene's UI geometry, drawn with
    the same vertex format but separate line/triangle pipelines and a
    pixel-space matrix, so the panel always draws on top.
-4. **Text** (`TriangleList`, alpha blending, no depth test) — glyph quads
+4. **Text** (`TriangleList`, alpha blending, no depth test) - glyph quads
    sampling the `text` module's R8 atlas (node labels and checkbox labels).
    Vertex: `pos: vec2` + `uv` + `color`.
 
 - World-space geometry stays 3D and is transformed on the GPU by a `mat4`
   view-projection **push constant** (`world_mvp`) driven by the scene
-  module's `OrbitCamera`. Camera changes only replace the push constant —
+  module's `OrbitCamera`. Camera changes only replace the push constant -
   the geometry vertex buffers are never rebuilt.
 - World-anchored labels are the exception: their pixel anchors are
   re-projected on the CPU (`scene::project_labels`) and only the small text
@@ -61,32 +61,33 @@ One render pass with a depth buffer, five graphics pipelines, drawn in order:
 
 ### Interaction
 
-- **Number keys 1..N** — switch scenario.
-- **E / Q** — split the whole scene one generation deeper / merge it back
+- **Number keys 1..N** - switch scenario.
+- **E / Q** - split the whole scene one generation deeper / merge it back
   (all scenarios). Static scenarios split and re-weld their mesh with
-  `node::split_nodes` / merge with `node::unsplit_nodes`; icosphere
+  [`node::split_nodes`](subdivision.md) / merge with
+  [`node::unsplit_nodes`](subdivision.md); icosphere
   scenarios rebuild with one more / one less subdivision level, identical
   to the Right / Left arrow keys.
-- **Left / Right arrows** — decrease / increase the subdivision level of the
+- **Left / Right arrows** - decrease / increase the subdivision level of the
   current icosphere scenario (no effect on static scenarios).
-- **Down / Up arrows** — shrink / grow the radius of the current icosphere
+- **Down / Up arrows** - shrink / grow the radius of the current icosphere
   scenario (no effect on static scenarios).
-- **H** — toggle the north/south hemisphere split of the current icosphere
+- **H** - toggle the north/south hemisphere split of the current icosphere
   scenario: north faces (`center.z >= origin.z`) are translated right and
   south faces left by a radius-proportional gap; the split is reapplied
   after every radius/subdivision rebuild (no effect on static scenarios).
-- **V** — toggle the broken-link highlight (same as the
+- **V** - toggle the broken-link highlight (same as the
   "link violations" checkbox).
-- **Left drag** (starting outside the checkbox panel) — orbit the camera
+- **Left drag** (starting outside the checkbox panel) - orbit the camera
   (yaw/pitch around the content bounding sphere, content follows the cursor).
-- **W / A / S / D** — orbit the camera in 5° steps (key repeat enabled).
-- **Mouse wheel** — zoom the camera (×1.1 per notch, clamped to 0.05..=20).
-- **R** — reset the camera to the default head-on view.
-- **Left click** — the cursor position (physical pixels, tracked from
+- **W / A / S / D** - orbit the camera in 5° steps (key repeat enabled).
+- **Mouse wheel** - zoom the camera (×1.1 per notch, clamped to 0.05..=20).
+- **R** - reset the camera to the default head-on view.
+- **Left click** - the cursor position (physical pixels, tracked from
   `CursorMoved` events) is hit-tested against the scene's `Checkbox`
   rectangles; on a hit the matching `DisplayOptions` flag is toggled and the
   scene is rebuilt.
-- **Resize** — swapchain, depth buffer and framebuffers are recreated, and
+- **Resize** - swapchain, depth buffer and framebuffers are recreated, and
   the scene is rebuilt because the view fit and the text anchors depend on
   the viewport.
 
@@ -103,7 +104,7 @@ The camera angles persist across scenario switches; the fit target
    color and a depth attachment, depth image, per-image framebuffers.
 4. Shaders: four inline GLSL sources (geometry vert/frag, text vert/frag)
    compiled to SPIR-V **at runtime with [`naga`](https://crates.io/crates/naga)**
-   — pure Rust, no native shader toolchain needed.
+   - pure Rust, no native shader toolchain needed.
 5. Glyph atlas upload: one-shot staging buffer → R8 image copy, then a linear
    sampler and a descriptor set (binding 0 = texture, binding 1 = sampler).
 6. First scene build: vertex buffers created from `scene::SceneMesh`.
@@ -117,7 +118,7 @@ The camera angles persist across scenario switches; the fit target
 - On resize, scene key or checkbox toggle: the scene mesh and the geometry
   vertex buffers are regenerated.
 - On camera input (drag, wheel, WASD, R): only the view-projection push
-  constant is recomputed and the text buffer is re-anchored — geometry
+  constant is recomputed and the text buffer is re-anchored - geometry
   buffers are untouched.
 - The loop is event-driven (`ControlFlow::Wait` + `request_redraw`), so the
   viewer is idle when nothing changes.
@@ -126,7 +127,7 @@ The camera angles persist across scenario switches; the fit target
 
 - **naga GLSL limitations** (encoded in the shaders): `layout(set = ...)` is
   not supported (resources default to set 0), and combined `sampler2D`
-  uniforms are not supported — the atlas is bound as a separate `texture2D`
+  uniforms are not supported - the atlas is bound as a separate `texture2D`
   (binding 0) and `sampler` (binding 1) and combined in the shader with
   `sampler2D(atlas_texture, atlas_sampler)`.
 - **Stack size**: vulkano's runtime SPIR-V parser (`Spirv::new`, used by every
@@ -140,25 +141,25 @@ The camera angles persist across scenario switches; the fit target
 
 Folder module `crates/engine/src/render/`:
 
-- **`mod.rs`** — `Scenario` (fixed node list or parametric icosphere) and
+- **`mod.rs`** - `Scenario` (fixed node list or parametric icosphere) and
   the `run()` entry point.
-- **`viewer.rs`** — **`Viewer`**, the winit `ApplicationHandler`: owns the
+- **`viewer.rs`** - **`Viewer`**, the winit `ApplicationHandler`: owns the
   instance, the scenarios, the current scene index, the `DisplayOptions`,
   the `OrbitCamera`, the cursor and the drag state; creates the window in
   `resumed()`; routes resize, mouse, wheel, keyboard and redraw events.
-- **`renderer.rs`** — **`Renderer`**: owns all Vulkan objects (device,
+- **`renderer.rs`** - **`Renderer`**: owns all Vulkan objects (device,
   swapchain, depth image, pipelines, buffers, descriptor sets), the current
   checkbox hit rectangles, the world-anchored labels and the camera fit
   target; exposes `set_scene()`, `set_camera()`, `draw_frame()`,
   `checkbox_at()` and swapchain recreation. All five draw batches go through
   one `record_draw()` helper.
-- **`setup.rs`** — Vulkan object setup as free functions (instance, device
+- **`setup.rs`** - Vulkan object setup as free functions (instance, device
   pick, swapchain, render pass, depth image, framebuffers, pipelines, atlas
   upload, vertex-buffer upload) orchestrated by `Renderer::new()`.
-- **`shaders.rs`** — the four GLSL sources and their runtime compilation to
+- **`shaders.rs`** - the four GLSL sources and their runtime compilation to
   SPIR-V (`compile_spirv()`, headless and unit-tested; `load_shader()` adds
   the device-side `ShaderModule`).
-- **`vertices.rs`** — GPU vertex layouts (`GeomVertex`, `TextVertexGpu`) and
+- **`vertices.rs`** - GPU vertex layouts (`GeomVertex`, `TextVertexGpu`) and
   the push constants (`PushMatrix` view-projection, `PushTransform` text
   transform).
 
@@ -168,7 +169,7 @@ Folder module `crates/engine/src/render/`:
   stays GPU-independent.
 - World-space geometry uses a `mat4` view-projection push constant; UI uses a
   pixel-space matrix; text uses a 2D scale/offset push constant.
-- Camera changes never rebuild geometry buffers — only the push constant and
+- Camera changes never rebuild geometry buffers - only the push constant and
   the re-anchored text buffer change.
 - Depth testing is enabled for the world pipelines only; draw order layers
   the UI (panel → text) on top.

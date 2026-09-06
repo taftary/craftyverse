@@ -6,7 +6,7 @@
 //! ([`split_nodes`]), and merge a split generation back into its parents
 //! ([`unsplit_nodes`]).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use glam::Vec3;
@@ -141,6 +141,14 @@ pub(crate) fn split_node_with_midpoints(node: &Node, midpoints: [Vec3; 3]) -> No
 ///
 /// Returns `[I, J, K, C]` per old node, in old-node order.
 ///
+/// # Panics
+///
+/// Panics when the two sides of a shared edge do not hold bit-identical
+/// vertices: the weld lookups compare corner vertices and edge midpoints
+/// with exact `==`. Meshes produced by `split_nodes` and
+/// [`build_icosphere`](crate::node::build_icosphere) satisfy this by
+/// construction.
+///
 /// # Example
 ///
 /// ```
@@ -237,10 +245,13 @@ pub fn split_nodes(first: &NodeRef) -> Vec<NodeRef> {
 ///
 /// Nodes that are not part of a complete split group (a base mesh, or a
 /// mesh that was never split) are kept unchanged, so calling this on an
-/// unsplittable mesh returns the same nodes. The children of merged groups
-/// are destroyed; references kept to them point at unlinked nodes, and
-/// links from kept nodes into a merged group are severed by the same
-/// cleanup.
+/// unsplittable mesh returns the same nodes. A base name whose suffix
+/// appears twice (a name collision, not a split group) keeps its whole
+/// group unchanged. The children of merged groups are destroyed;
+/// references kept to them point at unlinked nodes. Links from kept nodes
+/// into a merged group are re-targeted to the surviving parent: the kept
+/// node keeps its port, and the parent inherits the merged corner's
+/// external port — the parent edge's port number.
 ///
 /// Returns the new parents in group discovery order, followed by the
 /// unchanged nodes.
@@ -266,18 +277,21 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
     let mut groups: HashMap<String, [Option<NodeRef>; 4]> = HashMap::new();
     let mut order: Vec<String> = Vec::new();
     let mut kept: Vec<NodeRef> = Vec::new();
+    let mut collided: HashSet<String> = HashSet::new();
     for node in &current {
         let suffix = split_suffix(&node.borrow().name);
         match suffix {
             Some((base, slot)) => {
                 let group = groups.entry(base.clone()).or_insert_with(|| {
-                    order.push(base);
+                    order.push(base.clone());
                     [None, None, None, None]
                 });
-                // A duplicate suffix is a name collision, not a split group.
+                // A duplicate suffix is a name collision, not a split
+                // group: the whole group is kept unchanged.
                 if group[slot].is_none() {
                     group[slot] = Some(Rc::clone(node));
                 } else {
+                    collided.insert(base);
                     kept.push(Rc::clone(node));
                 }
             }
@@ -291,6 +305,10 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
     let mut parents: Vec<NodeRef> = Vec::new();
     for base in order {
         let group = groups.remove(&base).expect("group recorded in order");
+        if collided.contains(&base) {
+            kept.extend(group.into_iter().flatten());
+            continue;
+        }
         let level = group
             .iter()
             .flatten()
@@ -344,7 +362,10 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
     // Re-link the parents across every cross-group corner link. A corner's
     // external port number equals its parent edge's port number, and each
     // parent edge is reached twice (once per half-edge) with the same
-    // ports, so an already-linked parent port is simply skipped.
+    // ports, so an already-linked parent port is simply skipped. Links
+    // toward kept nodes are collected and re-targeted to the surviving
+    // parent after the merged children are destroyed.
+    let mut kept_links: Vec<(NodeRef, usize, NodeRef, usize)> = Vec::new();
     for child in &merged {
         let node = child.borrow();
         let parent = Rc::clone(&parent_of[&(Rc::as_ptr(child) as usize)]);
@@ -353,6 +374,9 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
                 continue;
             };
             let Some(other) = parent_of.get(&(Rc::as_ptr(neighbor) as usize)) else {
+                // The neighbor was not merged: re-target its port to the
+                // surviving parent (see below).
+                kept_links.push((Rc::clone(&parent), port, Rc::clone(neighbor), back));
                 continue;
             };
             if Rc::ptr_eq(&parent, other) || parent.borrow().children[port].is_some() {
@@ -365,6 +389,16 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
     // Break the merged groups' reciprocal cycles so they can deallocate.
     for child in &merged {
         child.borrow_mut().destroy();
+    }
+
+    // Re-link the kept neighbors to the surviving parents on the ports the
+    // merged corners used. This must happen after the `destroy` pass above:
+    // that pass severs the old links, and re-linking earlier would let it
+    // clear the new ones.
+    for (parent, port, neighbor, back) in kept_links {
+        if parent.borrow().children[port].is_none() {
+            link(&parent, port, &neighbor, back);
+        }
     }
     parents.extend(kept);
     parents

@@ -74,7 +74,7 @@ pub(crate) struct Renderer {
     /// changes.
     labels: Vec<WorldLabel>,
     /// Checkbox labels of the current scene (pixel space).
-    ui_texts: Vec<TextRun>,
+    ui_texts: Vec<TextRun<'static>>,
     /// Content bounding sphere of the current scene, the camera fit target.
     fit_center: Vec3,
     fit_radius: f32,
@@ -282,17 +282,25 @@ impl Renderer {
         self.pixel_mvp = PushMatrix::from(pixel_matrix(viewport));
 
         let mut text_data = Vec::new();
-        for run in scene::project_labels(&self.labels, &mvp, viewport)
-            .iter()
-            .chain(&self.ui_texts)
-        {
-            text_data.extend(self.atlas.layout(
-                &run.text,
+        for run in &scene::project_labels(&self.labels, &mvp, viewport) {
+            self.atlas.layout(
+                run.text,
                 run.anchor,
                 run.size,
                 run.color,
                 run.centered,
-            ));
+                &mut text_data,
+            );
+        }
+        for run in &self.ui_texts {
+            self.atlas.layout(
+                run.text,
+                run.anchor,
+                run.size,
+                run.color,
+                run.centered,
+                &mut text_data,
+            );
         }
         self.text_buffer = setup::vertex_buffer(
             &self.memory_allocator,
@@ -487,7 +495,7 @@ fn pixel_matrix(viewport: Vec2) -> Mat4 {
 }
 
 /// Attribute of the first checkbox containing `point`, if any.
-pub(crate) fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attribute> {
+pub fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attribute> {
     checkboxes
         .iter()
         .find(|checkbox| checkbox.contains(point))

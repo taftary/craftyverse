@@ -9,21 +9,10 @@ use glam::Vec3;
 
 use super::NodeRef;
 
-/// Reciprocal port index of the historical `children` link convention: a
-/// link on port `index` backed by port `reciprocal_index(index)` on the
-/// neighbor — 0 ↔ 2 (I ↔ K) and 1 ↔ 1 (J ↔ J), mirroring the
-/// interconnections established by `split_node`. This is a common pattern,
-/// not an invariant: links carry an explicit `back_ports` record instead.
-/// Only tests measure where the pattern holds.
-#[cfg(test)]
-pub(crate) fn reciprocal_index(index: usize) -> usize {
-    2 - index
-}
-
 /// Wires a bidirectional link between two nodes: sets `a.children[port_a]`
 /// to `b` and `b.children[port_b]` to `a`, and records each side's
 /// back-port so `destroy` can sever the link exactly.
-pub(crate) fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
+pub fn link(a: &NodeRef, port_a: usize, b: &NodeRef, port_b: usize) {
     a.borrow_mut().children[port_a] = Some(Rc::clone(b));
     a.borrow_mut().back_ports[port_a] = Some(port_b);
     b.borrow_mut().children[port_b] = Some(Rc::clone(a));
@@ -98,4 +87,32 @@ pub fn collect_nodes(root: &NodeRef) -> Vec<NodeRef> {
         nodes.push(node);
     }
     nodes
+}
+
+/// Destroys every node reachable from `root`, breaking the reciprocal-link
+/// cycles of the mesh so it can deallocate.
+///
+/// Meshes built by [`build_icosphere`](super::build_icosphere) or
+/// [`split_nodes`](super::split_nodes) are `Rc` cycle graphs: dropping them
+/// without severing the links leaks every node. This is the prescribed
+/// cleanup: collect the whole component with [`collect_nodes`], then
+/// [`destroy`](super::Node::destroy) each node.
+///
+/// References kept to the nodes point at unlinked nodes afterwards.
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec3;
+/// use planet_crafter_engine::node::{Node, destroy_mesh, split_nodes};
+///
+/// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
+/// let leaves = split_nodes(&node);
+/// destroy_mesh(&leaves[0]);
+/// assert!(leaves.iter().all(|leaf| leaf.borrow().children.iter().all(|c| c.is_none())));
+/// ```
+pub fn destroy_mesh(root: &NodeRef) {
+    for node in collect_nodes(root) {
+        node.borrow_mut().destroy();
+    }
 }

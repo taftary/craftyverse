@@ -7,8 +7,11 @@ from GPU and device tests so CI stays fast and reliable.
 
 ## Key points
 
-- Unit tests cover local invariants beside the implementation.
-- Integration tests cover public APIs across crate boundaries.
+- Application tests live in the workspace-root `tests/` package
+  (`planet-crafter-tests`): one integration-test target per engine module,
+  split one file per submodule, plus a `game` target.
+- Tests exercise the public API; whitebox assertions on internals go through
+  the engine's feature-gated `testing` surface (`test-internals` feature).
 - Doctests validate examples users are expected to copy.
 - Property tests cover geometry and topology invariants over generated inputs.
 - Benchmarks support measured performance decisions; they do not define correctness.
@@ -30,9 +33,9 @@ cargo test --workspace --all-targets
 cargo test --doc --workspace
 ```
 
-`cargo test --workspace --all-targets` includes the example crate
-(`docs/examples`) and compiles its example binaries, but skips examples
-that require the `gpu` feature.
+`cargo test --workspace --all-targets` includes the consolidated test package
+(`tests/`) and the example crate (`docs/examples`), and compiles its example
+binaries, but skips examples that require the `gpu` feature.
 
 ## GPU and platform-specific checks
 

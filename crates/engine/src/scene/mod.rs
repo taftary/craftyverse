@@ -38,15 +38,21 @@ mod geometry;
 mod options;
 mod panel;
 
-#[cfg(test)]
-mod tests;
-
 use glam::{Vec2, Vec3};
 
 use crate::node::NodeRef;
 
 pub use camera::{OrbitCamera, project_labels};
-pub use options::{Attribute, Checkbox, DisplayOptions};
+pub use options::{Attribute, Checkbox, DisplayOptions, Port};
+
+#[cfg(feature = "test-internals")]
+pub use camera::{MAX_PITCH, MAX_ZOOM, MIN_ZOOM};
+#[cfg(feature = "test-internals")]
+pub use colors::{DIRECTION_COLORS, LEVEL_COLORS, VIOLATION_COLOR, hex_rgb, level_color};
+#[cfg(feature = "test-internals")]
+pub use geometry::{DOT_SEGMENTS, plane_basis, push_arrowhead, push_disc};
+#[cfg(feature = "test-internals")]
+pub use options::ATTRIBUTES;
 
 /// Colored vertex: world-space (y-up) for the `lines`/`triangles` batches,
 /// pixel-space with `z = 0` for the UI batches.
@@ -63,11 +69,12 @@ pub struct Vertex {
 ///
 /// `anchor` is the top-left of the text block, or the top-center when
 /// `centered` is `true`. Glyphs are laid out at a constant pixel size
-/// regardless of the camera.
+/// regardless of the camera. The text is borrowed: panel labels borrow the
+/// static attribute names, projected labels borrow their [`WorldLabel`].
 #[derive(Clone, Debug)]
-pub struct TextRun {
+pub struct TextRun<'a> {
     /// Text content of the label.
-    pub text: String,
+    pub text: &'a str,
     /// Anchor point in pixels (y-down).
     pub anchor: Vec2,
     /// Font size in pixels.
@@ -83,9 +90,15 @@ pub struct TextRun {
 pub enum LabelOffset {
     /// Fixed pixel offset applied to the projected anchor.
     Fixed(Vec2),
-    /// Push this many pixels away from the projected world point (used for
-    /// the A/B/C corner labels, pushed outward from the node center).
-    Outward(Vec3, f32),
+    /// Push the label away from the projection of a world reference point
+    /// (used for the A/B/C corner labels, pushed outward from the node
+    /// center).
+    Outward {
+        /// World-space reference point the label is pushed away from.
+        from: Vec3,
+        /// Push distance in pixels.
+        distance_px: f32,
+    },
 }
 
 /// A text label anchored to a 3D world point.
@@ -121,7 +134,7 @@ pub struct SceneMesh {
     /// Checkbox panel triangle geometry in pixel space (`z = 0`).
     pub ui_triangles: Vec<Vertex>,
     /// Checkbox labels, anchored in pixel space.
-    pub texts: Vec<TextRun>,
+    pub texts: Vec<TextRun<'static>>,
     /// World-anchored labels (node name/level and corner letters), projected
     /// to pixel space by [`project_labels`] when the camera changes.
     pub labels: Vec<WorldLabel>,
@@ -130,8 +143,9 @@ pub struct SceneMesh {
     /// Center of the content bounding sphere (world space).
     pub fit_center: Vec3,
     /// Radius of the content bounding sphere: the maximal distance from
-    /// `fit_center` over all world-space vertices, so the whole scene fits at
-    /// any camera angle (`1.0` for an empty scene).
+    /// `fit_center` over all emitted world-space vertices and the world
+    /// label anchors, so the whole scene fits at any camera angle (`1.0`
+    /// for an empty scene).
     pub fit_radius: f32,
 }
 
@@ -231,7 +245,7 @@ struct SceneBuilder {
     ui_lines: Vec<Vertex>,
     ui_triangles: Vec<Vertex>,
     /// Checkbox labels, already anchored in pixel space.
-    ui_labels: Vec<TextRun>,
+    ui_labels: Vec<TextRun<'static>>,
     checkboxes: Vec<Checkbox>,
     options: DisplayOptions,
     bounds: Bounds,
@@ -240,7 +254,8 @@ struct SceneBuilder {
 impl SceneBuilder {
     /// Moves the buffers out and computes the content bounding sphere.
     fn finish(self) -> SceneMesh {
-        let (fit_center, fit_radius) = bounding_sphere(&self.bounds, &self.lines, &self.triangles);
+        let (fit_center, fit_radius) =
+            bounding_sphere(&self.bounds, &self.lines, &self.triangles, &self.labels);
         SceneMesh {
             lines: self.lines,
             triangles: self.triangles,
@@ -256,9 +271,16 @@ impl SceneBuilder {
 }
 
 /// Content bounding sphere: center = bounds box center, radius = maximal
-/// distance from the center over the emitted world-space vertices, so every
-/// emitted point fits at any camera angle. Empty scene → (origin, 1.0).
-fn bounding_sphere(bounds: &Bounds, lines: &[Vertex], triangles: &[Vertex]) -> (Vec3, f32) {
+/// distance from the center over the emitted world-space vertices and the
+/// world label anchors (tracked in the bounds but not emitted as
+/// vertices), so every point the scene can draw fits at any camera angle —
+/// including a labels-only scene. Empty scene → (origin, 1.0).
+fn bounding_sphere(
+    bounds: &Bounds,
+    lines: &[Vertex],
+    triangles: &[Vertex],
+    labels: &[WorldLabel],
+) -> (Vec3, f32) {
     if !bounds.has_content {
         return (Vec3::ZERO, 1.0);
     }
@@ -266,7 +288,9 @@ fn bounding_sphere(bounds: &Bounds, lines: &[Vertex], triangles: &[Vertex]) -> (
     let radius = lines
         .iter()
         .chain(triangles)
-        .map(|vertex| (vertex.pos - center).length())
+        .map(|vertex| vertex.pos)
+        .chain(labels.iter().map(|label| label.world_pos))
+        .map(|pos| (pos - center).length())
         .fold(0.0_f32, f32::max);
     (center, radius.max(camera::MIN_FIT_RADIUS))
 }

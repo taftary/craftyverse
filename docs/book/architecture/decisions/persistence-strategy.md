@@ -24,9 +24,9 @@ To be determined.
 
 ## Alternatives considered
 
-- JSON + manual schema migrations — human-readable, easy to debug.
-- Binary format such as `rkyv` or `bincode` — smaller and faster, harder to migrate.
-- SQLite — relational queries and migrations built-in.
+- JSON + manual schema migrations - human-readable, easy to debug.
+- Binary format such as `rkyv` or `bincode` - smaller and faster, harder to migrate.
+- SQLite - relational queries and migrations built-in.
 
 ## Related
 

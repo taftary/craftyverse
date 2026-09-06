@@ -1,7 +1,12 @@
 [package]
 name = "planet-crafter-engine"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+test-internals = []
 
 [dependencies]
 fontdue = "0.9.4"

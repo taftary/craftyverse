@@ -36,14 +36,22 @@ use super::topology::{corner_near, corner_nodes, link, port_on_edge};
 /// The result of [`build_icosphere`]: the fully linked leaf graph plus the
 /// closed-form mesh statistics.
 pub struct IcosphereMesh {
-    /// All leaf-level (deepest) triangles, fully linked to their neighbors.
+    /// All leaf-level (deepest) triangles, fully linked to their neighbors:
+    /// `20 * 4^subdivisions` faces.
     pub faces: Vec<NodeRef>,
-    /// Number of leaf faces: `20 * 4^subdivisions`.
-    pub face_count: usize,
     /// Number of distinct vertices: `10 * 4^subdivisions + 2` (Euler's
     /// formula for a closed triangulated sphere).
     pub vertex_count: usize,
 }
+
+/// Upper bound on the `subdivisions` argument of [`build_icosphere`].
+///
+/// Each generation multiplies the face count by four, so 8 generations
+/// already produce `20 * 4^8 = 1.3M` faces; the cap keeps the closed-form
+/// counts far from `usize` overflow and the build cost sane. The viewer's
+/// own policy cap (`render::MAX_ICOSPHERE_SUBDIVISIONS`) is lower and
+/// independent.
+pub const MAX_SUBDIVISIONS: u32 = 8;
 
 /// Golden ratio, the base of the canonical icosahedron coordinates.
 const PHI: f32 = 1.618_034;
@@ -100,12 +108,16 @@ const ICOSAHEDRON_FACES: [[usize; 3]; 20] = [
 /// triangles stay linked at every level. `subdivisions = 0` returns the raw
 /// 20-face icosahedron, fully linked.
 ///
-/// `radius` must be greater than `0.0`. Base faces are named
-/// `"{name_prefix}.{face_index}"` and extended with the usual `.I` / `.J` /
-/// `.K` / `.C` suffixes per generation.
+/// Base faces are named `"{name_prefix}.{face_index}"` and extended with
+/// the usual `.I` / `.J` / `.K` / `.C` suffixes per generation.
 ///
-/// Cleanup follows the existing pattern: `collect_nodes` on any face
-/// reaches the whole sphere, then `destroy()` each collected node.
+/// Cleanup: call [`destroy_mesh`](super::destroy_mesh) on any face before
+/// dropping the mesh, or the reciprocal-link cycles leak every node.
+///
+/// # Panics
+///
+/// Panics when `radius` is not greater than `0.0`, or when `subdivisions`
+/// exceeds [`MAX_SUBDIVISIONS`].
 pub fn build_icosphere(
     name_prefix: impl Into<String>,
     radius: f32,
@@ -113,9 +125,13 @@ pub fn build_icosphere(
     origin: Vec3,
 ) -> IcosphereMesh {
     assert!(radius > 0.0, "icosphere radius must be positive");
+    assert!(
+        subdivisions <= MAX_SUBDIVISIONS,
+        "icosphere subdivisions must be at most {MAX_SUBDIVISIONS}"
+    );
 
     let name_prefix = name_prefix.into();
-    let face_count = 20 * 4_usize.pow(subdivisions);
+    // Safe after the cap above: `4^MAX_SUBDIVISIONS` fits easily in `usize`.
     let vertex_count = 10 * 4_usize.pow(subdivisions) + 2;
 
     // Step 1 — base icosahedron, seeded directly at the target radius.
@@ -265,7 +281,6 @@ pub fn build_icosphere(
 
     IcosphereMesh {
         faces: leaves,
-        face_count,
         vertex_count,
     }
 }
@@ -283,6 +298,3 @@ struct WeldEntry {
 fn cache_key(a: usize, b: usize) -> (usize, usize) {
     if a < b { (a, b) } else { (b, a) }
 }
-
-#[cfg(test)]
-mod tests;

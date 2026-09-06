@@ -19,8 +19,8 @@ related technology area.
 ## Decision
 
 Keep `vulkano` (0.35) as the sole Vulkan layer. The engine crate owns every
-Vulkan object — instance, device, surface, swapchain, pipelines, buffers, and
-frame coordination — and exposes renderer-neutral data (`SceneMesh`,
+Vulkan object - instance, device, surface, swapchain, pipelines, buffers, and
+frame coordination - and exposes renderer-neutral data (`SceneMesh`,
 `Scenario`) through its public API (`render::run`). Game code never names
 `vulkano` types; the `game` crate has no `vulkano` dependency.
 
@@ -38,10 +38,10 @@ frame coordination — and exposes renderer-neutral data (`SceneMesh`,
 
 ## Alternatives considered
 
-- `vulkano` — chosen; safe, high-level wrapper already proven in the baseline.
-- `ash` — lower-level, explicit unsafe calls; rejected because it spreads
+- `vulkano` - chosen; safe, high-level wrapper already proven in the baseline.
+- `ash` - lower-level, explicit unsafe calls; rejected because it spreads
   unsafe code through the engine for little gain at this stage.
-- `wgpu` — cross-platform, but moves away from the "Vulkan as sole graphics
+- `wgpu` - cross-platform, but moves away from the "Vulkan as sole graphics
   API" target.
 
 ## Related

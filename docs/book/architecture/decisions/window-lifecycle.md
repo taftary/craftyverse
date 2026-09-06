@@ -37,11 +37,11 @@ engine API if a platform requires it.
 
 ## Alternatives considered
 
-- `winit` — chosen; cross-platform, already proven in the baseline, and its
+- `winit` - chosen; cross-platform, already proven in the baseline, and its
   `ApplicationHandler` model matches mobile lifecycle requirements.
-- Native integration per platform — maximum control, highest maintenance cost;
+- Native integration per platform - maximum control, highest maintenance cost;
   rejected as premature before mobile targets exist.
-- Split adapter — deferred; the engine API already keeps the game crate
+- Split adapter - deferred; the engine API already keeps the game crate
   platform-agnostic, so the adapter can be added later without game changes.
 
 ## Related

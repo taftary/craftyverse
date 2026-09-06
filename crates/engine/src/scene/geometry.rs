@@ -20,7 +20,7 @@ const ARROW_SCALE: f32 = 0.5;
 
 /// Triangle-fan segment count of the filled discs (center dot, open-port
 /// markers).
-pub(crate) const DOT_SEGMENTS: usize = 16;
+pub const DOT_SEGMENTS: usize = 16;
 
 /// Pixel size of the name/level label.
 const LABEL_SIZE_PX: f32 = 12.0;
@@ -44,7 +44,7 @@ pub(crate) fn push_triangle(buf: &mut Vec<Vertex>, a: Vec3, b: Vec3, c: Vec3, co
 }
 
 /// Appends a dashed line segment. The gap is half the dash, like the SVG
-/// `stroke-dasharray="4 2"`.
+/// `stroke-dasharray="4 2"`. Coincident endpoints emit nothing.
 pub(crate) fn push_dashed_line(
     buf: &mut Vec<Vertex>,
     from: Vec3,
@@ -53,7 +53,9 @@ pub(crate) fn push_dashed_line(
     color: [f32; 3],
 ) {
     let gap = dash / 2.0;
-    let dir = (to - from).normalize();
+    let Some(dir) = (to - from).try_normalize() else {
+        return;
+    };
     let total = (to - from).length();
     let mut d = 0.0;
     while d < total {
@@ -65,7 +67,7 @@ pub(crate) fn push_dashed_line(
 
 /// Appends a filled disc as a `segments`-triangle fan around `center`, in the
 /// plane perpendicular to `normal`.
-pub(crate) fn push_disc(
+pub fn push_disc(
     buf: &mut Vec<Vertex>,
     center: Vec3,
     normal: Vec3,
@@ -89,7 +91,7 @@ pub(crate) fn push_disc(
 
 /// Orthonormal basis `(u, v)` of the plane perpendicular to `direction`;
 /// degenerate directions fall back to the XY plane.
-pub(crate) fn plane_basis(direction: Vec3) -> (Vec3, Vec3) {
+pub fn plane_basis(direction: Vec3) -> (Vec3, Vec3) {
     let n = direction.try_normalize().unwrap_or(Vec3::Z);
     let reference = if n.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
     let u = n.cross(reference).normalize();
@@ -98,13 +100,7 @@ pub(crate) fn plane_basis(direction: Vec3) -> (Vec3, Vec3) {
 
 /// Appends a two-fin arrowhead at `tip`, pointing along `dir`: two triangles
 /// in perpendicular planes, so the head stays readable from any camera angle.
-pub(crate) fn push_arrowhead(
-    buf: &mut Vec<Vertex>,
-    tip: Vec3,
-    dir: Vec3,
-    size: f32,
-    color: [f32; 3],
-) {
+pub fn push_arrowhead(buf: &mut Vec<Vertex>, tip: Vec3, dir: Vec3, size: f32, color: [f32; 3]) {
     let dir = dir.try_normalize().unwrap_or(Vec3::Z);
     let back = dir * size;
     let (u, v) = plane_basis(dir);
@@ -301,16 +297,14 @@ impl SceneBuilder {
 
     /// One arrow per direction vector, starting at the node's center. Each
     /// port's arrow is gated by its own switch on top of the group master.
+    /// The directions are normalized by construction (see `Node::new`).
     fn add_direction_arrows(&mut self, node: &Node, center: Vec3, arrow_len: f32) {
         self.bounds.track(center);
         for (index, direction) in node.directions.iter().enumerate() {
             if !self.options.directions_ijk[index] {
                 continue;
             }
-            let end = tracked(
-                &mut self.bounds,
-                node.center + direction.normalize() * arrow_len,
-            );
+            let end = tracked(&mut self.bounds, node.center + direction * arrow_len);
             let color = DIRECTION_COLORS[index];
             push_arrow(
                 &mut self.lines,
@@ -395,7 +389,10 @@ impl SceneBuilder {
             self.labels.push(WorldLabel {
                 text: corner_label.to_string(),
                 world_pos: corner,
-                offset: LabelOffset::Outward(center, CORNER_LABEL_OFFSET_PX),
+                offset: LabelOffset::Outward {
+                    from: center,
+                    distance_px: CORNER_LABEL_OFFSET_PX,
+                },
                 size_px: CORNER_LABEL_SIZE_PX,
                 color: CORNER_LABEL_COLOR,
                 centered: true,

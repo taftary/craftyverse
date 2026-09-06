@@ -23,16 +23,17 @@ records.
 Headless examples live in `docs/examples` and are compiled by
 `cargo test --workspace --all-targets`:
 
-- `engine_api` — game code consumes engine contracts without backend details.
+- `engine_api` - game code consumes engine contracts without backend details.
   Demonstrates [crate boundaries](../architecture/crate-boundaries.md).
-- `validated_resource` — resource construction validates input and reports
+- `validated_resource` - resource construction validates input and reports
   errors explicitly. Demonstrates [error handling](../practices/error-handling.md)
   and [type-driven design](../principles/type-driven-design.md).
-- `state_transitions` — a plan is generated and subdivided, re-anchoring the
-  root node and the engine's public API.
-- `message_flow` — domain events cross an ownership boundary through a channel.
+- `state_transitions` - a node is split one generation and the resulting
+  local topology is checked. Demonstrates the
+  [`subdivision` specification](../specs/subdivision.md).
+- `message_flow` - domain events cross an ownership boundary through a channel.
   Demonstrates the [events pattern](../patterns/events.md).
-- `renderer_neutral_scene` — nodes become GPU-independent vertex data without
+- `renderer_neutral_scene` - nodes become GPU-independent vertex data without
   opening a window. Demonstrates the [`scene` specification](../specs/scene.md)
   and the renderer-neutral boundary with [`render`](../specs/render.md).
 

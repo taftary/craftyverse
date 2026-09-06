@@ -11,7 +11,7 @@ without starting the renderer or opening a window.
 - Use `lib.rs` for reusable logic and keep `main.rs` focused on startup.
 - Prefer `pub(crate)` for internal collaboration; reserve `pub` for intentional boundaries.
 - Keep business rules separate from I/O, platform callbacks, and configuration.
-- Keep unit tests beside implementation and integration tests at boundaries.
+- Keep application tests in the workspace-root `tests/` package, mirroring the module tree.
 
 ## Workspace layout
 
@@ -23,14 +23,14 @@ PlanetCrafter/
 │   ├── game/
 │   └── tools/
 ├── assets/
-├── tests/  # planned addition, not yet present
+├── tests/  # consolidated application test suite
 └── docs/
 ```
 
 Within a crate, use `lib.rs` for reusable logic and keep `main.rs` focused on
-startup and orchestration. Use `tests/` for public API integration tests,
-`examples/` for runnable usage specifications, and `benches/` for measured
-performance work.
+startup and orchestration. Application tests live in the workspace-root
+`tests/` package; use `examples/` for runnable usage specifications and
+`benches/` for measured performance work.
 
 ## Modules
 
@@ -55,7 +55,7 @@ enums, and traits with `PascalCase`; name constants with `SCREAMING_SNAKE_CASE`.
 - Give each module one clear responsibility.
 - Keep business rules separate from I/O, platform callbacks, and configuration.
 - Prefer small functions with explicit inputs and outputs.
-- Keep unit tests beside the implementation and integration tests at boundaries.
+- Keep application tests in the workspace-root `tests/` package, organized by module.
 - Do not create a generic utility module when a domain module owns the behavior.
 
 The engine, game, and tools boundaries in

@@ -1222,11 +1222,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "planet-crafter-tools"
+name = "planet-crafter-tests"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "naga",
  "planet-crafter-engine",
+ "vulkano",
+ "winit",
 ]
+
+[[package]]
+name = "planet-crafter-tools"
+version = "0.1.0"
 
 [[package]]
 name = "polling"

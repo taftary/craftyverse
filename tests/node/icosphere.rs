@@ -7,9 +7,9 @@ use std::rc::Rc;
 
 use glam::Vec3;
 
-use super::{IcosphereMesh, build_icosphere};
-use crate::node::collect_nodes;
-use crate::node::topology::reciprocal_index;
+use planet_crafter_engine::node::{
+    IcosphereMesh, NodeRef, build_icosphere, collect_nodes, destroy_mesh,
+};
 
 const EPSILON: f32 = 1e-3;
 
@@ -27,7 +27,7 @@ fn position_key(p: Vec3) -> [i64; 3] {
 }
 
 /// Collects all leaf nodes reachable from the first face.
-fn all_faces(mesh: &IcosphereMesh) -> Vec<crate::node::NodeRef> {
+fn all_faces(mesh: &IcosphereMesh) -> Vec<NodeRef> {
     collect_nodes(&mesh.faces[0])
 }
 
@@ -36,7 +36,6 @@ fn face_and_vertex_counts_follow_euler() {
     for subdivisions in 0..=3 {
         let mesh = build_icosphere("test", 1.0, subdivisions, Vec3::ZERO);
         let expected_faces = 20 * 4_usize.pow(subdivisions);
-        assert_eq!(mesh.face_count, expected_faces);
         assert_eq!(mesh.vertex_count, 10 * 4_usize.pow(subdivisions) + 2);
         assert_eq!(mesh.faces.len(), expected_faces);
 
@@ -137,7 +136,7 @@ fn reciprocal_port_pattern_holds_where_topology_allows() {
         for (port, child) in node.children.iter().enumerate() {
             let child = child.as_ref().unwrap();
             total += 1;
-            let back = &child.borrow().children[reciprocal_index(port)];
+            let back = &child.borrow().children[2 - port];
             if back.as_ref().is_some_and(|back| Rc::ptr_eq(back, face)) {
                 conforming += 1;
             }
@@ -153,7 +152,7 @@ fn reciprocal_port_pattern_holds_where_topology_allows() {
 #[test]
 fn destroy_severs_links_via_recorded_back_ports() {
     // Find a face incident to a link whose back-port is not the
-    // conventional `reciprocal_index(port)`.
+    // conventional `2 - port`.
     let mesh = build_icosphere("test", 1.0, 0, Vec3::ZERO);
     let all = all_faces(&mesh);
     let mut found = None;
@@ -161,7 +160,7 @@ fn destroy_severs_links_via_recorded_back_ports() {
         let node = face.borrow();
         for (port, child) in node.children.iter().enumerate() {
             let child = child.as_ref().unwrap();
-            let conforming = child.borrow().children[reciprocal_index(port)]
+            let conforming = child.borrow().children[2 - port]
                 .as_ref()
                 .is_some_and(|back| Rc::ptr_eq(back, face));
             if !conforming {
@@ -185,8 +184,7 @@ fn destroy_severs_links_via_recorded_back_ports() {
     face.borrow_mut().destroy();
 
     // All three of the face's links are gone on both sides — including the
-    // non-conforming one, whose back-link does not sit at
-    // `reciprocal_index(port)`.
+    // non-conforming one, whose back-link does not sit at `2 - port`.
     assert!(face.borrow().children.iter().all(|c| c.is_none()));
     for neighbor in &neighbors {
         let node = neighbor.borrow();
@@ -258,9 +256,7 @@ fn subdivisions_zero_returns_the_linked_base_mesh() {
 fn cleanup_clears_every_link() {
     let mesh = build_icosphere("test", 1.0, 2, Vec3::ZERO);
     let all = all_faces(&mesh);
-    for face in &all {
-        face.borrow_mut().destroy();
-    }
+    destroy_mesh(&mesh.faces[0]);
     for face in &all {
         assert!(face.borrow().children.iter().all(|c| c.is_none()));
     }

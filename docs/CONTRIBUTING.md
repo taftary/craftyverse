@@ -10,7 +10,7 @@ A pull request should include:
 - source links and reliability notes for external claims;
 - a minimal runnable example when guidance introduces code;
 - tests or validation commands when applicable;
-- explicit status labels for baseline, target, planned, and open work.
+- explicit status labels as defined in [`STYLEGUIDE.md`](STYLEGUIDE.md).
 
 Migration pull requests should move one responsibility at a time, preserve a
 buildable checkpoint, and explain temporary adapters and their deletion plan.
@@ -35,19 +35,7 @@ installs it under `target/mdbook` if needed, builds the book, and checks for
 broken internal links and missing required page sections. The first run may
 take a few minutes while `cargo` compiles `mdbook`.
 
-Rust source changes must also pass the standard checks:
-
-```text
-cargo fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-targets
-cargo test --doc --workspace
-```
-
-`cargo test --workspace --all-targets` runs headless examples and skips the
-`viewer` example, which is gated behind the `gpu` feature. Compile-check the
-GPU example separately with:
-
-```text
-cargo check --example viewer -p planet-crafter-examples --features gpu
-```
+Rust source changes must also pass the standard checks listed in
+[Testing and doctests](book/practices/testing.md): formatting, Clippy,
+workspace and doc tests, plus a compile-check of the `gpu`-gated `viewer`
+example.

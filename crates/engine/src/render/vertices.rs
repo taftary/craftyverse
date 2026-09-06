@@ -30,14 +30,15 @@ pub(crate) struct TextVertexGpu {
 /// space: `world_mvp` and `pixel_mvp`).
 #[derive(BufferContents, Clone, Copy)]
 #[repr(C)]
-pub(crate) struct PushMatrix {
-    pub(crate) mvp: [[f32; 4]; 4],
+pub struct PushMatrix {
+    /// View-projection matrix in column-major order.
+    pub mvp: [[f32; 4]; 4],
 }
 
 impl PushMatrix {
     /// Identity matrix; placeholder of both transforms before the first
     /// scene layout.
-    pub(crate) const IDENTITY: Self = PushMatrix {
+    pub const IDENTITY: Self = PushMatrix {
         mvp: [
             [1.0, 0.0, 0.0, 0.0],
             [0.0, 1.0, 0.0, 0.0],
@@ -59,14 +60,16 @@ impl From<Mat4> for PushMatrix {
 /// pipeline (pixel space).
 #[derive(BufferContents, Clone, Copy)]
 #[repr(C)]
-pub(crate) struct PushTransform {
-    pub(crate) scale: [f32; 2],
-    pub(crate) offset: [f32; 2],
+pub struct PushTransform {
+    /// Scale factor of the transform (clip units per pixel).
+    pub scale: [f32; 2],
+    /// Offset of the transform (clip units).
+    pub offset: [f32; 2],
 }
 
 impl PushTransform {
     /// Pixel-space → clip transform for `viewport` pixels (y-down).
-    pub(crate) fn for_viewport(viewport: glam::Vec2) -> Self {
+    pub fn for_viewport(viewport: glam::Vec2) -> Self {
         PushTransform {
             scale: [2.0 / viewport.x, -2.0 / viewport.y],
             offset: [-1.0, 1.0],

@@ -28,17 +28,25 @@ mod shaders;
 mod vertices;
 mod viewer;
 
-#[cfg(test)]
-mod tests;
-
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use glam::Vec3;
 
 use crate::node::{
-    IcosphereMesh, NodeRef, build_icosphere, collect_nodes, split_nodes, unsplit_nodes,
+    IcosphereMesh, NodeRef, build_icosphere, destroy_mesh, split_nodes, unsplit_nodes,
 };
 use viewer::Viewer;
+
+#[cfg(feature = "test-internals")]
+pub use renderer::checkbox_at;
+#[cfg(feature = "test-internals")]
+pub use setup::device_type_rank;
+#[cfg(feature = "test-internals")]
+pub use shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
+#[cfg(feature = "test-internals")]
+pub use vertices::{PushMatrix, PushTransform};
+#[cfg(feature = "test-internals")]
+pub use viewer::scenario_index_of;
 
 /// Maximum subdivision level an [`Scenario::Icosphere`] can be adjusted to
 /// from the viewer (bounds the per-rebuild CPU and GPU upload cost).
@@ -217,7 +225,7 @@ impl Scenario {
 impl IcosphereConfig {
     /// Destroys the current mesh graph and rebuilds it from the parameters.
     fn rebuild(&mut self) {
-        destroy_mesh(&self.mesh);
+        destroy_mesh(&self.mesh.faces[0]);
         self.mesh = build_icosphere(
             &self.name_prefix,
             self.radius,
@@ -259,14 +267,7 @@ fn translate_node(node: &NodeRef, delta: Vec3) {
 
 impl Drop for IcosphereConfig {
     fn drop(&mut self) {
-        destroy_mesh(&self.mesh);
-    }
-}
-
-/// Breaks the reciprocal-link cycles of a mesh so it can deallocate.
-fn destroy_mesh(mesh: &IcosphereMesh) {
-    for node in collect_nodes(&mesh.faces[0]) {
-        node.borrow_mut().destroy();
+        destroy_mesh(&self.mesh.faces[0]);
     }
 }
 

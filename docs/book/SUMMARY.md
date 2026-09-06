@@ -26,6 +26,8 @@
 
 - [Module specifications](specs/index.md)
 - [Node](specs/node.md)
+- [Subdivision](specs/subdivision.md)
+- [Icosphere](specs/icosphere.md)
 - [Scene](specs/scene.md)
 - [Text](specs/text.md)
 - [Render](specs/render.md)
@@ -35,6 +37,8 @@
 - [Ownership and borrowing](principles/ownership.md)
 - [Type-driven design](principles/type-driven-design.md)
 - [Safety and unsafe boundaries](principles/safety.md)
+- [SOLID](principles/solid.md)
+- [DRY](principles/dry.md)
 
 # Patterns
 

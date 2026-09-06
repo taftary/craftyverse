@@ -23,6 +23,6 @@ library or platform constraint.
 
 ## Review log
 
-- **2026-09-04** — All links reachable, with one caveat: `w3reference.com`
+- **2026-09-04** - All links reachable, with one caveat: `w3reference.com`
   blocks plain HEAD requests (returns 520) but serves the page with a browser
   user agent; the source remains valid.

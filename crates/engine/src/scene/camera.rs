@@ -20,11 +20,12 @@ pub(crate) const MIN_FIT_RADIUS: f32 = 1e-3;
 
 /// Pitch clamp: the camera never quite reaches the poles, where the up
 /// vector would be parallel to the view direction.
-pub(crate) const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
+pub const MAX_PITCH: f32 = std::f32::consts::FRAC_PI_2 - 0.01;
 
-/// Zoom clamps (magnification factor on the fitted camera distance).
-pub(crate) const MIN_ZOOM: f32 = 0.05;
-pub(crate) const MAX_ZOOM: f32 = 20.0;
+/// Lower zoom clamp (magnification factor on the fitted camera distance).
+pub const MIN_ZOOM: f32 = 0.05;
+/// Upper zoom clamp (magnification factor on the fitted camera distance).
+pub const MAX_ZOOM: f32 = 20.0;
 
 /// Orbit camera around the content bounding sphere.
 ///
@@ -89,10 +90,14 @@ impl OrbitCamera {
     /// The camera sits on the yaw/pitch sphere around `center` at a distance
     /// that frames the whole content sphere in the smaller of the
     /// horizontal/vertical fields of view (plus a 5% margin), scaled by
-    /// `1 / zoom`. At identity angles the eye is at `center + Z * distance`
-    /// looking at `center` with up +Y, so world +X appears right and world
-    /// +Y up. The projection uses Vulkan's clip convention (depth `z ∈
-    /// [0,1]`, y-down NDC) so world up lands at the top of the viewport.
+    /// `1 / zoom`. The viewport is clamped to at least 1×1 pixels and
+    /// `radius` to `MIN_FIT_RADIUS`, keeping the distance finite. The near
+    /// plane sits at `distance - 2 * radius` (clamped to a small positive
+    /// value), the far plane at `distance + 2 * radius`. At identity angles
+    /// the eye is at `center + Z * distance` looking at `center` with up +Y,
+    /// so world +X appears right and world +Y up. The projection uses
+    /// Vulkan's clip convention (depth `z ∈ [0,1]`, y-down NDC) so world up
+    /// lands at the top of the viewport.
     pub fn view_projection(&self, center: Vec3, radius: f32, viewport: Vec2) -> Mat4 {
         let viewport = viewport.max(Vec2::ONE);
         let radius = radius.max(MIN_FIT_RADIUS);
@@ -113,8 +118,16 @@ impl OrbitCamera {
 
 /// Projects `labels` to pixel space through `mvp` (from
 /// [`OrbitCamera::view_projection`]) and `viewport` pixels, resolving each
-/// label's pixel offset. Labels behind the camera are dropped.
-pub fn project_labels(labels: &[WorldLabel], mvp: &Mat4, viewport: Vec2) -> Vec<TextRun> {
+/// label's pixel offset. Labels behind the camera are dropped; a
+/// [`LabelOffset::Outward`] label whose reference point is behind the
+/// camera is dropped too, and one whose projected anchor coincides with
+/// the projected reference point is pushed straight up (`(0, -1)`). The
+/// returned runs borrow their text from the labels.
+pub fn project_labels<'a>(
+    labels: &'a [WorldLabel],
+    mvp: &Mat4,
+    viewport: Vec2,
+) -> Vec<TextRun<'a>> {
     let to_pixel = |point: Vec3| -> Option<Vec2> {
         let clip = *mvp * point.extend(1.0);
         if clip.w <= 0.0 {
@@ -132,16 +145,16 @@ pub fn project_labels(labels: &[WorldLabel], mvp: &Mat4, viewport: Vec2) -> Vec<
             let anchor = to_pixel(label.world_pos)?;
             let offset = match label.offset {
                 LabelOffset::Fixed(offset) => offset,
-                LabelOffset::Outward(from, distance) => {
+                LabelOffset::Outward { from, distance_px } => {
                     let from_px = to_pixel(from)?;
                     (anchor - from_px)
                         .try_normalize()
                         .unwrap_or(Vec2::new(0.0, -1.0))
-                        * distance
+                        * distance_px
                 }
             };
             Some(TextRun {
-                text: label.text.clone(),
+                text: &label.text,
                 anchor: anchor + offset,
                 size: label.size_px,
                 color: label.color,
