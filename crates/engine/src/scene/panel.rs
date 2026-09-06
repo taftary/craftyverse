@@ -22,18 +22,29 @@ const CHECKBOX_LABEL_GAP: f32 = 6.0;
 /// Extra left indent of the per-port sub-switches under their group master.
 const CHECKBOX_SUB_INDENT: f32 = 16.0;
 
-/// Appends the four edges of the `min`–`max` rectangle.
+/// Appends the four edges of the `min`–`max` rectangle (z = 0).
 fn rect_outline(buf: &mut Vec<Vertex>, min: Vec2, max: Vec2, color: [f32; 3]) {
-    push_line(buf, min, Vec2::new(max.x, min.y), color);
-    push_line(buf, Vec2::new(max.x, min.y), max, color);
-    push_line(buf, max, Vec2::new(min.x, max.y), color);
-    push_line(buf, Vec2::new(min.x, max.y), min, color);
+    let corners = [
+        min.extend(0.0),
+        Vec2::new(max.x, min.y).extend(0.0),
+        max.extend(0.0),
+        Vec2::new(min.x, max.y).extend(0.0),
+    ];
+    for edge in 0..4 {
+        push_line(buf, corners[edge], corners[(edge + 1) % 4], color);
+    }
 }
 
-/// Appends the two triangles filling the `min`–`max` rectangle.
+/// Appends the two triangles filling the `min`–`max` rectangle (z = 0).
 fn fill_rect(buf: &mut Vec<Vertex>, min: Vec2, max: Vec2, color: [f32; 3]) {
-    push_triangle(buf, min, Vec2::new(max.x, min.y), max, color);
-    push_triangle(buf, min, max, Vec2::new(min.x, max.y), color);
+    let corners = [
+        min.extend(0.0),
+        Vec2::new(max.x, min.y).extend(0.0),
+        max.extend(0.0),
+        Vec2::new(min.x, max.y).extend(0.0),
+    ];
+    push_triangle(buf, corners[0], corners[1], corners[2], color);
+    push_triangle(buf, corners[0], corners[2], corners[3], color);
 }
 
 impl SceneBuilder {

@@ -6,16 +6,16 @@ use std::sync::Arc;
 use vulkano::device::Device;
 use vulkano::shader::{EntryPoint, ShaderModule, ShaderModuleCreateInfo};
 
-/// Geometry vertex shader: `scale`/`offset` push-constant transform, passes
-/// the vertex color through.
+/// Geometry vertex shader: `mvp` push-constant view-projection transform,
+/// passes the vertex color through.
 pub(crate) const GEOM_VERT: &str = r#"
 #version 450
-layout(location = 0) in vec2 pos;
+layout(location = 0) in vec3 pos;
 layout(location = 1) in vec3 color;
 layout(location = 0) out vec3 out_color;
-layout(push_constant) uniform PushTransform { vec2 scale; vec2 offset; } pc;
+layout(push_constant) uniform PushMatrix { mat4 mvp; } pc;
 void main() {
-    gl_Position = vec4(pos * pc.scale + pc.offset, 0.0, 1.0);
+    gl_Position = pc.mvp * vec4(pos, 1.0);
     out_color = color;
 }
 "#;

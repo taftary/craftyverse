@@ -7,8 +7,9 @@
 //! [`NodeRef`] so that bidirectional links can be shared.
 //!
 //! Pure geometric helpers live in `geometry`; child-link wiring and graph
-//! traversal live in `topology`; triangle subdivision lives in `subdivision`.
-//! The full contract is specified in `docs/book/specs/node.md`.
+//! traversal live in `topology`; triangle subdivision (single-node and
+//! whole-mesh) lives in `subdivision`. The full contract is specified in
+//! `docs/book/specs/node.md`.
 //!
 //! # Example
 //!
@@ -22,6 +23,7 @@
 //! ```
 
 mod geometry;
+mod icosphere;
 mod subdivision;
 pub(crate) mod topology;
 
@@ -34,9 +36,9 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use geometry::compute_directions;
-use topology::reciprocal_index;
 
-pub use subdivision::split_node;
+pub use icosphere::{IcosphereMesh, build_icosphere};
+pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::collect_nodes;
 
 /// Shared, mutable reference to a [`Node`].
@@ -90,9 +92,18 @@ pub struct Node {
     /// - `children[1]` is the link in direction `j` (perpendicular to edge BC).
     /// - `children[2]` is the link in direction `k` (perpendicular to edge CA).
     ///
-    /// Links are reciprocal: if `A.children[x] == B`, then
-    /// `B.children[reciprocal_index(x)] == A`.
+    /// Links are bidirectional with an explicitly recorded back-port: if
+    /// `A.children[x] == B`, then `A.back_ports[x] == Some(y)` and
+    /// `B.children[y] == A` (and `B.back_ports[y] == Some(x)`). Links
+    /// created by [`split_node`] also follow the reciprocal port pattern
+    /// `y == 2 - x`, but that pattern cannot hold on every edge of a welded
+    /// sphere (see `icosphere`), so the back-port is stored rather than
+    /// assumed.
     pub children: [Option<NodeRef>; 3],
+    /// Port of the back-link on the neighbor: `back_ports[x]` is the slot of
+    /// `children[x]`'s neighbor that points back to this node. Recorded by
+    /// the link wiring; `None` exactly where `children[x]` is `None`.
+    pub back_ports: [Option<usize>; 3],
 }
 
 impl Node {
@@ -174,15 +185,19 @@ impl Node {
             base_length: (points[1] - points[2]).length(),
             height: height_vector.length(),
             children: [None, None, None],
+            back_ports: [None, None, None],
         }
     }
 
     /// Severs all bidirectional `children` links.
     ///
-    /// For each linked neighbor, the reciprocal back-link is cleared first,
-    /// then the link on this node. The node itself is freed automatically once
-    /// its last `Rc` reference is dropped; there is no explicit
-    /// self-destruction in Rust.
+    /// For each occupied port, the neighbor's recorded back-port
+    /// (`back_ports`) is cleared first, then the local port and back-port
+    /// record. Because the back-port is stored explicitly by the link
+    /// wiring, `destroy` is exact for any link, including welded sphere
+    /// links that do not follow the `0 <-> 2`, `1 <-> 1` pattern. The node
+    /// itself is freed automatically once its last `Rc` reference is
+    /// dropped; there is no explicit self-destruction in Rust.
     ///
     /// # Example
     ///
@@ -196,11 +211,14 @@ impl Node {
     /// assert!(center.borrow().children.iter().all(|c| c.is_none()));
     /// ```
     pub fn destroy(&mut self) {
-        // (link index on self, reciprocal back-link index on the neighbor),
-        // mirroring the interconnections established by `split_node`.
         for index in 0..3 {
             if let Some(child) = self.children[index].take() {
-                child.borrow_mut().children[reciprocal_index(index)] = None;
+                let back = self.back_ports[index]
+                    .take()
+                    .expect("link without a recorded back-port");
+                let mut child = child.borrow_mut();
+                child.children[back] = None;
+                child.back_ports[back] = None;
             }
         }
     }

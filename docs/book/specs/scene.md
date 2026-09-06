@@ -7,36 +7,66 @@ data for the Vulkan debug viewer. It produces the same visualization the former
 SVG viewer did — triangle outlines, direction arrows (I/J/K and
 `direction_of_node`), dashed origin arrow, child links, open-port markers,
 center dots and text labels — but as plain CPU data: colored line and triangle
-lists in a y-down world space, plus text runs anchored in pixel space.
+lists in a y-up 3D world space, pixel-space UI geometry for the
+display-options panel, and world-anchored text labels.
 
 Each displayed attribute can be toggled through `DisplayOptions`; the scene
 also generates a pixel-space checkbox panel (geometry, labels and hit
 rectangles) that the viewer uses to flip the options at runtime. The module
 never mutates nodes and contains no GPU code, so it is fully unit-testable.
 
+The scene carries no camera transform of its own: world geometry stays 3D and
+the renderer transforms it on the GPU with the view-projection matrix of the
+`OrbitCamera`. Only the world-anchored labels are re-projected on the CPU,
+through `project_labels`, when the camera changes.
+
 ### Structure
 
 - **Geometry**
-  - `Vertex { pos: Vec2, color: [f32; 3] }` — colored vertex in mapped world space.
+  - `Vertex { pos: Vec3, color: [f32; 3] }` — colored vertex in world space
+    (y-up); the UI batches use pixel-space positions with `z = 0`.
   - `SceneMesh` — everything the renderer needs for one scene:
     - `lines: Vec<Vertex>` — line list (outlines, arrow shafts, dashes, child links).
-    - `triangles: Vec<Vertex>` — triangle list (arrowheads, center dots).
+    - `triangles: Vec<Vertex>` — triangle list (arrowheads, center dots,
+      open-port markers).
     - `ui_lines` / `ui_triangles: Vec<Vertex>` — checkbox panel geometry in
-      pixel space (drawn with `pixel_to_clip`).
-    - `texts: Vec<TextRun>` — text labels in pixel space (node labels and
-      checkbox labels).
+      pixel space (`z = 0`).
+    - `texts: Vec<TextRun>` — checkbox labels in pixel space.
+    - `labels: Vec<WorldLabel>` — world-anchored labels (node name/level and
+      corner letters), projected to pixels when the camera is applied.
     - `checkboxes: Vec<Checkbox>` — hit rectangles, one per panel row.
-    - `world_to_clip: ClipTransform` — maps `lines`/`triangles` to Vulkan clip space.
-    - `pixel_to_clip: ClipTransform` — maps text and UI pixel positions to clip space.
-  - `ClipTransform { scale: Vec2, offset: Vec2 }` — affine transform `clip = pos * scale + offset`.
-- **Text**
-  - `TextRun { text, anchor, size, color, centered }` — one label. `anchor` is the
-    top-left of the text block (top-center when `centered`), in pixels, so glyphs
-    keep a constant pixel size regardless of the view fit.
+    - `fit_center: Vec3` / `fit_radius: f32` — content bounding sphere, the
+      camera fit target (`(Vec3::ZERO, 1.0)` for an empty scene).
+  - `TextRun { text, anchor, size, color, centered }` — one pixel-space label.
+    `anchor` is the top-left of the text block (top-center when `centered`),
+    in pixels, so glyphs keep a constant pixel size regardless of the camera.
+  - `WorldLabel { text, world_pos, offset, size_px, color, centered }` — one
+    world-anchored label; `offset` is a `LabelOffset`:
+    - `LabelOffset::Fixed(Vec2)` — fixed pixel offset after projection.
+    - `LabelOffset::Outward(Vec3, f32)` — push this many pixels away from the
+      projected world point (corner labels pushed outward from the node
+      center).
+- **Camera** (`camera.rs`)
+  - `OrbitCamera { yaw, pitch, zoom }` — orbit state around the content
+    bounding sphere; angles in radians, `zoom` a magnification factor on the
+    fitted distance. `Default` is the head-on +Z view (yaw 0, pitch 0,
+    zoom 1). `orbit(dyaw, dpitch)` adds angles (pitch clamped just short of
+    the poles), `zoom_by(factor)` scales the zoom (clamped to `0.05..=20.0`),
+    `reset()` restores the default.
+  - `OrbitCamera::view_projection(center, radius, viewport) -> Mat4` —
+    view-projection matrix fitting the content sphere into the viewport: the
+    camera sits on the yaw/pitch sphere around `center` at a distance that
+    frames the sphere in the smaller of the horizontal/vertical fields of
+    view (45° vertical FOV, 5% margin), scaled by `1 / zoom`. Uses glam's
+    Vulkan clip convention (depth `z ∈ [0, 1]`, y-down NDC).
+  - `project_labels(labels, mvp, viewport) -> Vec<TextRun>` — projects the
+    world anchors to pixels, resolves each `LabelOffset`, and drops labels
+    behind the camera.
 - **Display options**
   - `Attribute` — the toggleable attributes, one checkbox each: `ChildLinks`,
     `OpenPorts`, `Outline`, `Directions`, `DirectionOfNode`, `Origin`,
-    `CenterDot`, `Labels`, plus per-port sub-switches `ChildLink(i)`,
+    `CenterDot`, `Labels`, `LinkViolations`, plus per-port
+    sub-switches `ChildLink(i)`,
     `OpenPort(i)` and `Direction(i)` (0 = I, 1 = J, 2 = K). `ChildLinks`,
     `OpenPorts` and `Directions` are group masters: an element is drawn only
     when both the master and its per-port switch are on.
@@ -50,15 +80,17 @@ never mutates nodes and contains no GPU code, so it is fully unit-testable.
 
 ### Methods
 
-- `build_scene(nodes: &[NodeRef], viewport: Vec2, options: &DisplayOptions) -> SceneMesh`
-  — generates the visualization of `nodes` fitted into `viewport` pixels,
-  displaying the attributes enabled in `options`.
+- `build_scene(nodes: &[NodeRef], options: &DisplayOptions) -> SceneMesh`
+  — generates the visualization of `nodes`, displaying the attributes enabled
+  in `options`. World geometry is viewport-independent; the checkbox panel is
+  top-left anchored in pixel space.
 - `level_color(level: u32) -> [f32; 3]` (crate-internal) — level palette,
   cycled by `level % 8` (same colors as the former SVG viewer).
 
 The module is a folder module: public types and `build_scene` in `mod.rs`,
-colors in `colors.rs`, display options in `options.rs`, the per-node geometry
-builders in `geometry.rs`, the checkbox panel in `panel.rs`.
+the camera in `camera.rs`, colors in `colors.rs`, display options in
+`options.rs`, the per-node geometry builders in `geometry.rs`, the checkbox
+panel in `panel.rs`.
 
 ### Generated Elements (per node, each gated by its `DisplayOptions` flag)
 
@@ -72,11 +104,10 @@ builders in `geometry.rs`, the checkbox panel in `panel.rs`.
   port, pushed outward along the port direction and colored with the port's
   I/J/K direction color, so unlinked ports stand out instead of being the
   mere absence of a child link. Each port's marker can be hidden individually
-  via its per-port sub-switch. The disc rim is included in the content
-  bounds so the view fit never clips a marker.
+  via its per-port sub-switch.
 - **Triangle outline** — A → B → C → A, colored by `level_color(level)`.
 - **Direction arrows** — one per direction vector I/J/K, starting at the center:
-  a line shaft plus a filled triangle arrowhead (size `arrow_len * 0.25`), colors
+  a line shaft plus a two-fin arrowhead (size `arrow_len * 0.25`), colors
   `#d32f2f` / `#388e3c` / `#1976d2`. Each port's arrow can be hidden
   individually via its per-port sub-switch.
 - **Node direction arrow** — one arrow along `direction_of_node` (base BC →
@@ -87,6 +118,12 @@ builders in `geometry.rs`, the checkbox panel in `panel.rs`.
   `arrow_len * 0.08`, colored by level.
 - **Labels** — `"{name} L{level}"` near the center (12 px, `#212121`) and
   corner letters A, B, C pushed 8 px outward (10 px, `#757575`, centered).
+  Anchored in world space and projected when the camera is applied.
+- **Link violations** — every broken link (an occupied port whose
+  recorded back-port does not point back to the node) is highlighted
+  by overdrawing the port's edge with a line plus a 16-segment disc
+  (radius `arrow_len * 0.12`) at its midpoint, color `#ff5722`. Meshes
+  whose links are all wired through the topology helpers emit nothing.
 
 ### Checkbox Panel (always generated)
 
@@ -101,16 +138,24 @@ reachable.
 
 ### Rules
 
-- **Y mapping** — node geometry is y-up; view space is y-down. The flip is
-  applied per point (`(x, -y)`), exactly like the SVG viewer did.
+- **World space** — node geometry stays in its own y-up 3D world space; no
+  projection or axis flip is applied at scene build time. The camera
+  transform happens on the GPU.
 - **Arrow length** — `arrow_len = 0.5 * min distance from center to a corner
   point of the node's triangle`, so arrows scale with the node's own triangle
   and stay readable after repeated `split_node()` calls (same rule as the SVG viewer).
-- **View fit** — all mapped points contribute to a running bounding box; the
-  scene is fitted into the viewport with a 5 % margin, aspect ratio preserved,
-  centered. This is the equivalent of the SVG `viewBox` logic. The checkbox
-  panel is a pixel-space overlay and does not contribute to the fit.
-- **Text space** — label anchors are computed with the same world→pixel mapping,
-  then laid out in raw pixels so text size never depends on the view fit.
-- **Empty scene** — produces empty node buffers and a whole-viewport transform;
-  only the checkbox panel is drawn.
+- **Arrowheads** — two triangles in perpendicular planes (a two-fin cross),
+  so heads stay readable from any camera angle without camera-facing tricks.
+- **Discs** — center dots, open-port markers and violation markers are built
+  in the node's triangle plane (perpendicular to its A,B,C normal), as
+  painted-on-surface markers that stay stable under camera rotation.
+- **View fit** — all emitted world points contribute to a running bounding
+  box; the content bounding sphere (box center, maximal emitted-point
+  distance) is what `OrbitCamera::view_projection` frames, with a 5 % margin.
+  A sphere fit is angle-independent, so orbiting never rescales the view. The
+  checkbox panel is a pixel-space overlay and does not contribute to the fit.
+- **Text space** — world label anchors are projected with the same
+  view-projection the GPU applies, then laid out in raw pixels so text size
+  never depends on the camera.
+- **Empty scene** — produces empty node buffers and a `(origin, 1.0)` fit
+  sphere; only the checkbox panel is drawn.

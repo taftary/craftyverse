@@ -38,6 +38,8 @@ pub enum Attribute {
     CenterDot,
     /// Node name/level and corner letter labels.
     Labels,
+    /// Highlight of links that violate the reciprocal port rule.
+    LinkViolations,
 }
 
 impl Attribute {
@@ -77,6 +79,9 @@ pub struct DisplayOptions {
     pub center_dot: bool,
     /// Label switch.
     pub labels: bool,
+    /// Highlight switch for links that violate the reciprocal port rule
+    /// (`child.children[2 - port]` does not point back).
+    pub link_violations: bool,
 }
 
 impl Default for DisplayOptions {
@@ -93,6 +98,7 @@ impl Default for DisplayOptions {
             origin: true,
             center_dot: true,
             labels: true,
+            link_violations: true,
         }
     }
 }
@@ -115,6 +121,7 @@ impl DisplayOptions {
             origin: false,
             center_dot: false,
             labels: false,
+            link_violations: false,
         }
     }
 
@@ -144,6 +151,7 @@ impl DisplayOptions {
             Attribute::Origin => &self.origin,
             Attribute::CenterDot => &self.center_dot,
             Attribute::Labels => &self.labels,
+            Attribute::LinkViolations => &self.link_violations,
         }
     }
 
@@ -161,13 +169,14 @@ impl DisplayOptions {
             Attribute::Origin => &mut self.origin,
             Attribute::CenterDot => &mut self.center_dot,
             Attribute::Labels => &mut self.labels,
+            Attribute::LinkViolations => &mut self.link_violations,
         }
     }
 }
 
 /// Checkboxes of the display-options panel, in display order. Per-port
 /// sub-switches sit right under their group master.
-pub(crate) const ATTRIBUTES: [(Attribute, &str); 17] = [
+pub(crate) const ATTRIBUTES: [(Attribute, &str); 18] = [
     (Attribute::ChildLinks, "child links"),
     (Attribute::ChildLink(0), "link I"),
     (Attribute::ChildLink(1), "link J"),
@@ -185,6 +194,7 @@ pub(crate) const ATTRIBUTES: [(Attribute, &str); 17] = [
     (Attribute::Origin, "origin arrow"),
     (Attribute::CenterDot, "center dot"),
     (Attribute::Labels, "labels"),
+    (Attribute::LinkViolations, "link violations"),
 ];
 
 /// Clickable area of one checkbox (pixel space, y-down).

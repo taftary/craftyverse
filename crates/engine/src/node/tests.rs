@@ -412,3 +412,153 @@ fn split_preserves_origin_for_descendants() {
         ));
     }
 }
+
+/// Two nodes sharing an edge: `root` (the test fixture) and a neighbor
+/// mirrored across the base edge BC, linked `root.1 <-> neighbor.1`.
+fn linked_pair() -> (NodeRef, NodeRef) {
+    let root = test_node();
+    let [a, b, c] = root.borrow().points;
+    // Mirror of A across the horizontal base edge BC.
+    let mirrored = Vec3::new(a.x, 2.0 * b.y - a.y, a.z);
+    let neighbor = Node::new("neighbor", [mirrored, c, b], point(0.0, 1000.0));
+    super::topology::link(&root, 1, &neighbor, 1);
+    (root, neighbor)
+}
+
+/// Finds a leaf by name in `nodes`.
+fn by_name(nodes: &[NodeRef], name: &str) -> NodeRef {
+    Rc::clone(
+        nodes
+            .iter()
+            .find(|node| node.borrow().name == name)
+            .expect("node missing"),
+    )
+}
+
+#[test]
+fn split_nodes_splits_single_node_and_destroys_old() {
+    let node = test_node();
+    let leaves = split_nodes(&node);
+
+    assert_eq!(leaves.len(), 4);
+    for (leaf, suffix) in leaves.iter().zip(["root.I", "root.J", "root.K", "root.C"]) {
+        let leaf = leaf.borrow();
+        assert_eq!(leaf.name, suffix);
+        assert_eq!(leaf.level, 1);
+    }
+    // The old node is destroyed: all its links are gone.
+    assert!(node.borrow().children.iter().all(|slot| slot.is_none()));
+}
+
+#[test]
+fn split_nodes_welds_corners_across_old_links() {
+    let (root, neighbor) = linked_pair();
+    let leaves = split_nodes(&root);
+
+    assert_eq!(leaves.len(), 8);
+    // The half-edges of the former shared edge are welded corner-to-corner.
+    let root_j = by_name(&leaves, "root.J");
+    let root_k = by_name(&leaves, "root.K");
+    let neighbor_j = by_name(&leaves, "neighbor.J");
+    let neighbor_k = by_name(&leaves, "neighbor.K");
+    assert!(Rc::ptr_eq(
+        root_j.borrow().children[1].as_ref().unwrap(),
+        &neighbor_k
+    ));
+    assert!(Rc::ptr_eq(
+        root_k.borrow().children[1].as_ref().unwrap(),
+        &neighbor_j
+    ));
+    // Reciprocal back-ports are recorded on both welds.
+    assert_eq!(root_j.borrow().back_ports[1], Some(1));
+    assert_eq!(neighbor_j.borrow().back_ports[1], Some(1));
+    // Ports that were open stay open.
+    let root_i = by_name(&leaves, "root.I");
+    assert!(root_i.borrow().children[0].is_none());
+    assert!(root_i.borrow().children[2].is_none());
+    // The old nodes are destroyed.
+    assert!(root.borrow().children.iter().all(|slot| slot.is_none()));
+    assert!(neighbor.borrow().children.iter().all(|slot| slot.is_none()));
+
+    for leaf in &leaves {
+        leaf.borrow_mut().destroy();
+    }
+}
+
+#[test]
+fn unsplit_nodes_rebuilds_parents_and_their_links() {
+    let (root, neighbor) = linked_pair();
+    let root_points = root.borrow().points;
+    let neighbor_points = neighbor.borrow().points;
+    let leaves = split_nodes(&root);
+
+    let parents = unsplit_nodes(&leaves[0]);
+    assert_eq!(parents.len(), 2);
+    let new_root = by_name(&parents, "root");
+    let new_neighbor = by_name(&parents, "neighbor");
+    for (actual, expected) in new_root.borrow().points.iter().zip(root_points) {
+        assert!(approx_eq(*actual, expected));
+    }
+    for (actual, expected) in new_neighbor.borrow().points.iter().zip(neighbor_points) {
+        assert!(approx_eq(*actual, expected));
+    }
+    assert_eq!(new_root.borrow().level, 0);
+    // The parent link across the shared edge is restored; the ports that
+    // were open before the split are open again.
+    assert!(Rc::ptr_eq(
+        new_root.borrow().children[1].as_ref().unwrap(),
+        &new_neighbor
+    ));
+    assert_eq!(new_root.borrow().back_ports[1], Some(1));
+    assert!(new_root.borrow().children[0].is_none());
+    assert!(new_root.borrow().children[2].is_none());
+    // The merged children are destroyed.
+    assert!(
+        leaves
+            .iter()
+            .all(|leaf| leaf.borrow().children.iter().all(|slot| slot.is_none()))
+    );
+}
+
+#[test]
+fn unsplit_nodes_keeps_unsplittable_mesh() {
+    let root = test_node();
+    let kept = unsplit_nodes(&root);
+    assert_eq!(kept.len(), 1);
+    assert!(Rc::ptr_eq(&kept[0], &root));
+}
+
+#[test]
+fn split_unsplit_round_trip_over_two_generations() {
+    let root = test_node();
+    let first = split_nodes(&root);
+    let second = split_nodes(&first[0]);
+    assert_eq!(second.len(), 16);
+
+    let merged = unsplit_nodes(&second[0]);
+    assert_eq!(merged.len(), 4);
+    assert!(merged.iter().all(|node| node.borrow().level == 1));
+    let merged = unsplit_nodes(&merged[0]);
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged[0].borrow().name, "root");
+    assert_eq!(merged[0].borrow().level, 0);
+}
+
+#[test]
+fn unsplit_nodes_merges_an_icosphere_generation() {
+    let mesh = build_icosphere("planet", 300.0, 1, Vec3::ZERO);
+    assert_eq!(mesh.faces.len(), 80);
+
+    let parents = unsplit_nodes(&mesh.faces[0]);
+    assert_eq!(parents.len(), 20);
+    for parent in &parents {
+        let parent = parent.borrow();
+        assert_eq!(parent.level, 0);
+        // The merged mesh is closed again: every port is linked.
+        assert!(parent.children.iter().all(|slot| slot.is_some()));
+    }
+
+    for parent in &parents {
+        parent.borrow_mut().destroy();
+    }
+}

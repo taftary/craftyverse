@@ -1,13 +1,13 @@
-use glam::Vec2;
+use glam::{Mat4, Vec2, Vec3};
 use vulkano::device::physical::PhysicalDeviceType;
 use winit::keyboard::{KeyCode, NativeKeyCode, PhysicalKey};
 
 use super::renderer::checkbox_at;
 use super::setup::device_type_rank;
 use super::shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
-use super::vertices::PushTransform;
+use super::vertices::{PushMatrix, PushTransform};
 use super::viewer::scenario_index_of;
-use crate::scene::{Attribute, Checkbox, ClipTransform};
+use crate::scene::{Attribute, Checkbox};
 
 #[test]
 fn all_shaders_compile_to_spirv() {
@@ -99,14 +99,16 @@ fn checkbox_at_hit_tests_pixel_rects() {
 }
 
 #[test]
-fn push_transform_from_clip_transform() {
-    let clip = ClipTransform {
-        scale: Vec2::new(2.0, -3.0),
-        offset: Vec2::new(0.5, -0.5),
-    };
-    let push = PushTransform::from(&clip);
-    assert_eq!(push.scale, [2.0, -3.0]);
-    assert_eq!(push.offset, [0.5, -0.5]);
-    assert_eq!(PushTransform::IDENTITY.scale, [1.0; 2]);
-    assert_eq!(PushTransform::IDENTITY.offset, [0.0; 2]);
+fn push_matrix_from_glam_mat4() {
+    let matrix = Mat4::from_scale(Vec3::new(2.0, 3.0, 4.0));
+    let push = PushMatrix::from(matrix);
+    assert_eq!(push.mvp, matrix.to_cols_array_2d());
+    assert_eq!(PushMatrix::IDENTITY.mvp, Mat4::IDENTITY.to_cols_array_2d());
+}
+
+#[test]
+fn push_transform_maps_pixels_to_clip() {
+    let transform = PushTransform::for_viewport(Vec2::new(800.0, 600.0));
+    assert_eq!(transform.scale, [2.0 / 800.0, -2.0 / 600.0]);
+    assert_eq!(transform.offset, [-1.0, 1.0]);
 }
