@@ -7,7 +7,7 @@ into individually implementable features, grouped by roadmap phase
 Each feature file is self-contained: goal, design summary, implementation
 steps, dependencies, and acceptance criteria. A feature is done when its
 acceptance criteria pass, including the definition of done in `AGENTS.md`
-(fmt, clippy, tests, `mesh-validator`, spec accuracy).
+(fmt, clippy, tests, spec accuracy).
 
 Track progress in [`plans/TODO.md`](../TODO.md).
 
@@ -59,7 +59,7 @@ data justifies it. Today's baseline (`crates/engine/src/scene/geometry.rs`,
 - Dashed child links colored per port; disc markers on open ports.
 - Name/level labels plus A/B/C corner labels.
 - Checkbox panel toggles per overlay group (`DisplayOptions`).
-- Scenarios on keys `1`-`4`, `S` subdivides, `R` regenerates.
+- Scenarios are selected with number keys.
 
 Each feature's debug screen must:
 
@@ -89,5 +89,5 @@ Rules for every feature:
 - Compact per-cell fields (`u8`/`u16`), structure-of-arrays storage.
 - Ships its debug screen per the standard above.
 - Each landed feature gets its spec under `docs/book/specs/` and keeps
-  `AGENTS.md`, the viewer controls in `README.md`, and `mesh-validator`
+   `AGENTS.md` and the viewer controls in `README.md`
   accurate.

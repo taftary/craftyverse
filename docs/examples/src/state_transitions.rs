@@ -1,34 +1,27 @@
 //! State transitions.
 //!
-//! Demonstrates the plan-splitting state transition: a generated mesh is
-//! subdivided one level and the root node is re-anchored on the split center.
-//!
-//! See `docs/book/specs/icosahedron-plan.md`.
+//! Demonstrates a node-splitting state transition.
 
-use planet_crafter_engine::icosahedron_plan::IcosahedronPlan;
-use planet_crafter_engine::node::collect_nodes;
+use glam::Vec3;
+use planet_crafter_engine::node::{Node, split_node};
 
 /// Runs the state-transition demonstration.
 ///
-/// A fresh plan is generated, split once, and the post-split topology is
-/// checked without opening a window.
+/// A fresh node is split once and the resulting local topology is checked.
 pub fn run() {
-    let mut plan = IcosahedronPlan::default();
-    plan.generate(100.0);
-    let before = collect_nodes(plan.root_node.as_ref().unwrap()).len();
-    assert_eq!(before, 20);
-
-    plan.split();
-    let after = collect_nodes(plan.root_node.as_ref().unwrap()).len();
-    assert_eq!(after, 80);
-    assert!(
-        plan.root_node
-            .as_ref()
-            .unwrap()
-            .borrow()
-            .name
-            .ends_with(".C")
+    let height = 100.0 * 3.0_f32.sqrt() / 2.0;
+    let node = Node::new(
+        "root",
+        [
+            Vec3::new(0.0, 2.0 * height / 3.0, 0.0),
+            Vec3::new(50.0, -height / 3.0, 0.0),
+            Vec3::new(-50.0, -height / 3.0, 0.0),
+        ],
+        Vec3::ZERO,
     );
+    let center = split_node(&node.borrow());
+    assert_eq!(center.borrow().level, 1);
+    assert_eq!(center.borrow().children.iter().flatten().count(), 3);
 }
 
 #[cfg(test)]

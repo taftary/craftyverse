@@ -3,7 +3,6 @@
 **Status:** living plan. This document merges and supersedes the four original
 notion drafts (`notion1.md`, `notion-2.md`, `notion-3.md`, `notion4.md`) and
 re-anchors the plan on the code that already exists: the `Node` class and the
-`IcosahedronPlan`.
 
 Status language used below:
 
@@ -45,61 +44,36 @@ Two decisions are already made:
 Source: [`crates/engine/src/node/mod.rs`](../crates/engine/src/node/mod.rs)
 Spec: [`docs/book/specs/node.md`](../docs/book/specs/node.md)
 
-A `Node` is one isosceles triangle in a hierarchical mesh.
+A `Node` is one non-degenerate 3D triangle in a hierarchical mesh.
 
-- **Geometry:** `center` (centroid), corner `points` `[A, B, C]` (`A` = apex,
-  `BC` = base, perpendicular to the orientation), `direction_of_node`
-  (base -> apex, normalized), `direction_to_origin`, and the directional
-  vectors `[i, j, k]` — each perpendicular to one edge and pointing outward
-  from the center.
+- **Geometry:** `center` (centroid), corner `points` `[A, B, C]`,
+  `direction_of_node` (normalized altitude toward `A`), `direction_to_origin`,
+  and the directional vectors `[i, j, k]` — each in the triangle plane,
+  perpendicular to one edge, and pointing outward from the center.
 - **Topology:** `children[3]` — bidirectional links to adjacent nodes, one per
   direction (I/J/K). Links are reciprocal (`0 <-> 2`, `1 <-> 1`).
 - **Identity:** unique `name`; `level` (split depth, 0 for roots).
-- **Methods:** `new(...)` builds the triangle; `split()` subdivides into four
-  nodes (corner nodes I/J/K keep the parent direction, the inverted center
-  node flips it), halves base length and height, wires the internal
-  center <-> corner links, and returns the center node; `destroy()` severs
-  all reciprocal links.
+- **Methods:** `new(name, points, origin)` builds the triangle; `split()`
+  subdivides into four nodes, derives each child's geometry from its own points,
+  wires the internal center <-> corner links, and returns the center node;
+  `destroy()` severs all reciprocal links.
 
 Ownership: `NodeRef = Rc<RefCell<Node>>` — shared, runtime-borrowed links.
 
-### 2.2 The `IcosahedronPlan`
+### 2.2 Tooling
 
-Source: [`crates/engine/src/icosahedron_plan/mod.rs`](../crates/engine/src/icosahedron_plan/mod.rs)
-Spec: [`docs/book/specs/icosahedron-plan.md`](../docs/book/specs/icosahedron-plan.md)
-
-Central manager of the node hierarchy.
-
-- `generate(side_length)` builds the **dual-pentagon interlocked mesh**: a
-  North pentagonal base (5 base + 5 reverted nodes, `Labeling::Normal`) and a
-  South one (mirrored labeling), wired together through reciprocal I <-> K
-  links with reflection offsets. Total: 20 nodes = the icosahedron's 20
-  triangular faces, laid out as a flat 2D net.
-- `split()` subdivides the whole mesh one level: every node splits once, the
-  fresh corner nodes are re-wired across every subdivided edge
-  (`wire_chain_edge` / `wire_pair_edge`), the root is re-anchored, and the old
-  nodes are destroyed. Each level multiplies the triangle count by 4.
-- `root_node` anchors the mesh (North base root).
-
-### 2.3 Tooling
-
-- **Vulkan debug viewer** (`cargo run --bin planet-crafter`): keys **1–4**
-  select scenes (single node, split node, pentagonal base, dual-mesh
-  interlocked plan), **S** subdivides one level, **R** regenerates. Per node
+- **Vulkan debug viewer** (`cargo run --bin planet-crafter`): number keys
+  select scenes (single node and split node). Per node
   it displays the triangle outline, I/J/K arrows, `direction_of_node`, the
   origin arrow, child links, and labels.
-- **`mesh-validator`** (`cargo run -p planet-crafter-tools --bin
-  mesh-validator`): headless mesh-wiring check, exit 0/1.
-- **Unit tests** beside the implementation: `node/tests.rs`,
-  `icosahedron_plan/tests.rs`.
+- **Unit tests** beside the implementation: `node/tests.rs`.
 
 ### 2.4 Mapping: draft pipeline -> implementation status
 
 | Draft pipeline step                  | Status      | Where |
 |--------------------------------------|-------------|-------|
-| Icosahedron base (20 faces)          | Implemented | `IcosahedronPlan::generate` |
-| Triangle subdivision (x4 per level)  | Implemented | `IcosahedronPlan::split`, `Node::split` |
-| Mesh integrity / wiring validation   | Implemented | link-based topology, `mesh-validator`, viewer |
+| Triangle subdivision (x4 per level)  | Implemented | `split_node` |
+| Mesh integrity / wiring validation   | Implemented | link-based topology, viewer |
 | Spherical projection (net -> sphere) | Next        | geometry layer (Section 4) |
 | Vertex relaxation                    | Next        | geometry layer (Section 4) |
 | Dual mesh -> hex/pent cells          | Next        | geometry layer (Section 4) |
@@ -137,16 +111,14 @@ Carried over from the drafts, unchanged:
 
 ### 4.1 Implemented
 
-- **Icosahedron base** — the dual-pentagon interlocked mesh (Section 2.2).
-- **Subdivision** — `Node::split` per node, `IcosahedronPlan::split` for the
-  whole mesh, one level at a time.
+- **Subdivision** — `split_node` per node, one level at a time.
 - **Mesh integrity** — mostly dissolved by construction: connectivity lives
   in reciprocal links, not in coordinates, so the classic failure modes from
   the drafts (subdivision mismatch, float-duplicate vertices, vertex
   snapping, edge registries) do not apply to topology. Coordinates still
   matter for rendering; dedup is only needed when flattening the graph into a
-  render mesh. Validation is covered by the `mesh-validator`, the viewer's
-  wireframe display, and the unit tests.
+  render mesh. Validation is covered by the viewer's wireframe display and
+  the unit tests.
 
 ### 4.2 Next
 
@@ -325,7 +297,7 @@ resolution per edge. This replaces the drafts' 7/19/37 hex-patch scheme.
   full generation pipeline once. Static mesh, space-view rendering.
 - **Regional LOD** — when the camera approaches, refine only the region
   under it. This needs a **selective/local split**: an extension of the
-  current whole-mesh `IcosahedronPlan::split` that subdivides a chosen
+  current node subdivision that subdivides a chosen
   subtree and stitches the boundary to the coarser surroundings
   (seam-stitching pass — the one mesh-integrity item that stays real).
   Adds: mid-frequency elevation, local climate downscaling, rivers.
@@ -364,8 +336,7 @@ geological time is ever wanted (Tier 3 only):
 
 ## 14. Roadmap (anchored on the code)
 
-- **Phase 0 — done:** node system (`Node`), icosahedron plan
-  (`IcosahedronPlan`), debug viewer, `mesh-validator`.
+- **Phase 0 — done:** node system (`Node`) and debug viewer.
 - **Phase 1 — geometry (Next):** spherical projection, relaxation, dual
   mesh -> hex/pent cells.
 - **Phase 2 — terrain:** tectonics, base elevation, FBM refinement, sea
@@ -377,8 +348,7 @@ geological time is ever wanted (Tier 3 only):
   isostasy.
 
 Each phase lands with its spec under `docs/book/specs/` and keeps the
-definition of done in `AGENTS.md` (fmt, clippy, tests, mesh-validator,
-spec accuracy).
+definition of done in `AGENTS.md` (fmt, clippy, tests, spec accuracy).
 
 ---
 

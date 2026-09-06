@@ -23,14 +23,26 @@ bidirectional links) and a Vulkan debug viewer to visualize it.
 cargo run --bin planet-crafter
 ```
 
-A window opens showing the node visualization:
+A window opens showing the node visualization in a 3D perspective view:
 
 - **1** — one node, no split
 - **2** — split node (center + 3 corner nodes)
-- **3** — pentagonal base plan (live)
-- **4** — dual-mesh interlocked plan (live)
-- **S** — subdivide the current plan one level (live scenes)
-- **R** — regenerate the current plan
+- **3** — icosphere (live)
+- **Left drag** (outside the checkbox panel) or **W / A / S / D** — orbit the
+  camera around the scene
+- **Mouse wheel** — zoom the camera
+- **R** — reset the camera to the head-on view
+- **Left / Right arrows** — decrease / increase the icosphere subdivision
+  level (0-5)
+- **Down / Up arrows** — shrink / grow the icosphere radius
+- **E / Q** — split the whole scene one generation deeper / merge it back
+  (all screens; on the icosphere this rebuilds like the arrow keys)
+- **H** — toggle the north/south hemisphere split: the north half
+  (`z >= origin.z`, facing the viewer) moves right and the south half left
+  so the two halves can be inspected separately
+- **V** — toggle the "link violations" highlight: links with a broken
+  back-port record are overdrawn in orange. Healthy meshes (including the
+  icosphere) show none — it is a corruption indicator
 - Close the window to exit
 
 For an optimized build: `cargo run --release`.
@@ -40,7 +52,8 @@ direction arrows (I/J/K in red/green/blue), a `direction_of_node` arrow
 (purple), a dashed arrow toward the origin, child links, a center dot, and
 text labels (name/level and A/B/C corner letters). A checkbox panel
 (top-left) toggles each of these attributes: left-click a checkbox to turn
-the matching attribute on or off.
+the matching attribute on or off. The scene is depth-tested 3D: orbiting
+only moves the camera, so the geometry is never rebuilt.
 
 ## Development
 
@@ -56,7 +69,7 @@ Cargo.toml
 crates/
   engine/   — reusable geometry, topology, scene data, text, Vulkan viewer
   game/     — application binary and content policy
-  tools/    — asset/developer tooling (e.g. mesh-validator)
+  tools/    — asset/developer tooling
 assets/
   fonts/    — bundled JetBrains Mono (SIL OFL), embedded via include_bytes!
 docs/     — target architecture, handbook, and per-module specifications

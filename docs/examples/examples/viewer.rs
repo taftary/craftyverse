@@ -5,19 +5,19 @@
 //!
 //! See `docs/book/practices/testing.md`.
 
-use glam::Vec2;
-use planet_crafter_engine::node::{Labeling, Node};
+use glam::Vec3;
+use planet_crafter_engine::node::Node;
 use planet_crafter_engine::render::{Scenario, run};
 
 fn main() {
     let node = Node::new(
-        Vec2::Y,
-        Vec2::ZERO,
-        Vec2::ZERO,
-        2.0,
-        1.0,
         "root",
-        Labeling::Normal,
+        [
+            Vec3::new(0.0, 2.0 / 3.0, 0.0),
+            Vec3::new(0.5, -1.0 / 3.0, 0.0),
+            Vec3::new(-0.5, -1.0 / 3.0, 0.0),
+        ],
+        Vec3::ZERO,
     );
     run(vec![Scenario::Static(vec![node])]);
 }

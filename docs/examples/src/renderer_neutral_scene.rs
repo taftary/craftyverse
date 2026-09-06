@@ -5,30 +5,32 @@
 //!
 //! See `docs/book/specs/scene.md` and `docs/book/specs/render.md`.
 
-use glam::Vec2;
-use planet_crafter_engine::node::{Labeling, Node};
+use glam::Vec3;
+use planet_crafter_engine::node::Node;
 use planet_crafter_engine::scene::build_scene;
 
 /// Runs the renderer-neutral-scene demonstration.
 ///
-/// A single node is turned into lines, triangles, text labels, and UI
-/// checkboxes without touching any Vulkan object.
+/// A single node is turned into lines, triangles, world-anchored labels, and
+/// UI checkboxes without touching any Vulkan object.
 pub fn run() {
     let node = Node::new(
-        Vec2::Y,
-        Vec2::ZERO,
-        Vec2::ZERO,
-        2.0,
-        1.0,
         "root",
-        Labeling::Normal,
+        [
+            Vec3::new(0.0, 2.0 / 3.0, 0.0),
+            Vec3::new(0.5, -1.0 / 3.0, 0.0),
+            Vec3::new(-0.5, -1.0 / 3.0, 0.0),
+        ],
+        Vec3::ZERO,
     );
 
-    let scene = build_scene(&[node], Vec2::new(800.0, 600.0), &Default::default());
+    let scene = build_scene(&[node], &Default::default());
     assert!(!scene.lines.is_empty());
     assert!(!scene.triangles.is_empty());
+    assert!(!scene.labels.is_empty());
     assert!(!scene.texts.is_empty());
     assert!(!scene.checkboxes.is_empty());
+    assert!(scene.fit_radius > 0.0);
 }
 
 #[cfg(test)]

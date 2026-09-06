@@ -26,6 +26,7 @@ use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
 use vulkano::pipeline::graphics::color_blend::{
     AttachmentBlend, ColorBlendAttachmentState, ColorBlendState,
 };
+use vulkano::pipeline::graphics::depth_stencil::{DepthState, DepthStencilState};
 use vulkano::pipeline::graphics::input_assembly::{InputAssemblyState, PrimitiveTopology};
 use vulkano::pipeline::graphics::multisample::MultisampleState;
 use vulkano::pipeline::graphics::rasterization::RasterizationState;
@@ -165,7 +166,7 @@ pub(crate) fn create_swapchain(
 }
 
 /// Single render pass: one color attachment (the swapchain image), cleared
-/// then stored.
+/// then stored, plus a depth attachment (cleared, not stored).
 pub(crate) fn create_render_pass(
     device: &Arc<Device>,
     swapchain: &Arc<Swapchain>,
@@ -179,16 +180,47 @@ pub(crate) fn create_render_pass(
                 load_op: Clear,
                 store_op: Store,
             },
+            depth: {
+                format: Format::D32_SFLOAT,
+                samples: 1,
+                load_op: Clear,
+                store_op: DontCare,
+            },
         },
-        pass: { color: [color], depth_stencil: {} },
+        pass: { color: [color], depth_stencil: {depth} },
     )
     .expect("failed to create render pass")
 }
 
-/// One framebuffer per swapchain image; recreated together with the
-/// swapchain on window resize.
+/// Depth buffer image view (D32_SFLOAT) at the swapchain extent; recreated
+/// together with the swapchain on window resize.
+pub(crate) fn create_depth_view(
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    extent: [u32; 2],
+) -> Arc<ImageView> {
+    let image = Image::new(
+        memory_allocator.clone(),
+        ImageCreateInfo {
+            image_type: ImageType::Dim2d,
+            format: Format::D32_SFLOAT,
+            extent: [extent[0], extent[1], 1],
+            usage: ImageUsage::DEPTH_STENCIL_ATTACHMENT,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            ..Default::default()
+        },
+    )
+    .expect("failed to create depth image");
+    ImageView::new_default(image).expect("failed to create depth image view")
+}
+
+/// One framebuffer per swapchain image, each with the shared depth view;
+/// recreated together with the swapchain on window resize.
 pub(crate) fn create_framebuffers(
     images: &[Arc<Image>],
+    depth_view: &Arc<ImageView>,
     render_pass: &Arc<RenderPass>,
 ) -> Vec<Arc<Framebuffer>> {
     images
@@ -198,7 +230,7 @@ pub(crate) fn create_framebuffers(
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
-                    attachments: vec![view],
+                    attachments: vec![view, depth_view.clone()],
                     ..Default::default()
                 },
             )
@@ -208,8 +240,10 @@ pub(crate) fn create_framebuffers(
 }
 
 /// A graphics pipeline drawing `vertex_input` as `topology` with the given
-/// shaders; `blend` enables alpha blending (text quads) when `Some`. The
-/// viewport is dynamic, set per frame.
+/// shaders; `blend` enables alpha blending (text quads) when `Some`, and
+/// `depth` enables depth testing and writes (world geometry) — UI and text
+/// pipelines leave depth off so they always draw on top. The viewport is
+/// dynamic, set per frame.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn graphics_pipeline(
     device: &Arc<Device>,
@@ -218,6 +252,7 @@ pub(crate) fn graphics_pipeline(
     vertex_input: VertexBufferDescription,
     topology: PrimitiveTopology,
     blend: Option<AttachmentBlend>,
+    depth: bool,
     subpass: &Subpass,
 ) -> Arc<GraphicsPipeline> {
     let stages = [
@@ -231,6 +266,14 @@ pub(crate) fn graphics_pipeline(
             .unwrap(),
     )
     .unwrap();
+    let depth_stencil_state = if depth {
+        DepthStencilState {
+            depth: Some(DepthState::simple()),
+            ..Default::default()
+        }
+    } else {
+        DepthStencilState::default()
+    };
     GraphicsPipeline::new(
         device.clone(),
         None,
@@ -244,6 +287,7 @@ pub(crate) fn graphics_pipeline(
             viewport_state: Some(ViewportState::default()),
             rasterization_state: Some(RasterizationState::default()),
             multisample_state: Some(MultisampleState::default()),
+            depth_stencil_state: Some(depth_stencil_state),
             color_blend_state: Some(ColorBlendState::with_attachment_states(
                 subpass.num_color_attachments(),
                 ColorBlendAttachmentState {

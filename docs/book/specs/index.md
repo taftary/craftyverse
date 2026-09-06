@@ -12,9 +12,8 @@ Use these specifications when you need the exact contract, invariants, or
 behavior of a living module. When the migration moves a responsibility into a
 new crate, the corresponding spec page should move or be retired alongside it.
 
-- [Node](node.md) — isosceles triangle geometry, directional vectors, and
+- [Node](node.md) — 3D triangle geometry, directional vectors, and
   bidirectional links.
-- [IcosahedronPlan](icosahedron-plan.md) — pentagonal base generation and whole-mesh subdivision.
 - [Scene](scene.md) — CPU-side scene generation for the debug viewer.
 - [Text](text.md) — bitmap-font glyph atlas and text layout.
 - [Render](render.md) — Vulkan debug viewer and window integration.

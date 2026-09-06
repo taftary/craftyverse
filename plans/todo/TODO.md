@@ -15,11 +15,9 @@ and the per-feature overlays in each feature file.
 ## Phase 0 — Foundation (Implemented)
 
 - [x] `Node` system (hierarchical triangle node, `split`, `destroy`)
-- [x] `IcosahedronPlan` (dual-pentagon interlocked mesh, whole-mesh split)
-- [x] Vulkan debug viewer (keys `1`-`4`, `S`, `R`) — per-node overlays:
+- [x] Vulkan debug viewer — per-node overlays:
   outline, I/J/K arrows, `direction_of_node`, origin arrow, child links,
   open-port markers, center dot, labels, checkbox toggles
-- [x] `mesh-validator` (headless wiring check)
 - [x] Unit tests beside implementation; specs under `docs/book/specs/`
 
 ## Phase 1 — Geometry (Next)
@@ -101,7 +99,7 @@ and the per-feature overlays in each feature file.
 - [ ] **10 — LOD and streaming** → [feature](features/phase-4-lod/10-lod-streaming.md)
   - [ ] LOD0: whole planet at split level 5 (~10k cells), full pipeline once
   - [ ] Selective/local split of a chosen subtree
-  - [ ] Seam stitching to coarser surroundings; extend `mesh-validator`
+  - [ ] Seam stitching to coarser surroundings; extend topology tests
   - [ ] Camera-driven regional refinement + regional fields
   - [ ] Async streaming; free far patches; Vulkan buffer strategy
   - [ ] Ground LOD (heightmap tiles, GPU tessellation) — only after regional works
@@ -124,7 +122,6 @@ and the per-feature overlays in each feature file.
 - [ ] `cargo fmt --check` passes
 - [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` passes
 - [ ] `cargo test --workspace --all-targets` and `cargo test --doc --workspace` pass
-- [ ] `cargo run -p planet-crafter-tools --bin mesh-validator` exits 0 (if wiring changed)
 - [ ] Debug screen shipped per the `plans/features/README.md` standard
   (dedicated scenario, overlay vocabulary, per-cell inspection); new
   keys/toggles documented in `README.md`

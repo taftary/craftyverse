@@ -2,258 +2,275 @@
 
 ### Overview
 
-The `Node` class represents a geometric structure composed of a center point, directional vectors, points, dimensions (`baseLength` and `height`), and recursive child nodes. This design supports hierarchical or fractal-like spatial organization based on isosceles triangular subdivisions.
+`Node` is the engine's 3D geometric and topological unit. It represents one
+non-degenerate triangle in a 3D plane, derives its geometry from
+explicit points, and stores up to three reciprocal links to adjacent nodes.
+
+The Rust implementation uses `Vec3` and the shared reference type
+`NodeRef = Rc<RefCell<Node>>`. The caller supplies valid triangle points and
+keeps node names unique.
 
 ### Structure
 
-* **Geometry**
-* `center` — `Point2` representing the center of the node.
-* `direction_to_origin` — `Vector2` from the node center toward the origin.
-* `directions` — Fixed triplet of directional vectors (`[i, j, k]`).
-* `points` — Fixed triplet of `Point2` instances (`[A, B, C]`) representing the node's triangle corner points.
-* `direction_of_node` — `Vector2` defining the orientation of the isosceles triangle (points toward apex point A, with base BC perpendicular to it).
-* `baseLength` — Float representing the length of the base edge BC of the node's triangle.
-* `height` — Float representing the height of the node's isosceles triangle (distance from base BC to apex point A).
+#### Geometry
 
+- `center: Vec3` - centroid of `points`.
+- `direction_to_origin: Vec3` - `origin - center`.
+- `directions: [Vec3; 3]` - outward perpendicular directions `[I, J, K]`.
+- `points: [Vec3; 3]` - triangle corners `[A, B, C]`.
+- `direction_of_node: Vec3` - normalized altitude from line `BC` toward `A`.
+- `base_length: f32` - length of base `BC`.
+- `height: f32` - perpendicular distance from apex `A` to base `BC`.
 
-* **Topology**
-* `children` — Fixed triplet of node links (`[nodeI, nodeJ, nodeK]`). Each slot is a bidirectional connection to an adjacent node: `children[0]` is the link in direction I, `children[1]` in direction J, `children[2]` in direction K.
+#### Topology
 
+- `children: [Option<NodeRef>; 3]` - adjacent nodes in I/J/K order.
+- `back_ports: [Option<usize>; 3]` - port of the back-link on the neighbor,
+  recorded by the link wiring.
+- Links are bidirectional with an explicit back-port: if
+  `A.children[x] == B` then `A.back_ports[x] == Some(y)` and
+  `B.children[y] == A`. Links created by `split_node` also follow the
+  `0 <-> 2`, `1 <-> 1` port pattern, but that pattern is not an invariant -
+  it cannot hold on every edge of a welded sphere (see
+  `build_icosphere()`).
 
-* **Identity**
-* `name` — String uniquely identifying the node. This value must be unique across all nodes.
-* `level` — Integer representing the split depth of the node (defaults to 0). Minimum is 0 (root node); there is no maximum.
+#### Identity
 
-
+- `name: String` - caller-provided identifier.
+- `level: u32` - split depth; roots start at `0`.
 
 ### Pseudocode Representation
 
-```
-class Node {
-  // --- Geometry ---
-  Point2 center
-  Vector2 direction_to_origin
-  Vector2[3] directions          // [i, j, k]
-  Point2[3] points               // [A, B, C] — triangle corner points
-  Vector2 direction_of_node      // Vector2 pointing toward apex A, perpendicular to base BC
-  Float baseLength               // length of the base edge BC
-  Float height                   // height of the isosceles triangle (base BC to apex A)
-
-  // --- Topology ---
-  Node[3] children               // [nodeI, nodeJ, nodeK] — bidirectional links
-
-  // --- Identity ---
-  String name                    // unique identifier for the node
-  Integer level = 0              // split depth; >= 0, no upper bound
+```text
+struct Node {
+    Vec3 center
+    Vec3 direction_to_origin
+    Vec3[3] directions
+    Vec3[3] points              // [A, B, C]
+    Vec3 direction_of_node
+    Float base_length
+    Float height
+    NodeRef[3] children
+    Integer[3]? back_ports
+    String name
+    Integer level
 }
-
 ```
 
-### Isosceles Geometry & Direction Rules
+### Triangle Geometry and Direction Rules
 
-The node represents an **isosceles triangle** defined by points `[A, B, C]`, where `BC` forms the base and `A` is the apex point:
+The constructor receives `[A, B, C]`, where `BC` is the reference base edge and
+`A` is the remaining corner. The caller must provide a valid, non-degenerate
+triangle in a single 3D plane.
+Point order is part of the labeling contract: reversing B and C reverses the I
+and K labels.
 
-* **Orientation Vector (`direction_of_node`):** A `Vector2` pointing from the base `BC` toward point `A`.
-* **Base Alignment & Length:** Base `BC` is strictly perpendicular to `direction_of_node` with length `baseLength`.
-* **Height (`height`):** Perpendicular distance from base `BC` to apex point `A`.
-* **Direction Triplet:** Direction vectors follow a uniform rule computed from the node's **own** points triplet:
-* `I` = perpendicular to AB, pointing from the center toward edge AB
-* `J` = perpendicular to BC, pointing from the center toward edge BC
-* `K` = perpendicular to CA, pointing from the center toward edge CA
+For every node, directions are computed from that node's own points:
 
-
+- `I` is in the triangle plane, perpendicular to `AB`, and points from the
+    center toward edge `AB`.
+- `J` is in the triangle plane, perpendicular to `BC`, and points from the
+    center toward edge `BC`.
+- `K` is in the triangle plane, perpendicular to `CA`, and points from the
+    center toward edge `CA`.
 
 ### Methods
 
-* `new(direction_of_node, center, origin, baseLength, height, name, labeling)` — Creates a node and initializes its geometry (see Constructor below).
-* `split()` — Splits the current node into four new nodes according to the geometric construction, direction rules, topology, and identity rules described below. When splitting, the method MUST increment the level for each new node. `split()` may be called multiple times on the same node; each call produces four new nodes.
-* `destroy()` — Severs all bidirectional `children` links so the node can be freed (see destroy() specification below).
+- `Node::new(name, points, origin) -> NodeRef` creates a level-zero node.
+- `split_node(node: &Node) -> NodeRef` creates four level-plus-one nodes.
+- `split_nodes(first: &NodeRef) -> Vec<NodeRef>` splits a whole connected
+  mesh one generation deeper and re-welds it.
+- `unsplit_nodes(first: &NodeRef) -> Vec<NodeRef>` merges a split generation
+  back into its parents.
+- `Node::destroy(&mut self)` clears reciprocal child links.
+- `collect_nodes(root)` breadth-first traverses reachable nodes once each.
+
+There is no `Labeling` argument and no direction/center/dimension constructor.
 
 ### Constructor
 
 **Signature**
 
-```
-new(direction_of_node: Vector2, center: Point2, origin: Vector2, baseLength: Float, height: Float, name: String, labeling: Labeling)
-
+```text
+Node::new(name, points, origin) -> NodeRef
 ```
 
 **Parameters**
 
-* `direction_of_node` — Direction `Vector2` for the isosceles triangle pointing toward point A (perpendicular to base BC).
-* `center` — Center `Point2` of the node.
-* `origin` — Position `Vector2` of the origin, used to orient the node.
-* `baseLength` — Length of the base edge BC of the node's triangle.
-* `height` — Height of the isosceles triangle from base BC to apex point A.
-* `name` — Unique name identifying the node. This value must be unique across all nodes.
-* `labeling` — Corner labeling convention (`Labeling::Normal` or `Labeling::Mirrored`). `Mirrored` swaps the B/C corner assignment (which endpoint of the base edge is labeled B), and therefore swaps the I/K direction vectors.
+- `name: impl Into<String>` - unique node identifier.
+- `points: [Vec3; 3]` - triangle points `[A, B, C]`.
+- `origin: Vec3` - position used to compute `direction_to_origin`.
 
 **Initialization**
 
-* Stores `direction_of_node` (normalized), `center`, `baseLength`, and `height`.
-* Stores the unique `name`.
-* Computes `direction_to_origin = origin - center`.
-* Builds the isosceles triangle from `center`, `direction_of_node`, `baseLength` (BC), and `height` as an isosceles triangle whose centroid is `center`: base `BC` is perpendicular to `direction_of_node`, and apex point `A` is aligned with `direction_of_node` at distance `height` from base `BC`. The B/C corner assignment follows `labeling`.
-* Computes `points` (`[A, B, C]`) and `directions` (`[i, j, k]`) from that triangle.
-* `children` starts empty (no links).
-* `level` defaults to 0.
+1. Store `name` and `points`.
+2. Compute `center` as the centroid of the three points.
+3. Compute `direction_of_node` from the perpendicular projection of `A` onto
+    line `BC` and normalize the resulting altitude.
+4. Compute `base_length`, the perpendicular `height`, and the I/J/K directions.
+5. Set `direction_to_origin = origin - center`.
+6. Set `children` to `[None, None, None]` and `level` to `0`.
 
-`labeling` is a construction-time choice only — it is not stored. Afterwards it is implicit in the `points` triplet, and `split()` propagates it automatically through the child points triplets.
+The constructor assumes valid input rather than returning a validation error.
 
-### split() Method Specification
-
-#### Geometric Construction Rules
-
-All subdivision is computed from the node's points — a node stores no triangle points other than its `points` triplet.
-
-1. **Compute Point Midpoints**
-Let `pA`, `pB`, `pC` be the node's points triplet:
-* `pAB` = midpoint(pA, pB)
-* `pBC` = midpoint(pB, pC)
-* `pCA` = midpoint(pC, pA)
-
-
-These three midpoints form the center triangle.
-2. **Compute New Centers**
-Each new node gets a center computed from its points triplet:
-* `CenterI` = centroid(pA, pAB, pCA)
-* `CenterJ` = centroid(pB, pBC, pAB)
-* `CenterK` = centroid(pC, pCA, pBC)
-* `CenterMiddle` = centroid(pAB, pBC, pCA)
-
-
-3. **Point Subdivision**
-Each new node receives its points triplet:
-* `NodeI` (corner point pA) — `[pA, pAB, pCA]`
-* `NodeJ` (corner point pB) — `[pAB, pB, pBC]`
-* `NodeK` (corner point pC) — `[pCA, pBC, pC]`
-* `NodeCenter` (middle) — `[pBC, pAB, pCA]`
-
-
-4. **Dimension Halving (Base Length & Height)**
-Each newly generated node receives half the base length and half the height of the parent triangle:
-* `new_baseLength = parent.baseLength / 2.0`
-* `new_height = parent.height / 2.0`
-
-
-
-#### Direction & Vector Propagation Rules
-
-1. **Node Direction Propagation (`direction_of_node`)**
-* Corner nodes (`NodeI`, `NodeJ`, `NodeK`) preserve the parent's pointing direction:
-* `NodeI.direction_of_node = parent.direction_of_node`
-* `NodeJ.direction_of_node = parent.direction_of_node`
-* `NodeK.direction_of_node = parent.direction_of_node`
-
-
-* The center node (`NodeCenter`) is inverted relative to the parent triangle, so its pointing vector is flipped:
-* `NodeCenter.direction_of_node = -parent.direction_of_node`
-
-
-
-
-2. **Direction Vector Recalculation**
-For each new node:
-* Compute vector `V = center → origin` and store it as the node's `direction_to_origin`.
-* Apply the uniform direction rule to the new node's **own** points triplet:
-* `I` ⊥ AB, pointing from the center toward edge AB
-* `J` ⊥ BC, pointing from the center toward edge BC
-* `K` ⊥ CA, pointing from the center toward edge CA
-
-
-
-
-
-#### Topology Rules
-
-1. **Internal Node Interconnection**
-* `split()` produces exactly 4 nodes: `NodeCenter` and the corner nodes `NodeI`, `NodeJ`, `NodeK`.
-* Only `NodeCenter` is connected to the corner nodes through bidirectional `children` links. Each center port is linked to the corner node across its edge — center `I` ⊥ `pBC–pAB` faces `NodeJ`, center `J` ⊥ `pAB–pCA` faces `NodeI`, center `K` ⊥ `pCA–pBC` faces `NodeK`:
-* `NodeCenter.children[0] = NodeJ` and reciprocally `NodeJ.children[2] = NodeCenter`
-* `NodeCenter.children[1] = NodeI` and reciprocally `NodeI.children[1] = NodeCenter`
-* `NodeCenter.children[2] = NodeK` and reciprocally `NodeK.children[0] = NodeCenter`
-
-
-* `split()` returns `NodeCenter`. The caller decides how to reattach the corner nodes to neighboring split nodes.
-
-
-2. **No Cross-Connections**
-* Split does not connect `NodeI`, `NodeJ`, `NodeK` directly to each other.
-
-
-
-#### Node Identity Rules
-
-Each new node must store:
-
-* New points
-* New center
-* New `direction_to_origin`
-* New directions (`[i, j, k]`)
-* Updated `direction_of_node` (`Vector2`)
-* New `baseLength` (`parent.baseLength / 2.0`)
-* New `height` (`parent.height / 2.0`)
-* `name` — derived with suffix: `<parent>.I`, `<parent>.J`, `<parent>.K`, `<parent>.C`
-* `level` — set to `parent.level + 1`
-
-#### Full Method Specification
+### split_node() Function Specification
 
 **Signature**
 
+```text
+split_node(node: &Node) -> NodeRef
 ```
-Node split()
 
+`node` remains unchanged. The function reconstructs the origin as
+`center + direction_to_origin`, then computes:
+
+```text
+pAB = midpoint(A, B)
+pBC = midpoint(B, C)
+pCA = midpoint(C, A)
+
+NodeI      = [A,   pAB, pCA]
+NodeJ      = [pAB, B,   pBC]
+NodeK      = [pCA, pBC, C]
+NodeCenter = [pBC, pAB, pCA]
 ```
 
-**Returns**
+Each child derives its center, dimensions, orientation, directions, and origin
+vector from its own points. Child dimensions and orientations are not copied
+from `node`: they are recomputed from the child triangle. Every child
+receives level `node.level + 1` and a name with the suffix `.I`, `.J`, `.K`,
+or `.C`.
 
-* Center node connected to each corner node (`NodeI`, `NodeJ`, `NodeK`).
+Only center-to-corner links are created:
 
-**Steps**
+- `NodeCenter.children[0] = NodeJ`, with `NodeJ.children[2] = NodeCenter`.
+- `NodeCenter.children[1] = NodeI`, with `NodeI.children[1] = NodeCenter`.
+- `NodeCenter.children[2] = NodeK`, with `NodeK.children[0] = NodeCenter`.
 
-1. Record `old_level = this.level`.
-2. Compute point midpoints (`pAB`, `pBC`, `pCA`).
-3. Build the 4 new points triplets.
-4. Compute centers (`CenterI`, `CenterJ`, `CenterK`, `CenterMiddle`).
-5. Compute `V = center → origin` and set each new node's `direction_to_origin`.
-6. Propagate `direction_of_node` (corner nodes keep `parent.direction_of_node`; center node gets `-parent.direction_of_node`).
-7. Compute perpendicular directions `[i, j, k]` for all 4 new nodes.
-8. Set `baseLength = parent.baseLength / 2.0` and `height = parent.height / 2.0` for all 4 new nodes.
-9. Create nodes and set `node.level = old_level + 1`.
-10. Establish internal interconnections (`NodeCenter` ↔ `NodeI/J/K`).
-11. Return `NodeCenter`.
+The corner nodes are not connected to each other. Callers decide whether and
+how to reconnect corner nodes to neighboring split nodes.
+
+### split_nodes() Function Specification
+
+**Signature**
+
+```text
+split_nodes(first: &NodeRef) -> Vec<NodeRef>
+```
+
+The mesh-level counterpart of `split_node()`: refines the whole connected
+component in one call.
+
+1. Collect every node reachable from `first` (`collect_nodes`). Nodes not
+   reachable from `first` are untouched.
+2. Split every collected node with `split_node()`.
+3. Weld the new corners across every old link: for each old link
+   `N.port p <-> M.port q`, the two half-edges of the shared edge are linked
+   corner-to-corner, with the ports resolved geometrically (exact vertex
+   comparison; corner vertices and flat edge midpoints are bit-identical on
+   both sides of a shared edge). Open ports stay open.
+4. `destroy()` every old node so the old generation can deallocate.
+
+Returns `[I, J, K, C]` per old node, in old-node order. References kept to
+old nodes point at unlinked nodes.
+
+### unsplit_nodes() Function Specification
+
+**Signature**
+
+```text
+unsplit_nodes(first: &NodeRef) -> Vec<NodeRef>
+```
+
+The reverse of `split_nodes()`: merges split groups back into their parents.
+
+1. Collect every node reachable from `first`.
+2. Group nodes by base name (name without a trailing `.I` / `.J` / `.K` /
+   `.C` suffix). A group merges only when it has exactly those four members,
+   all at the same level `>= 1`; anything else (a base mesh, a mesh that was
+   never split, name collisions) is kept unchanged.
+3. Rebuild each parent: name = base name, level = group level - 1,
+   `A = I.points[0]`, `B = J.points[1]`, `C = K.points[2]`, origin recovered
+   as `center + direction_to_origin`. The corners hold the exact parent
+   vertices, so this is exact even for sphere meshes with projected
+   midpoints.
+4. Re-link the parents across the old edges: a corner's external port
+   number equals its parent edge's port number, so every link between
+   corners of different groups maps verbatim to a parent link with the
+   recorded back-port.
+5. `destroy()` the four children of every merged group. Links from kept
+   nodes into a merged group are severed by the same cleanup.
+
+Returns the new parents in group discovery order, followed by the unchanged
+nodes. Calling it on an unsplittable mesh returns the same nodes.
 
 ### destroy() Method Specification
 
 **Signature**
 
+```text
+Node::destroy(&mut self)
 ```
-void destroy()
-```
 
-**Steps**
+For each occupied child port, `destroy()` clears the neighbor's recorded
+back-port slot first, then the local port and back-port record. Because the
+back-port is stored explicitly, `destroy()` is exact for any link. Rust
+does not explicitly destroy `self`;
+the node is released when its final `Rc` reference is dropped. This operation is
+required to break cycles formed by reciprocal links.
 
-For each link, clear the neighbor's reciprocal back-link first, then the link itself (mirroring the interconnections established by `split()`):
+### collect_nodes() Method Specification
 
-1. If `children[0]` is set: `children[0].children[2] = null`, then `children[0] = null`.
-2. If `children[1]` is set: `children[1].children[1] = null`, then `children[1] = null`.
-3. If `children[2]` is set: `children[2].children[0] = null`, then `children[2] = null`.
-4. The node destroys itself. In the Rust implementation there is no explicit self-destruction: the node is freed automatically once its last `Rc` reference is dropped.
+`collect_nodes(root)` follows child links breadth-first and deduplicates by
+`Rc` pointer identity. Reciprocal links therefore do not cause repeated nodes
+or infinite traversal.
+
+### build_icosphere() Function Specification
+
+`build_icosphere(name_prefix, radius, subdivisions, origin)` builds a closed,
+watertight geodesic sphere on top of `Node`. It seeds a regular icosahedron
+(12 vertices, 20 faces) at `radius` around `origin`, links the 20 base faces
+corner-to-corner, then refines every leaf one full generation at a time. New
+edge midpoints are projected back onto the sphere
+(`p' = origin + normalize(p - origin) * radius`), computed exactly once per
+shared edge through a transient weld cache keyed by parent-node identity.
+After each generation the outgoing level is `destroy()`ed and dropped.
+`subdivisions = 0` returns the linked 20-face icosahedron.
+
+It returns an `IcosphereMesh` with the fully linked leaf `faces`
+(`20 * 4^subdivisions`) and the closed-form `face_count` / `vertex_count`
+(`10 * 4^subdivisions + 2`). Cleanup uses the existing `collect_nodes` +
+`destroy()` pattern.
+
+Port pattern note: every welded link is fully correct (recorded back-port,
+exact `destroy()`), but the `0 <-> 2`, `1 <-> 1` pattern cannot hold on
+every edge of a closed icosahedron-based mesh — satisfying it on all 30 base
+edges is a constraint system over the dodecahedron dual with no solution.
+The base face labeling maximizes conformance: only 6 of the 30 base edges
+(and their subdivision descendants) have a back-port different from
+`2 - index`. This is a topological curiosity, not a defect — which is
+exactly why the back-port is stored rather than assumed.
 
 ### Files (Rust implementation)
 
-Folder module `crates/engine/src/node/`:
-
-- **`mod.rs`** — `Node`, `NodeRef`, `Labeling` and the `new`/`split`/`destroy` methods.
-- **`geometry.rs`** — pure triangle-geometry helpers (`triangle_points`, `midpoint`, `perpendicular_toward`, `compute_directions`, `child_node`).
-- **`topology.rs`** — the child-link conventions in one place: `reciprocal_index` (the `0 <-> 2`, `1 <-> 1` mapping), `link` (reciprocal link setter) and `collect_nodes` (breadth-first traversal, deduplicated by pointer identity).
+- `crates/engine/src/node/mod.rs` - `Node`, `NodeRef`, construction, and
+  destruction.
+- `crates/engine/src/node/geometry.rs` - midpoint, perpendicular-direction,
+  and child-node helpers.
+- `crates/engine/src/node/topology.rs` - reciprocal links, graph traversal,
+  and the corner-weld lookups shared by sphere construction and mesh-level
+  splits.
+- `crates/engine/src/node/subdivision.rs` - triangle subdivision
+  (`split_node`, `split_nodes`, `unsplit_nodes`).
+- `crates/engine/src/node/icosphere.rs` - geodesic sphere construction
+  (`build_icosphere`), with tests in `crates/engine/src/node/icosphere/tests.rs`.
+- `crates/engine/src/node/tests.rs` - geometry, topology, lifecycle, traversal,
+  and origin-propagation tests.
 
 ### Rules
 
-- A node's `direction_of_node` is normalized and perpendicular to base `BC`.
-- `baseLength` and `height` are halved at every `split()`.
-- `level` starts at `0` and increments by `1` for each split generation.
-- Child links are reciprocal: if `A.children[x] == B`, then `B` links back to `A`
-  through the reciprocal port (`0 <-> 2`, `1 <-> 1`).
-- `destroy()` clears the reciprocal back-link before clearing the local link.
-
+- Roots start at level `0`; each split generation increments the level by `1`.
+- `direction_of_node` is the normalized altitude from line `BC` toward `A`.
+- `base_length` and `height` are derived independently for every child.
+- Child links are bidirectional and carry an explicit `back_ports` record.
+- `destroy()` clears the recorded back-port slot before local links.

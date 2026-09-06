@@ -1,11 +1,14 @@
 //! The renderer: owns the Vulkan objects and the scene vertex buffers, and
 //! draws frames in a fixed order — world lines, world triangles, UI lines,
-//! UI triangles, then alpha-blended text.
+//! UI triangles, then alpha-blended text. World geometry is transformed on
+//! the GPU by the orbit-camera view-projection matrix (a push constant), so
+//! camera changes never rebuild the geometry buffers; only the label anchors
+//! are re-projected on the CPU.
 
 use std::sync::Arc;
 
-use glam::Vec2;
-use vulkano::buffer::Subbuffer;
+use glam::{Mat4, Vec2, Vec3, Vec4};
+use vulkano::buffer::{BufferContents, Subbuffer};
 use vulkano::command_buffer::allocator::{
     StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo,
 };
@@ -16,6 +19,7 @@ use vulkano::command_buffer::{
 use vulkano::descriptor_set::DescriptorSet;
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::device::{Device, DeviceExtensions, Queue};
+use vulkano::image::view::ImageView;
 use vulkano::instance::Instance;
 use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::color_blend::AttachmentBlend;
@@ -32,12 +36,12 @@ use vulkano::{Validated, VulkanError};
 use winit::window::Window;
 
 use crate::node::NodeRef;
-use crate::scene::{self, Attribute, Checkbox, DisplayOptions, SceneMesh};
+use crate::scene::{self, Attribute, Checkbox, DisplayOptions, OrbitCamera, TextRun, WorldLabel};
 use crate::text::TextAtlas;
 
 use super::setup;
 use super::shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, load_shader};
-use super::vertices::{GeomVertex, PushTransform, TextVertexGpu};
+use super::vertices::{GeomVertex, PushMatrix, PushTransform, TextVertexGpu};
 
 /// Owns the window, the Vulkan objects and the current scene's vertex
 /// buffers; redraws on request from the viewer.
@@ -49,8 +53,11 @@ pub(crate) struct Renderer {
     swapchain: Arc<Swapchain>,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
+    depth_view: Arc<ImageView>,
     line_pipeline: Arc<GraphicsPipeline>,
     tri_pipeline: Arc<GraphicsPipeline>,
+    ui_line_pipeline: Arc<GraphicsPipeline>,
+    ui_tri_pipeline: Arc<GraphicsPipeline>,
     text_pipeline: Arc<GraphicsPipeline>,
     text_descriptor_set: Arc<DescriptorSet>,
     memory_allocator: Arc<StandardMemoryAllocator>,
@@ -63,8 +70,18 @@ pub(crate) struct Renderer {
     text_buffer: Option<Subbuffer<[TextVertexGpu]>>,
     /// Checkbox hit rectangles of the current scene (pixel space).
     checkboxes: Vec<Checkbox>,
-    world_to_clip: PushTransform,
-    pixel_to_clip: PushTransform,
+    /// World-anchored labels of the current scene, re-projected on camera
+    /// changes.
+    labels: Vec<WorldLabel>,
+    /// Checkbox labels of the current scene (pixel space).
+    ui_texts: Vec<TextRun>,
+    /// Content bounding sphere of the current scene, the camera fit target.
+    fit_center: Vec3,
+    fit_radius: f32,
+    /// Camera applied to the current scene (updated by `set_camera`).
+    camera: OrbitCamera,
+    world_mvp: PushMatrix,
+    pixel_mvp: PushMatrix,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     window_resized: bool,
 }
@@ -100,7 +117,8 @@ impl Renderer {
         let (swapchain, images) =
             setup::create_swapchain(&physical_device, &device, surface, &window);
         let render_pass = setup::create_render_pass(&device, &swapchain);
-        let framebuffers = setup::create_framebuffers(&images, &render_pass);
+        let depth_view = setup::create_depth_view(&memory_allocator, swapchain.image_extent());
+        let framebuffers = setup::create_framebuffers(&images, &depth_view, &render_pass);
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let geom_vs = load_shader(&device, GEOM_VERT, naga::ShaderStage::Vertex);
@@ -114,15 +132,37 @@ impl Renderer {
             GeomVertex::per_vertex(),
             PrimitiveTopology::LineList,
             None,
+            true,
             &subpass,
         );
         let tri_pipeline = setup::graphics_pipeline(
+            &device,
+            geom_vs.clone(),
+            geom_fs.clone(),
+            GeomVertex::per_vertex(),
+            PrimitiveTopology::TriangleList,
+            None,
+            true,
+            &subpass,
+        );
+        let ui_line_pipeline = setup::graphics_pipeline(
+            &device,
+            geom_vs.clone(),
+            geom_fs.clone(),
+            GeomVertex::per_vertex(),
+            PrimitiveTopology::LineList,
+            None,
+            false,
+            &subpass,
+        );
+        let ui_tri_pipeline = setup::graphics_pipeline(
             &device,
             geom_vs,
             geom_fs,
             GeomVertex::per_vertex(),
             PrimitiveTopology::TriangleList,
             None,
+            false,
             &subpass,
         );
         let text_pipeline = setup::graphics_pipeline(
@@ -132,6 +172,7 @@ impl Renderer {
             TextVertexGpu::per_vertex(),
             PrimitiveTopology::TriangleList,
             Some(AttachmentBlend::alpha()),
+            false,
             &subpass,
         );
 
@@ -153,8 +194,11 @@ impl Renderer {
             swapchain,
             render_pass,
             framebuffers,
+            depth_view,
             line_pipeline,
             tri_pipeline,
+            ui_line_pipeline,
+            ui_tri_pipeline,
             text_pipeline,
             text_descriptor_set,
             memory_allocator,
@@ -166,20 +210,29 @@ impl Renderer {
             ui_tri_buffer: None,
             text_buffer: None,
             checkboxes: Vec::new(),
-            world_to_clip: PushTransform::IDENTITY,
-            pixel_to_clip: PushTransform::IDENTITY,
+            labels: Vec::new(),
+            ui_texts: Vec::new(),
+            fit_center: Vec3::ZERO,
+            fit_radius: 1.0,
+            camera: OrbitCamera::default(),
+            world_mvp: PushMatrix::IDENTITY,
+            pixel_mvp: PushMatrix::IDENTITY,
             previous_frame_end: Some(sync::now(device).boxed()),
             window_resized: false,
         }
     }
 
-    /// Rebuilds the scene mesh for `scenario` and re-uploads all vertex
-    /// buffers. Cheap enough to run on scene switch, on resize and on
-    /// checkbox toggle.
-    pub(crate) fn set_scene(&mut self, scenario: &[NodeRef], options: &DisplayOptions) {
+    /// Window size in physical pixels.
+    fn viewport(&self) -> Vec2 {
         let size = self.window.inner_size();
-        let viewport = Vec2::new(size.width as f32, size.height as f32);
-        let mesh = scene::build_scene(scenario, viewport, options);
+        Vec2::new(size.width as f32, size.height as f32)
+    }
+
+    /// Rebuilds the current scene's mesh and re-uploads the geometry vertex
+    /// buffers. Runs on scene switch, on resize and on checkbox toggle —
+    /// never on camera changes (see `set_camera`).
+    pub(crate) fn set_scene(&mut self, scenario: &[NodeRef], options: &DisplayOptions) {
+        let mesh = scene::build_scene(scenario, options);
 
         let to_geom = |v: &scene::Vertex| GeomVertex {
             pos: v.pos.to_array(),
@@ -202,8 +255,37 @@ impl Renderer {
             mesh.ui_triangles.iter().map(to_geom).collect(),
         );
 
+        self.checkboxes = mesh.checkboxes;
+        self.labels = mesh.labels;
+        self.ui_texts = mesh.texts;
+        self.fit_center = mesh.fit_center;
+        self.fit_radius = mesh.fit_radius;
+        self.apply_camera();
+    }
+
+    /// Applies a new orbit camera: recomputes the view-projection push
+    /// constant and re-anchors the text labels — the only per-camera CPU
+    /// work. The geometry buffers are untouched.
+    pub(crate) fn set_camera(&mut self, camera: OrbitCamera) {
+        self.camera = camera;
+        self.apply_camera();
+    }
+
+    /// Recomputes the world/pixel transforms from the stored camera and
+    /// viewport, and rebuilds the text buffer for them.
+    fn apply_camera(&mut self) {
+        let viewport = self.viewport();
+        let mvp = self
+            .camera
+            .view_projection(self.fit_center, self.fit_radius, viewport);
+        self.world_mvp = PushMatrix::from(mvp);
+        self.pixel_mvp = PushMatrix::from(pixel_matrix(viewport));
+
         let mut text_data = Vec::new();
-        for run in &mesh.texts {
+        for run in scene::project_labels(&self.labels, &mvp, viewport)
+            .iter()
+            .chain(&self.ui_texts)
+        {
             text_data.extend(self.atlas.layout(
                 &run.text,
                 run.anchor,
@@ -223,16 +305,6 @@ impl Renderer {
                 })
                 .collect(),
         );
-
-        let SceneMesh {
-            world_to_clip,
-            pixel_to_clip,
-            checkboxes,
-            ..
-        } = mesh;
-        self.checkboxes = checkboxes;
-        self.world_to_clip = PushTransform::from(&world_to_clip);
-        self.pixel_to_clip = PushTransform::from(&pixel_to_clip);
     }
 
     /// Attribute whose checkbox contains `point` (physical pixels), if any.
@@ -288,7 +360,7 @@ impl Renderer {
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some([1.0, 1.0, 1.0, 1.0].into())],
+                    clear_values: vec![Some([1.0, 1.0, 1.0, 1.0].into()), Some(1.0.into())],
                     ..RenderPassBeginInfo::framebuffer(
                         self.framebuffers[image_index as usize].clone(),
                     )
@@ -313,27 +385,28 @@ impl Renderer {
             record_draw(
                 &mut builder,
                 &self.line_pipeline,
-                self.world_to_clip,
+                self.world_mvp,
                 lines,
                 None,
             );
         }
-        // …then filled triangles (arrowheads, dots) on top of the lines.
+        // …then filled triangles (arrowheads, dots) — depth-tested with the
+        // lines.
         if let Some(triangles) = &self.tri_buffer {
             record_draw(
                 &mut builder,
                 &self.tri_pipeline,
-                self.world_to_clip,
+                self.world_mvp,
                 triangles,
                 None,
             );
         }
-        // Checkbox panel, in pixel space.
+        // Checkbox panel, in pixel space (no depth test: always on top).
         if let Some(ui_lines) = &self.ui_line_buffer {
             record_draw(
                 &mut builder,
-                &self.line_pipeline,
-                self.pixel_to_clip,
+                &self.ui_line_pipeline,
+                self.pixel_mvp,
                 ui_lines,
                 None,
             );
@@ -341,8 +414,8 @@ impl Renderer {
         if let Some(ui_triangles) = &self.ui_tri_buffer {
             record_draw(
                 &mut builder,
-                &self.tri_pipeline,
-                self.pixel_to_clip,
+                &self.ui_tri_pipeline,
+                self.pixel_mvp,
                 ui_triangles,
                 None,
             );
@@ -352,7 +425,7 @@ impl Renderer {
             record_draw(
                 &mut builder,
                 &self.text_pipeline,
-                self.pixel_to_clip,
+                PushTransform::for_viewport(self.viewport()),
                 text,
                 Some(&self.text_descriptor_set),
             );
@@ -383,8 +456,8 @@ impl Renderer {
         }
     }
 
-    /// Recreates the swapchain and its framebuffers at the current window
-    /// size.
+    /// Recreates the swapchain, the depth view and the framebuffers at the
+    /// current window size.
     fn recreate_swapchain(&mut self) {
         let image_extent: [u32; 2] = self.window.inner_size().into();
         let (swapchain, images) = self
@@ -395,8 +468,22 @@ impl Renderer {
             })
             .expect("failed to recreate swapchain");
         self.swapchain = swapchain;
-        self.framebuffers = setup::create_framebuffers(&images, &self.render_pass);
+        self.depth_view = setup::create_depth_view(&self.memory_allocator, image_extent);
+        self.framebuffers =
+            setup::create_framebuffers(&images, &self.depth_view, &self.render_pass);
     }
+}
+
+/// Pixel-space → clip matrix for `viewport` pixels (y-down, z → 0.5); the
+/// UI counterpart of the world view-projection matrix.
+fn pixel_matrix(viewport: Vec2) -> Mat4 {
+    let viewport = viewport.max(Vec2::ONE);
+    Mat4::from_cols(
+        Vec4::new(2.0 / viewport.x, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, -2.0 / viewport.y, 0.0, 0.0),
+        Vec4::ZERO,
+        Vec4::new(-1.0, 1.0, 0.5, 1.0),
+    )
 }
 
 /// Attribute of the first checkbox containing `point`, if any.
@@ -410,10 +497,10 @@ pub(crate) fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attrib
 /// Records one draw batch: binds `pipeline`, `transform` as push constants
 /// and `buffer` as vertex buffer — plus the atlas `descriptor_set` for the
 /// text batch — then draws the whole buffer.
-fn record_draw<T>(
+fn record_draw<T, Pc: BufferContents + Copy>(
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     pipeline: &Arc<GraphicsPipeline>,
-    transform: PushTransform,
+    transform: Pc,
     buffer: &Subbuffer<[T]>,
     descriptor_set: Option<&Arc<DescriptorSet>>,
 ) {

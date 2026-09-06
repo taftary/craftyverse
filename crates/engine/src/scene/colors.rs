@@ -27,6 +27,8 @@ pub(crate) const LABEL_COLOR: [f32; 3] = hex_rgb("#212121");
 pub(crate) const CORNER_LABEL_COLOR: [f32; 3] = hex_rgb("#757575");
 /// Color of the checkbox panel geometry (box outlines and fills).
 pub(crate) const UI_COLOR: [f32; 3] = hex_rgb("#424242");
+/// Color of the reciprocal-port-rule violation highlights.
+pub(crate) const VIOLATION_COLOR: [f32; 3] = hex_rgb("#ff5722");
 
 /// One hex digit → value; invalid digits map to 0.
 const fn hex_channel(byte: u8) -> u8 {

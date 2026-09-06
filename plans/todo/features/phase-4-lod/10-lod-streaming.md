@@ -20,7 +20,7 @@ resolution per edge (replacing the drafts' 7/19/37 hex-patch scheme).
   full generation pipeline once. Static mesh, space-view rendering.
 - **Regional LOD** — when the camera approaches, refine only the region
   under it. Needs a **selective/local split**: an extension of the current
-  whole-mesh `IcosahedronPlan::split` that subdivides a chosen subtree and
+  whole-mesh node subdivision that subdivides a chosen subtree and
   stitches the boundary to the coarser surroundings (seam-stitching pass —
   the one mesh-integrity item that stays real). Adds: mid-frequency
   elevation, local climate downscaling, rivers.
@@ -33,10 +33,10 @@ resolution per edge (replacing the drafts' 7/19/37 hex-patch scheme).
 
 ## Implementation steps
 
-1. Selective/local split in `IcosahedronPlan`: subdivide a chosen subtree
+1. Selective/local split in the node hierarchy: subdivide a chosen subtree
    only; keep the rest of the mesh intact.
 2. Seam stitching: wire the refined subtree boundary to the coarser
-   surroundings; extend `mesh-validator` to cover mixed-level meshes.
+  surroundings; cover mixed-level meshes with topology tests.
 3. Regional LOD manager: camera-distance-based refine/coarsen decisions;
    regenerate regional fields (mid-frequency elevation, local climate,
    rivers) for refined subtrees only.
@@ -65,7 +65,7 @@ resolution per edge (replacing the drafts' 7/19/37 hex-patch scheme).
   new keys/toggles documented in `README.md`.
 
 - Selective split refines exactly the requested subtree; mixed-level mesh
-  passes `mesh-validator` (exit 0) with no cracks at seams (unit test +
+  passes topology tests with no cracks at seams (unit test +
   validator extension).
 - Refining and coarsening a region returns the mesh to its prior state
   (round-trip test).
