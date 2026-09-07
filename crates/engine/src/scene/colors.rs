@@ -29,6 +29,11 @@ pub(crate) const CORNER_LABEL_COLOR: [f32; 3] = hex_rgb("#757575");
 pub(crate) const UI_COLOR: [f32; 3] = hex_rgb("#424242");
 /// Color of the reciprocal-port-rule violation highlights.
 pub const VIOLATION_COLOR: [f32; 3] = hex_rgb("#ff5722");
+/// Color of the UV-net wireframe in the UV-map view.
+pub const UV_LINE_COLOR: [f32; 3] = hex_rgb("#000000");
+/// Color of the UV vertex-distribution dots in the UV-map view: a red that
+/// stays readable on both the black and the white checkerboard squares.
+pub const UV_DOT_COLOR: [f32; 3] = hex_rgb("#d92626");
 
 /// One hex digit → value; invalid digits map to 0.
 const fn hex_channel(byte: u8) -> u8 {

@@ -7,6 +7,12 @@
 //! sphere surface, and triangles sharing an edge are welded corner-to-corner
 //! so the mesh stays connected at every level.
 //!
+//! Each base face is also assigned its triangle of the icosahedral UV net
+//! (see the `uv` module). Refinement inherits UVs by flat linear
+//! interpolation — the sphere projection of the edge midpoints does not
+//! apply to texture space — so UVs stay continuous inside each base face and
+//! across the net's preserved edges, with seams exactly on the cut edges.
+//!
 //! # Link correctness and the reciprocal port pattern
 //!
 //! Every link welded here follows the `0 <-> 2`, `1 <-> 1` reciprocal port
@@ -81,7 +87,10 @@ const ICOSAHEDRON_VERTICES: [Vec3; 12] = [
 /// base edges — with all-outward winding the constraint system has no
 /// solution (see the module documentation). The vertex sets are the canonical
 /// icosahedron faces; only the local A/B/C assignment differs.
-const ICOSAHEDRON_FACES: [[usize; 3]; 20] = [
+///
+/// Also the indexing base of the icosahedral net layout (see the `uv`
+/// module): net table entry `i` belongs to face `i`.
+pub(crate) const ICOSAHEDRON_FACES: [[usize; 3]; 20] = [
     [0, 2, 1],
     [0, 1, 7],
     [0, 6, 2],
@@ -138,7 +147,10 @@ pub fn build_icosphere(
     // Safe after the cap above: `4^MAX_SUBDIVISIONS` fits easily in `usize`.
     let vertex_count = 10 * 4_usize.pow(subdivisions) + 2;
 
-    // Step 1 — base icosahedron, seeded directly at the target radius.
+    // Step 1 — base icosahedron, seeded directly at the target radius. Each
+    // base face also receives its icosahedral net UV triangle (see the `uv`
+    // module); refinement inherits the UVs by linear interpolation.
+    let net = super::uv::icosphere_net_uv();
     let vertices: Vec<Vec3> = ICOSAHEDRON_VERTICES
         .iter()
         .map(|v| origin + v.normalize() * radius)
@@ -147,11 +159,13 @@ pub fn build_icosphere(
         .iter()
         .enumerate()
         .map(|(face_index, &[a, b, c])| {
-            super::Node::new(
+            let node = super::Node::new(
                 format!("{name_prefix}.{face_index}"),
                 [vertices[a], vertices[b], vertices[c]],
                 origin,
-            )
+            );
+            node.borrow_mut().uv = net[face_index];
+            node
         })
         .collect();
 

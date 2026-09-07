@@ -21,6 +21,7 @@
 - [Persistence format and migrations](architecture/decisions/persistence-strategy.md)
 - [Telemetry and temporary compatibility APIs](architecture/decisions/telemetry-and-adapters.md)
 - [Networking strategy](architecture/decisions/networking-strategy.md)
+- [UV coordinates stored on the node](architecture/decisions/uv-coordinates-on-node.md)
 
 # Specifications
 

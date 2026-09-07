@@ -13,7 +13,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-use crate::scene::{Attribute, DisplayOptions, OrbitCamera};
+use crate::scene::{Attribute, DisplayOptions, OrbitCamera, ViewMode};
 
 use super::Scenario;
 use super::renderer::Renderer;
@@ -31,6 +31,8 @@ pub(crate) struct Viewer {
     current_scene: usize,
     /// Display state of the node attributes, toggled via the checkbox panel.
     options: DisplayOptions,
+    /// Which visualization the world batches show, cycled with the T key.
+    view_mode: ViewMode,
     /// Orbit camera of the 3D view, driven by mouse drag, wheel and WASD.
     camera: OrbitCamera,
     /// Last cursor position, in physical pixels.
@@ -48,6 +50,7 @@ impl Viewer {
             scenarios,
             current_scene: 0,
             options: DisplayOptions::default(),
+            view_mode: ViewMode::default(),
             camera: OrbitCamera::default(),
             cursor: Vec2::ZERO,
             dragging: false,
@@ -62,7 +65,7 @@ impl Viewer {
             return;
         };
         let nodes = self.scenarios[self.current_scene].nodes();
-        renderer.set_scene(&nodes, &self.options);
+        renderer.set_scene(&nodes, &self.options, self.view_mode);
         renderer.request_redraw();
     }
 
@@ -132,7 +135,8 @@ impl Viewer {
     }
 
     /// Digit keys switch scenarios; arrow keys adjust icosphere scenarios;
-    /// E/Q split and merge any scenario; WASD orbits, R resets the camera.
+    /// E/Q split and merge any scenario; T cycles the view mode; WASD
+    /// orbits, R resets the camera.
     fn on_key_input(&mut self, event: KeyEvent) {
         if event.state != ElementState::Pressed {
             return;
@@ -157,6 +161,11 @@ impl Viewer {
             return;
         }
         if event.repeat {
+            return;
+        }
+        if key == PhysicalKey::Code(KeyCode::KeyT) {
+            self.view_mode = self.view_mode.next();
+            self.refresh_scene();
             return;
         }
         if key == PhysicalKey::Code(KeyCode::KeyV) {
@@ -201,12 +210,16 @@ impl ApplicationHandler for Viewer {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title("PlanetCrafter node viewer — 1-N: scenes, arrows: sphere, E/Q: split/unsplit, drag/WASD: orbit, wheel: zoom, R: reset"),
+                            .with_title("PlanetCrafter node viewer — 1-N: scenes, arrows: sphere, E/Q: split/unsplit, T: view, drag/WASD: orbit, wheel: zoom, R: reset"),
                     )
                     .expect("failed to create window"),
             );
             let mut renderer = Renderer::new(self.instance.clone(), window);
-            renderer.set_scene(&self.scenarios[self.current_scene].nodes(), &self.options);
+            renderer.set_scene(
+                &self.scenarios[self.current_scene].nodes(),
+                &self.options,
+                self.view_mode,
+            );
             self.renderer = Some(renderer);
         }
         self.renderer.as_ref().unwrap().request_redraw();

@@ -1,6 +1,6 @@
 use glam::Vec3;
 use planet_crafter_engine::node::split_node;
-use planet_crafter_engine::scene::{DisplayOptions, build_scene};
+use planet_crafter_engine::scene::{DisplayOptions, ViewMode, build_scene};
 use planet_crafter_engine::testing::{
     DIRECTION_COLORS, DOT_SEGMENTS, LEVEL_COLORS, hex_rgb, level_color,
 };
@@ -17,7 +17,7 @@ fn child_links_are_dashed_and_colored_by_direction() {
         child_links_ijk: [true; 3],
         ..DisplayOptions::none()
     };
-    let mesh = build_scene(&[center], &options);
+    let mesh = build_scene(&[center], &options, ViewMode::Mesh);
 
     // Dashed: the three links are split into more than one segment each.
     assert!(mesh.lines.len() > 3 * 2);
@@ -59,17 +59,17 @@ fn link_violations_are_highlighted() {
     // Healthy meshes emit no highlight: a split node and the icosphere
     // (whose welded links all carry a recorded back-port) are fully intact.
     let center = split_node(&test_node().borrow());
-    let scene = build_scene(&[center], &options);
+    let scene = build_scene(&[center], &options, ViewMode::Mesh);
     assert!(scene.lines.is_empty() && scene.triangles.is_empty());
     let icosphere = build_icosphere("t", 1.0, 1, Vec3::ZERO);
-    let scene = build_scene(&icosphere.faces, &options);
+    let scene = build_scene(&icosphere.faces, &options, ViewMode::Mesh);
     assert!(scene.lines.is_empty() && scene.triangles.is_empty());
 
     // A manually broken link (child set without the link wiring, so no
     // back-port record) is highlighted on the offending edge.
     let broken = test_node();
     broken.borrow_mut().children[0] = Some(test_node());
-    let scene = build_scene(&[broken], &options);
+    let scene = build_scene(&[broken], &options, ViewMode::Mesh);
     assert_eq!(scene.lines.len(), 2);
     assert_eq!(scene.triangles.len(), DOT_SEGMENTS * 3);
     assert!(scene.lines.iter().all(|v| v.color == VIOLATION_COLOR));

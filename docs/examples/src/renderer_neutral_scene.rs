@@ -7,7 +7,7 @@
 
 use glam::Vec3;
 use planet_crafter_engine::node::Node;
-use planet_crafter_engine::scene::build_scene;
+use planet_crafter_engine::scene::{ViewMode, build_scene};
 
 /// Runs the renderer-neutral-scene demonstration.
 ///
@@ -24,7 +24,7 @@ pub fn run() {
         Vec3::ZERO,
     );
 
-    let scene = build_scene(&[node], &Default::default());
+    let scene = build_scene(&[node], &Default::default(), ViewMode::Mesh);
     assert!(!scene.lines.is_empty());
     assert!(!scene.triangles.is_empty());
     assert!(!scene.labels.is_empty());

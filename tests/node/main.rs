@@ -4,3 +4,4 @@ mod geometry;
 mod icosphere;
 mod subdivision;
 mod topology;
+mod uv;

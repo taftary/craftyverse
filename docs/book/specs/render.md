@@ -27,16 +27,27 @@ window closes.
 
 ### Rendering Model
 
-One render pass with a depth buffer, five graphics pipelines, drawn in order:
+One render pass with a depth buffer, six graphics pipelines. The world-space
+batches depend on the `scene::ViewMode`; the checkbox panel and text are
+drawn in every mode. Draw order:
 
-1. **World lines** (`LineList`, depth-tested) - child links, triangle
-   outlines, arrow shafts, dashes. Vertex: `pos: vec3` + `color`.
-2. **World triangles** (`TriangleList`, depth-tested) - arrowheads and discs.
-   Same shaders and vertex format as lines.
-3. **Checkbox panel** (no depth test) - the scene's UI geometry, drawn with
+1. **World lines** (`LineList`, depth-tested, Mesh mode) - child links,
+   triangle outlines, arrow shafts, dashes. Vertex: `pos: vec3` + `color`.
+2. **World triangles** (`TriangleList`, depth-tested, Mesh mode) -
+   arrowheads and discs. Same shaders and vertex format as lines.
+3. **Checkerboard triangles** (`TriangleList`, depth-tested, Textured and
+   UvMap modes) - the filled node triangles sampled from the generated
+   checkerboard (see "Checkerboard Texture" below). Vertex: `pos: vec3` +
+   `uv`; transformed by the same `world_mvp` push constant (the UV map is a
+   world-space `z = 0` plane).
+4. **UV overlay lines** (`LineList`, no depth test, UvMap mode) - the net
+   wireframe and vertex dots, drawn through the depthless panel line
+   pipeline but with the `world_mvp` push constant, so the overlay floats on
+   top of the UV plane without z-fighting.
+5. **Checkbox panel** (no depth test) - the scene's UI geometry, drawn with
    the same vertex format but separate line/triangle pipelines and a
    pixel-space matrix, so the panel always draws on top.
-4. **Text** (`TriangleList`, alpha blending, no depth test) - glyph quads
+6. **Text** (`TriangleList`, alpha blending, no depth test) - glyph quads
    sampling the `text` module's R8 atlas (node labels and checkbox labels).
    Vertex: `pos: vec2` + `uv` + `color`.
 
@@ -52,12 +63,31 @@ One render pass with a depth buffer, five graphics pipelines, drawn in order:
   `scale`/`offset` push constant so the UI and glyphs stay at constant pixel
   size.
 - The depth attachment is `D32_SFLOAT`, cleared to 1.0 each frame; depth
-  testing (less, writes on) is enabled for the two world pipelines only.
+  testing (less, writes on) is enabled for the world pipelines only (lines,
+  triangles, checkerboard triangles).
 - Line width is 1.0 (universally supported); arrowheads, dots and checkbox
   fills are real triangles, so the visuals do not depend on wide-line support.
 - Rasterization keeps back-face culling off: the debug geometry (arrowhead
   fins, discs) is double-sided by design.
 - Background is cleared to white, matching the former SVG output.
+
+### Checkerboard Texture
+
+The debug texture is generated at startup (`checkerboard.rs`), not loaded:
+a 2048 x 968 RGBA8 checkerboard (22 x 10 checks, 4 per base-triangle edge,
+matching the ~2.117 aspect of the icosahedral net) uploaded with a full mip
+chain and a linear / clamp-to-edge sampler (`setup::upload_checkerboard`),
+bound like the glyph atlas (binding 0 = texture, binding 1 = sampler).
+
+Seam safety: the icosahedral net has cut edges whose two sides sample
+distant UV regions (see [icosphere](icosphere.md)), so naive mip generation
+(averaging texels) would bleed across the cuts. Instead the checkerboard is
+one global parity function `f(u, v)` over `[0, 1]^2`, and every mip level
+is evaluated analytically from that function - never downsampled from the
+previous level - so no texel ever mixes values from both sides of a cut and
+bilinear + mip sampling stays seam-free without gutter engineering. For
+future art textures, which have no global function, the classic gutter /
+dilation margin around each UV island remains the strategy.
 
 ### Interaction
 
@@ -78,6 +108,9 @@ One render pass with a depth buffer, five graphics pipelines, drawn in order:
   after every radius/subdivision rebuild (no effect on static scenarios).
 - **V** - toggle the broken-link highlight (same as the
   "link violations" checkbox).
+- **T** - cycle the view mode (mesh attributes -> textured 3D -> UV map);
+  the scene mesh and the geometry vertex buffers are rebuilt for the new
+  mode.
 - **Left drag** (starting outside the checkbox panel) - orbit the camera
   (yaw/pitch around the content bounding sphere, content follows the cursor).
 - **W / A / S / D** - orbit the camera in 5° steps (key repeat enabled).
@@ -102,19 +135,22 @@ The camera angles persist across scenario switches; the fit target
    with surface support; prefers discrete > integrated > virtual > CPU.
 3. `Device`, `Swapchain` (FIFO present mode, i.e. vsync), render pass with a
    color and a depth attachment, depth image, per-image framebuffers.
-4. Shaders: four inline GLSL sources (geometry vert/frag, text vert/frag)
+4. Shaders: six inline GLSL sources (geometry, checkerboard-texture and text
+   vert/frag pairs)
    compiled to SPIR-V **at runtime with [`naga`](https://crates.io/crates/naga)**
    - pure Rust, no native shader toolchain needed.
 5. Glyph atlas upload: one-shot staging buffer → R8 image copy, then a linear
    sampler and a descriptor set (binding 0 = texture, binding 1 = sampler).
+   The checkerboard follows the same pattern into an R8G8B8A8 image with a
+   full mip chain (one copy region per mip level).
 6. First scene build: vertex buffers created from `scene::SceneMesh`.
 
 ### Per-Frame Flow
 
 - Acquire swapchain image, record one command buffer (viewport set
-  dynamically, five draw batches), submit joined with the previous frame's
-  fence, present. Two frames in flight via the standard
-  `GpuFuture` join/execute/present/signal-fence flow.
+  dynamically, up to five draw batches depending on the view mode), submit
+  joined with the previous frame's fence, present. Two frames in flight via
+  the standard `GpuFuture` join/execute/present/signal-fence flow.
 - On resize, scene key or checkbox toggle: the scene mesh and the geometry
   vertex buffers are regenerated.
 - On camera input (drag, wheel, WASD, R): only the view-projection push
@@ -156,12 +192,15 @@ Folder module `crates/engine/src/render/`:
 - **`setup.rs`** - Vulkan object setup as free functions (instance, device
   pick, swapchain, render pass, depth image, framebuffers, pipelines, atlas
   upload, vertex-buffer upload) orchestrated by `Renderer::new()`.
-- **`shaders.rs`** - the four GLSL sources and their runtime compilation to
+- **`shaders.rs`** - the six GLSL sources and their runtime compilation to
   SPIR-V (`compile_spirv()`, headless and unit-tested; `load_shader()` adds
   the device-side `ShaderModule`).
-- **`vertices.rs`** - GPU vertex layouts (`GeomVertex`, `TextVertexGpu`) and
-  the push constants (`PushMatrix` view-projection, `PushTransform` text
-  transform).
+- **`vertices.rs`** - GPU vertex layouts (`GeomVertex`, `TextVertexGpu`,
+  `UvVertexGpu`) and the push constants (`PushMatrix` view-projection,
+  `PushTransform` text transform).
+- **`checkerboard.rs`** - the analytic checkerboard generator (one RGBA8
+  image per mip level, every level evaluated from the global parity
+  function), headless and unit-tested.
 
 ### Rules
 
@@ -169,6 +208,12 @@ Folder module `crates/engine/src/render/`:
   stays GPU-independent.
 - World-space geometry uses a `mat4` view-projection push constant; UI uses a
   pixel-space matrix; text uses a 2D scale/offset push constant.
+- The view mode selects the world batches (mesh attributes, checkerboard 3D,
+  or UV map plus depthless overlay); the checkbox panel and text are drawn in
+  every mode.
+- The debug texture is generated, not loaded; every mip level is evaluated
+  analytically from the global checker function so sampling never bleeds
+  across the UV net's seams.
 - Camera changes never rebuild geometry buffers - only the push constant and
   the re-anchored text buffer change.
 - Depth testing is enabled for the world pipelines only; draw order layers

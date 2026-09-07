@@ -15,6 +15,14 @@
 //! [`DisplayOptions`]. The scene also carries a pixel-space checkbox panel
 //! (geometry plus hit rectangles) that the viewer uses to flip the options.
 //!
+//! The viewer switches between three [`ViewMode`]s: [`ViewMode::Mesh`] (the
+//! attribute/line debug view described above), [`ViewMode::Textured`] (filled
+//! world-space node triangles carrying per-corner UVs, drawn with a texture)
+//! and [`ViewMode::UvMap`] (the UV net laid flat as a world-space z = 0
+//! plane, textured, with a wireframe overlay and vertex-distribution dots).
+//! The textured and UV-map batches (`tex_world`, `tex_uv`, `uv_lines`) are
+//! emitted only by their mode; the checkbox panel is emitted in every mode.
+//!
 //! Camera math (orbit, zoom, bounding-sphere fit, label projection) lives in
 //! `camera`, colors in `colors`, display options in `options`, the per-node
 //! geometry builders in `geometry`, and the checkbox panel in `panel`. The
@@ -25,10 +33,10 @@
 //! ```
 //! use glam::Vec3;
 //! use planet_crafter_engine::node::Node;
-//! use planet_crafter_engine::scene::{build_scene, DisplayOptions};
+//! use planet_crafter_engine::scene::{ViewMode, build_scene, DisplayOptions};
 //!
 //! let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
-//! let scene = build_scene(&[node], &DisplayOptions::default());
+//! let scene = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
 //! assert!(!scene.lines.is_empty());
 //! ```
 
@@ -48,7 +56,10 @@ pub use options::{Attribute, Checkbox, DisplayOptions, Port};
 #[cfg(feature = "test-internals")]
 pub use camera::{MAX_PITCH, MAX_ZOOM, MIN_ZOOM};
 #[cfg(feature = "test-internals")]
-pub use colors::{DIRECTION_COLORS, LEVEL_COLORS, VIOLATION_COLOR, hex_rgb, level_color};
+pub use colors::{
+    DIRECTION_COLORS, LEVEL_COLORS, UV_DOT_COLOR, UV_LINE_COLOR, VIOLATION_COLOR, hex_rgb,
+    level_color,
+};
 #[cfg(feature = "test-internals")]
 pub use geometry::{DOT_SEGMENTS, plane_basis, push_arrowhead, push_disc};
 #[cfg(feature = "test-internals")]
@@ -63,6 +74,53 @@ pub struct Vertex {
     pub pos: Vec3,
     /// RGB color with components in the range `[0.0, 1.0]`.
     pub color: [f32; 3],
+}
+
+/// Which visualization [`build_scene`] emits.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum ViewMode {
+    /// Attribute/line debug view (default): outlines, arrows, markers and
+    /// labels, toggled by [`DisplayOptions`].
+    #[default]
+    Mesh,
+    /// Filled world-space node triangles carrying UVs (drawn by the renderer
+    /// with a texture).
+    Textured,
+    /// The UV net laid flat as a world-space z = 0 plane, textured, plus a
+    /// wireframe overlay with vertex-distribution dots.
+    UvMap,
+}
+
+impl ViewMode {
+    /// Next mode in the cycle Mesh → Textured → UvMap → Mesh.
+    pub fn next(self) -> ViewMode {
+        match self {
+            ViewMode::Mesh => ViewMode::Textured,
+            ViewMode::Textured => ViewMode::UvMap,
+            ViewMode::UvMap => ViewMode::Mesh,
+        }
+    }
+}
+
+/// Textured vertex: a world-space position plus its texture coordinate. In
+/// [`ViewMode::UvMap`] the position lies on the z = 0 UV plane.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UvVertex {
+    /// Position in world space (y-up); on the z = 0 UV plane in
+    /// [`ViewMode::UvMap`].
+    pub pos: Vec3,
+    /// Texture coordinate.
+    pub uv: Vec2,
+}
+
+/// Edge length of the world-space square the [0, 1]² UV space is laid out on
+/// in [`ViewMode::UvMap`].
+pub const UV_PLANE_SIZE: f32 = 2.0;
+
+/// Maps a UV coordinate to its world-space position on the z = 0 UV plane
+/// used by [`ViewMode::UvMap`].
+pub(crate) fn uv_plane_pos(uv: Vec2) -> Vec3 {
+    Vec3::new(uv.x * UV_PLANE_SIZE, uv.y * UV_PLANE_SIZE, 0.0)
 }
 
 /// A text label anchored in pixel space.
@@ -129,6 +187,16 @@ pub struct SceneMesh {
     /// Colored triangle list in world space. Includes arrowheads, center
     /// dots, and open-port markers.
     pub triangles: Vec<Vertex>,
+    /// Filled world-space node triangles with per-corner UVs, in the same
+    /// A/B/C order as the nodes' vertices. Emitted only in
+    /// [`ViewMode::Textured`] mode (empty otherwise).
+    pub tex_world: Vec<UvVertex>,
+    /// The node triangles laid flat on the z = 0 UV plane, textured. Emitted
+    /// only in [`ViewMode::UvMap`] mode (empty otherwise).
+    pub tex_uv: Vec<UvVertex>,
+    /// UV-net wireframe plus vertex-distribution dots, on the z = 0 UV plane.
+    /// Emitted only in [`ViewMode::UvMap`] mode (empty otherwise).
+    pub uv_lines: Vec<Vertex>,
     /// Checkbox panel line geometry in pixel space (`z = 0`).
     pub ui_lines: Vec<Vertex>,
     /// Checkbox panel triangle geometry in pixel space (`z = 0`).
@@ -143,9 +211,9 @@ pub struct SceneMesh {
     /// Center of the content bounding sphere (world space).
     pub fit_center: Vec3,
     /// Radius of the content bounding sphere: the maximal distance from
-    /// `fit_center` over all emitted world-space vertices and the world
-    /// label anchors, so the whole scene fits at any camera angle (`1.0`
-    /// for an empty scene).
+    /// `fit_center` over the emitted world-space vertices of the active view
+    /// mode and, in [`ViewMode::Mesh`] mode, the world label anchors, so the
+    /// whole scene fits at any camera angle (`1.0` for an empty scene).
     pub fit_radius: f32,
 }
 
@@ -160,19 +228,22 @@ pub struct SceneMesh {
 /// # Parameters
 ///
 /// - `nodes` — nodes to visualize.
-/// - `options` — which node attributes to display.
+/// - `options` — which node attributes to display (Mesh mode only; the
+///   textured and UV-map modes ignore them and never emit the attribute
+///   geometry).
+/// - `view` — which visualization to emit.
 ///
 /// # Example
 ///
 /// ```
 /// use glam::Vec3;
 /// use planet_crafter_engine::node::Node;
-/// use planet_crafter_engine::scene::{build_scene, Attribute, DisplayOptions};
+/// use planet_crafter_engine::scene::{ViewMode, build_scene, Attribute, DisplayOptions};
 ///
 /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 /// let mut options = DisplayOptions::default();
 /// options.toggle(Attribute::Labels);
-/// let scene = build_scene(&[node], &options);
+/// let scene = build_scene(&[node], &options, ViewMode::Mesh);
 /// assert!(scene.labels.is_empty());
 /// assert!(scene.checkboxes.iter().any(|c| c.attribute == Attribute::Labels));
 /// ```
@@ -182,10 +253,10 @@ pub struct SceneMesh {
 /// ```
 /// use glam::{Vec2, Vec3};
 /// use planet_crafter_engine::node::Node;
-/// use planet_crafter_engine::scene::{build_scene, OrbitCamera};
+/// use planet_crafter_engine::scene::{ViewMode, build_scene, OrbitCamera};
 ///
 /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
-/// let mesh = build_scene(&[node], &Default::default());
+/// let mesh = build_scene(&[node], &Default::default(), ViewMode::Mesh);
 ///
 /// // The default camera fits every world-space vertex into clip space.
 /// let mvp = OrbitCamera::default().view_projection(
@@ -201,13 +272,18 @@ pub struct SceneMesh {
 ///     assert!((0.0..=1.0).contains(&ndc.z), "ndc.z out of range: {}", ndc.z);
 /// }
 /// ```
-pub fn build_scene(nodes: &[NodeRef], options: &DisplayOptions) -> SceneMesh {
+pub fn build_scene(nodes: &[NodeRef], options: &DisplayOptions, view: ViewMode) -> SceneMesh {
     let mut builder = SceneBuilder {
         options: *options,
+        view,
         ..Default::default()
     };
     for node in nodes {
-        builder.add_node(node);
+        match view {
+            ViewMode::Mesh => builder.add_node(node),
+            ViewMode::Textured => builder.add_textured_triangle(&node.borrow()),
+            ViewMode::UvMap => builder.add_uv_triangle(&node.borrow()),
+        }
     }
     builder.add_checkbox_panel();
     builder.finish()
@@ -240,6 +316,12 @@ impl Bounds {
 struct SceneBuilder {
     lines: Vec<Vertex>,
     triangles: Vec<Vertex>,
+    /// Filled world-space triangles with UVs (Textured mode).
+    tex_world: Vec<UvVertex>,
+    /// UV-net triangles on the z = 0 plane (UvMap mode).
+    tex_uv: Vec<UvVertex>,
+    /// UV-net wireframe and vertex-distribution dots (UvMap mode).
+    uv_lines: Vec<Vertex>,
     labels: Vec<WorldLabel>,
     /// Checkbox panel geometry in pixel space.
     ui_lines: Vec<Vertex>,
@@ -248,17 +330,37 @@ struct SceneBuilder {
     ui_labels: Vec<TextRun<'static>>,
     checkboxes: Vec<Checkbox>,
     options: DisplayOptions,
+    view: ViewMode,
     bounds: Bounds,
 }
 
 impl SceneBuilder {
-    /// Moves the buffers out and computes the content bounding sphere.
+    /// Moves the buffers out and computes the content bounding sphere from
+    /// the active view mode's world-space batches.
     fn finish(self) -> SceneMesh {
-        let (fit_center, fit_radius) =
-            bounding_sphere(&self.bounds, &self.lines, &self.triangles, &self.labels);
+        let positions: Vec<Vec3> = match self.view {
+            ViewMode::Mesh => self
+                .lines
+                .iter()
+                .chain(&self.triangles)
+                .map(|vertex| vertex.pos)
+                .chain(self.labels.iter().map(|label| label.world_pos))
+                .collect(),
+            ViewMode::Textured => self.tex_world.iter().map(|vertex| vertex.pos).collect(),
+            ViewMode::UvMap => self
+                .tex_uv
+                .iter()
+                .map(|vertex| vertex.pos)
+                .chain(self.uv_lines.iter().map(|vertex| vertex.pos))
+                .collect(),
+        };
+        let (fit_center, fit_radius) = bounding_sphere(&self.bounds, positions.into_iter());
         SceneMesh {
             lines: self.lines,
             triangles: self.triangles,
+            tex_world: self.tex_world,
+            tex_uv: self.tex_uv,
+            uv_lines: self.uv_lines,
             ui_lines: self.ui_lines,
             ui_triangles: self.ui_triangles,
             texts: self.ui_labels,
@@ -271,25 +373,17 @@ impl SceneBuilder {
 }
 
 /// Content bounding sphere: center = bounds box center, radius = maximal
-/// distance from the center over the emitted world-space vertices and the
-/// world label anchors (tracked in the bounds but not emitted as
-/// vertices), so every point the scene can draw fits at any camera angle —
-/// including a labels-only scene. Empty scene → (origin, 1.0).
-fn bounding_sphere(
-    bounds: &Bounds,
-    lines: &[Vertex],
-    triangles: &[Vertex],
-    labels: &[WorldLabel],
-) -> (Vec3, f32) {
+/// distance from the center over the active view mode's world-space positions
+/// (in Mesh mode: the emitted world-space vertices plus the world label
+/// anchors, tracked in the bounds but not emitted as vertices), so every
+/// point the scene can draw fits at any camera angle — including a
+/// labels-only scene. Empty scene → (origin, 1.0).
+fn bounding_sphere(bounds: &Bounds, positions: impl Iterator<Item = Vec3>) -> (Vec3, f32) {
     if !bounds.has_content {
         return (Vec3::ZERO, 1.0);
     }
     let center = (bounds.min + bounds.max) * 0.5;
-    let radius = lines
-        .iter()
-        .chain(triangles)
-        .map(|vertex| vertex.pos)
-        .chain(labels.iter().map(|label| label.world_pos))
+    let radius = positions
         .map(|pos| (pos - center).length())
         .fold(0.0_f32, f32::max);
     (center, radius.max(camera::MIN_FIT_RADIUS))

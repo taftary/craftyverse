@@ -2,14 +2,19 @@
 //! midpoints, child triangle points, and the `[i, j, k]` direction triplet.
 
 use std::cell::RefCell;
+use std::ops::{Add, Div};
 use std::rc::Rc;
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use super::{Node, NodeRef};
 
-/// Midpoint between two points.
-pub(crate) fn midpoint(a: Vec3, b: Vec3) -> Vec3 {
+/// Midpoint between two points. Generic over the vector type so vertex and
+/// UV midpoints share one implementation.
+pub(crate) fn midpoint<T>(a: T, b: T) -> T
+where
+    T: Copy + Add<Output = T> + Div<f32, Output = T>,
+{
     (a + b) / 2.0
 }
 
@@ -19,8 +24,10 @@ pub(crate) fn midpoint(a: Vec3, b: Vec3) -> Vec3 {
 ///
 /// Returns `[I, J, K, Center]` triplets: `I` holds corner `A`, `J` holds `B`,
 /// `K` holds `C`, and the center triplet is built from the midpoints alone.
-pub(crate) fn triangle_points(vertices: &[Vec3; 3], midpoints: [Vec3; 3]) -> [[Vec3; 3]; 4] {
-    let [p_a, p_b, p_c] = *vertices;
+/// Generic over the point type: the same barycentric split applies to the
+/// 3D vertices and to their UV coordinates.
+pub(crate) fn triangle_points<T: Copy>(points: &[T; 3], midpoints: [T; 3]) -> [[T; 3]; 4] {
+    let [p_a, p_b, p_c] = *points;
     let [p_ab, p_bc, p_ca] = midpoints;
     [
         [p_a, p_ab, p_ca],
@@ -48,8 +55,14 @@ pub(crate) fn compute_directions(vertices: &[Vec3; 3], center: Vec3) -> [Vec3; 3
 }
 
 /// Creates a node from an explicit vertices triplet, wrapped in a `NodeRef`.
-pub(crate) fn child_node(vertices: [Vec3; 3], origin: Vec3, level: u32, name: String) -> NodeRef {
+pub(crate) fn child_node(
+    vertices: [Vec3; 3],
+    uv: [Vec2; 3],
+    origin: Vec3,
+    level: u32,
+    name: String,
+) -> NodeRef {
     Rc::new(RefCell::new(Node::from_vertices(
-        vertices, origin, level, name,
+        vertices, uv, origin, level, name,
     )))
 }

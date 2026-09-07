@@ -26,6 +26,17 @@ pub(crate) struct TextVertexGpu {
     pub(crate) color: [f32; 3],
 }
 
+/// Vertex of the textured pipeline: world-space position plus texture
+/// coordinate.
+#[derive(BufferContents, Vertex, Clone, Copy)]
+#[repr(C)]
+pub(crate) struct UvVertexGpu {
+    #[format(R32G32B32_SFLOAT)]
+    pub(crate) pos: [f32; 3],
+    #[format(R32G32_SFLOAT)]
+    pub(crate) uv: [f32; 2],
+}
+
 /// View-projection matrix push constant of the geometry pipelines (one per
 /// space: `world_mvp` and `pixel_mvp`).
 #[derive(BufferContents, Clone, Copy)]

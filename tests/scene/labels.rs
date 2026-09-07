@@ -1,6 +1,6 @@
 use glam::{Mat4, Vec2, Vec3};
 use planet_crafter_engine::scene::{
-    DisplayOptions, LabelOffset, OrbitCamera, WorldLabel, build_scene, project_labels,
+    DisplayOptions, LabelOffset, OrbitCamera, ViewMode, WorldLabel, build_scene, project_labels,
 };
 
 use planet_crafter_tests::fixtures::test_node;
@@ -25,7 +25,7 @@ fn labels_only_scene_fits_label_anchors_on_screen() {
         labels: true,
         ..DisplayOptions::none()
     };
-    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
     assert_eq!(mesh.labels.len(), 4);
     // The fit covers the node's extent, not the collapsed MIN_FIT_RADIUS.
@@ -48,7 +48,7 @@ fn labels_only_scene_fits_label_anchors_on_screen() {
 #[test]
 fn project_labels_anchors_centers_and_drops_behind_camera() {
     let node = test_node();
-    let mesh = build_scene(&[node], &DisplayOptions::default());
+    let mesh = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
     let viewport = Vec2::new(800.0, 600.0);
     let mvp = OrbitCamera::default().view_projection(mesh.fit_center, mesh.fit_radius, viewport);
 
