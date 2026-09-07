@@ -45,6 +45,7 @@ related work.
 | --- | --- | --- |
 | [Vulkan crate and ownership model](vulkan-crate.md) | Accepted | Rendering |
 | [Platform window lifecycle](window-lifecycle.md) | Accepted | Platform integration |
+| [UV coordinates stored on the node](uv-coordinates-on-node.md) | Accepted | Geometry |
 
 Deprecated or superseded ADRs will be listed here with their supersession
 links.

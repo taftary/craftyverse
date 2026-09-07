@@ -31,6 +31,13 @@ Base faces are named `"{name_prefix}.{face_index}"` and extended with the
 `.I` / `.J` / `.K` / `.C` suffixes per generation - the naming scheme
 `unsplit_nodes` groups by.
 
+Each base face is also seeded with its triangle of the icosahedral UV net
+(see "Icosahedral UV net" below): `face_index` selects the net entry.
+Refinement inherits the UVs by flat linear interpolation
+([subdivision](subdivision.md)) - the sphere projection does not apply to
+texture space - so UVs stay continuous inside each base face and across the
+net's preserved edges, with seams exactly on the cut edges.
+
 It returns an `IcosphereMesh` with the fully linked leaf `faces`
 (`20 * 4^subdivisions` entries) and the closed-form `vertex_count`
 (`10 * 4^subdivisions + 2`). Cleanup: `destroy_mesh` on any face before
@@ -49,6 +56,33 @@ corner children inherit their parent's winding and the center child
 reverses it - and nothing may rely on it; every derived direction is
 winding-independent by construction.
 
+### Icosahedral UV Net
+
+The 20 base faces are unwrapped into the classic flat net, after
+[Paul Bourke's icosahedral maps](https://paulbourke.net/panorama/icosahedral/):
+a horizontal zigzag strip of the 10 equatorial faces, the 5 faces around
+icosahedron vertex 0 fanned across the top, and the 5 faces around vertex 9
+fanned across the bottom - a 5.5 x 3 triangle grid (aspect ratio ~2.117),
+normalized into `[0, 1]^2` with a 1 % margin (the margin keeps bilinear
+filtering footprints inside the sampled region).
+
+The layout is computed by `icosphere_net_uv()` (in
+`crates/engine/src/node/uv.rs`, exposed to tests through `test-internals`)
+and seeded per base-face index: net entry `i` belongs to face `i`. An anchor
+strip face is placed first, and every other face is the reflection of an
+already-placed 3D neighbor across their shared edge, with the edge endpoints
+matched by icosahedron vertex index. The construction is therefore
+independent of the base-face winding (5 of the 20 base faces are
+deliberately wound inward; see above).
+
+Measured semantics (locked by `tests/node/uv.rs`): of the 30 icosahedron
+edges, 19 are UV-continuous - two faces sharing a preserved edge hold
+identical UVs for the shared vertices. The other 11 are seams (cut edges of
+the net): 8 are point-coincident (ring-adjacent fan pairs touch at one UV
+point, four per pole) and 3 are fully disjoint (the fan/strip wrap-around
+edges). Flat linear interpolation during subdivision preserves this
+classification at every level.
+
 ### Rules
 
 - Edge midpoints are projected back onto the sphere and computed exactly once
@@ -64,8 +98,17 @@ winding-independent by construction.
 - 5 of the 20 base faces are deliberately wound inward to make the port
   pattern satisfiable; winding is not a mesh invariant and nothing may
   rely on it.
+- Each base face is seeded with its icosahedral net UV triangle (Bourke
+  layout: 10-face zigzag strip plus the two 5-face polar fans, normalized
+  into `[0, 1]^2` with a 1 % margin); 19 of the 30 icosahedron edges are
+  UV-continuous, 8 seams are point-coincident, 3 are fully disjoint. The
+  net construction matches shared-edge endpoints by icosahedron vertex
+  index, so it is independent of the base-face winding.
 
 ### Files
 
 - `crates/engine/src/node/icosphere.rs` - geodesic sphere construction
   (`build_icosphere`), with tests in `tests/node/icosphere.rs`.
+- `crates/engine/src/node/uv.rs` - the icosahedral net layout
+  (`icosphere_net_uv`, test-only surface) and `DEFAULT_UV`, with the
+  continuity/seam tests in `tests/node/uv.rs`.

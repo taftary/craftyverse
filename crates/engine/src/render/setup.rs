@@ -4,11 +4,10 @@
 
 use std::sync::Arc;
 
-use vulkano::VulkanLibrary;
 use vulkano::buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, CopyBufferToImageInfo,
+    AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo,
 };
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{DescriptorSet, WriteDescriptorSet};
@@ -17,9 +16,11 @@ use vulkano::device::{
     Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo, QueueFlags,
 };
 use vulkano::format::Format;
-use vulkano::image::sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo};
+use vulkano::image::sampler::{
+    Filter, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode,
+};
 use vulkano::image::view::ImageView;
-use vulkano::image::{Image, ImageCreateInfo, ImageType, ImageUsage};
+use vulkano::image::{Image, ImageCreateInfo, ImageSubresourceLayers, ImageType, ImageUsage};
 use vulkano::instance::{Instance, InstanceCreateFlags, InstanceCreateInfo};
 use vulkano::memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator};
 use vulkano::pipeline::graphics::GraphicsPipelineCreateInfo;
@@ -40,10 +41,13 @@ use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpa
 use vulkano::shader::EntryPoint;
 use vulkano::swapchain::{PresentMode, Surface, Swapchain, SwapchainCreateInfo};
 use vulkano::sync::{self, GpuFuture};
+use vulkano::{DeviceSize, VulkanLibrary};
 use winit::event_loop::EventLoop;
 use winit::window::Window;
 
 use crate::text::TextAtlas;
+
+use super::checkerboard::{CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, checkerboard_mips};
 
 /// Creates the Vulkan instance with the surface extensions `event_loop`
 /// requires (`ENUMERATE_PORTABILITY` for MoltenVK).
@@ -398,6 +402,124 @@ pub(crate) fn upload_atlas(
     )
     .unwrap();
     (atlas, text_descriptor_set)
+}
+
+/// Generates the checkerboard debug texture with its full mip chain, uploads
+/// it as an RGBA8 texture through a one-shot staging copy (one copy region
+/// per mip level), and returns the descriptor set (linear-mipmap sampler +
+/// texture) the textured pipeline samples. The descriptor set keeps the
+/// image view and sampler alive, like the atlas path.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn upload_checkerboard(
+    device: &Arc<Device>,
+    queue: &Arc<Queue>,
+    queue_family_index: u32,
+    memory_allocator: &Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: &Arc<StandardCommandBufferAllocator>,
+    descriptor_set_allocator: &Arc<StandardDescriptorSetAllocator>,
+    tex_pipeline: &Arc<GraphicsPipeline>,
+) -> Arc<DescriptorSet> {
+    let levels = checkerboard_mips(CHECKER_WIDTH, CHECKER_HEIGHT, CHECKS_U, CHECKS_V);
+    let checkerboard_image = Image::new(
+        memory_allocator.clone(),
+        ImageCreateInfo {
+            image_type: ImageType::Dim2d,
+            format: Format::R8G8B8A8_UNORM,
+            extent: [CHECKER_WIDTH, CHECKER_HEIGHT, 1],
+            mip_levels: levels.len() as u32,
+            usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_DEVICE,
+            ..Default::default()
+        },
+    )
+    .expect("failed to create checkerboard image");
+    // All mip levels concatenated in one staging buffer; one copy region per
+    // level picks its byte range and targets its mip level and extent.
+    let mut staged = Vec::with_capacity(levels.iter().map(Vec::len).sum());
+    for level in &levels {
+        staged.extend_from_slice(level);
+    }
+    let staging = Buffer::from_iter(
+        memory_allocator.clone(),
+        BufferCreateInfo {
+            usage: BufferUsage::TRANSFER_SRC,
+            ..Default::default()
+        },
+        AllocationCreateInfo {
+            memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+            ..Default::default()
+        },
+        staged,
+    )
+    .expect("failed to create staging buffer");
+    let mut buffer_offset: DeviceSize = 0;
+    let regions: Vec<BufferImageCopy> = levels
+        .iter()
+        .enumerate()
+        .map(|(level, pixels)| {
+            let region = BufferImageCopy {
+                buffer_offset,
+                image_subresource: ImageSubresourceLayers {
+                    mip_level: level as u32,
+                    ..checkerboard_image.subresource_layers()
+                },
+                image_extent: [
+                    (CHECKER_WIDTH >> level).max(1),
+                    (CHECKER_HEIGHT >> level).max(1),
+                    1,
+                ],
+                ..Default::default()
+            };
+            buffer_offset += pixels.len() as DeviceSize;
+            region
+        })
+        .collect();
+    let mut copy = CopyBufferToImageInfo::buffer_image(staging, checkerboard_image.clone());
+    copy.regions.clear();
+    copy.regions.extend(regions);
+    let mut upload = AutoCommandBufferBuilder::primary(
+        command_buffer_allocator.clone(),
+        queue_family_index,
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
+    upload.copy_buffer_to_image(copy).unwrap();
+    sync::now(device.clone())
+        .then_execute(queue.clone(), upload.build().unwrap())
+        .unwrap()
+        .then_signal_fence_and_flush()
+        .unwrap()
+        .wait(None)
+        .unwrap();
+
+    let sampler = Sampler::new(
+        device.clone(),
+        SamplerCreateInfo {
+            mag_filter: Filter::Linear,
+            min_filter: Filter::Linear,
+            mipmap_mode: SamplerMipmapMode::Linear,
+            address_mode: [SamplerAddressMode::ClampToEdge; 3],
+            lod: 0.0..=(levels.len() - 1) as f32,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let view = ImageView::new_default(checkerboard_image).unwrap();
+    let tex_layout = tex_pipeline.layout().set_layouts().first().unwrap().clone();
+    DescriptorSet::new(
+        descriptor_set_allocator.clone(),
+        tex_layout,
+        [
+            WriteDescriptorSet::image_view(0, view),
+            WriteDescriptorSet::sampler(1, sampler),
+        ],
+        [],
+    )
+    .unwrap()
 }
 
 /// Uploads `data` to a device-local vertex buffer; `None` when `data` is

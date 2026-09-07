@@ -44,6 +44,12 @@ from its own vertices. Child orientations are not copied from `node`: they
 are recomputed from the child triangle. Every child receives level
 `node.level + 1` and a name with the suffix `.I`, `.J`, `.K`, or `.C`.
 
+Child UVs follow the same barycentric pattern through `triangle_points`, but
+with flat linear midpoints of the parent's UVs (`midpoint(uA, uB)`, etc.) -
+the sphere projection applied to 3D edge midpoints never applies to texture
+space. UV interpolation is affine, so UV continuity across a shared edge is
+preserved by the split wherever the parent edge was UV-continuous.
+
 Only center-to-corner links are created:
 
 - `NodeCenter.children[0] = NodeJ`, with `NodeJ.children[2] = NodeCenter`.
@@ -102,7 +108,10 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
    `A = I.vertices[0]`, `B = J.vertices[1]`, `C = K.vertices[2]`, origin
    recovered as `center + direction_to_origin`. The corners hold the exact
    parent vertices, so this is exact even for sphere meshes with projected
-   midpoints.
+   midpoints. The parent UVs are recovered from the same corners
+   (`uA = I.uv[0]`, `uB = J.uv[1]`, `uC = K.uv[2]`) - the exact original
+   UVs, because the corner children inherit the parent's corner UVs
+   verbatim.
 4. Re-link the parents across the old edges: a corner's external port
    number equals its parent edge's port number, so every link between
    corners of different groups maps verbatim to a parent link with the
@@ -120,6 +129,10 @@ nodes. Calling it on an unsplittable mesh returns the same nodes.
 ### Rules
 
 - Roots start at level `0`; each split generation increments the level by `1`.
+- UVs are inherited with flat linear midpoints through the same barycentric
+  `triangle_points` pattern as the 3D vertices; the sphere projection of 3D
+  midpoints never applies to texture space. Unsplit recovers the parent UVs
+  exactly from the corner children (`[I.uv[0], J.uv[1], K.uv[2]]`).
 - Welding resolves ports geometrically by exact vertex comparison and
   requires bit-identical shared vertices; open ports stay open.
 - A split group merges back only with exactly the four `.I` / `.J` / `.K` /

@@ -1,4 +1,6 @@
-use planet_crafter_engine::testing::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
+use planet_crafter_engine::testing::{
+    GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv,
+};
 
 #[test]
 fn all_shaders_compile_to_spirv() {
@@ -7,6 +9,8 @@ fn all_shaders_compile_to_spirv() {
         (GEOM_FRAG, naga::ShaderStage::Fragment),
         (TEXT_VERT, naga::ShaderStage::Vertex),
         (TEXT_FRAG, naga::ShaderStage::Fragment),
+        (TEX_VERT, naga::ShaderStage::Vertex),
+        (TEX_FRAG, naga::ShaderStage::Fragment),
     ] {
         let words = compile_spirv(source, stage).expect("shader should compile");
         // SPIR-V magic number.

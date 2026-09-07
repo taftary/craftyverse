@@ -96,14 +96,29 @@ pub(crate) fn split_node_with_midpoints(node: &Node, midpoints: [Vec3; 3]) -> No
 
     // 2./3. New nodes from their subdivided vertex triplets (centers are the
     // centroids). Each child derives its own orientation from its vertex
-    // triplet. Names derive from `node.name` to stay unique.
+    // triplet. Names derive from `node.name` to stay unique. UVs are split
+    // with the same barycentric pattern, but their midpoints are always flat
+    // linear interpolations — the sphere projection of the 3D midpoints does
+    // not apply to texture space.
     let level = old_level + 1;
     let [vertices_i, vertices_j, vertices_k, vertices_center] =
         triangle_points(&node.vertices, midpoints);
-    let node_i = child_node(vertices_i, origin, level, format!("{}.I", node.name));
-    let node_j = child_node(vertices_j, origin, level, format!("{}.J", node.name));
-    let node_k = child_node(vertices_k, origin, level, format!("{}.K", node.name));
-    let node_center = child_node(vertices_center, origin, level, format!("{}.C", node.name));
+    let uv_midpoints = [
+        midpoint(node.uv[0], node.uv[1]),
+        midpoint(node.uv[1], node.uv[2]),
+        midpoint(node.uv[2], node.uv[0]),
+    ];
+    let [uv_i, uv_j, uv_k, uv_center] = triangle_points(&node.uv, uv_midpoints);
+    let node_i = child_node(vertices_i, uv_i, origin, level, format!("{}.I", node.name));
+    let node_j = child_node(vertices_j, uv_j, origin, level, format!("{}.J", node.name));
+    let node_k = child_node(vertices_k, uv_k, origin, level, format!("{}.K", node.name));
+    let node_center = child_node(
+        vertices_center,
+        uv_center,
+        origin,
+        level,
+        format!("{}.C", node.name),
+    );
 
     // 4. Internal interconnection (bidirectional). Each center port is
     // linked to the corner node across its edge: center I (⊥ pBC–pAB)
@@ -231,8 +246,9 @@ pub fn split_nodes(first: &NodeRef) -> Vec<NodeRef> {
 /// [`split_node`]. Each complete group is replaced by its parent: the
 /// parent's vertices are recovered from the corners (`I` holds `A`,
 /// `J` holds `B`, `K` holds `C` — the exact original vertices, even when a
-/// sphere build projected the midpoints), its name is the group base name,
-/// and its level is the group level minus one. The parents are then
+/// sphere build projected the midpoints), its UVs are recovered from the
+/// same corners, its name is the group base name, and its level is the
+/// group level minus one. The parents are then
 /// re-linked across the old edges: a corner's external port number equals
 /// its parent edge's port number, so every link between corners of
 /// different groups maps verbatim to a parent link with the recorded
@@ -346,7 +362,15 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
             node_j.borrow().vertices[1],
             node_k.borrow().vertices[2],
         ];
-        let parent = child_node(vertices, origin, level, base);
+        // The parent's UVs are recovered from the same corners as the
+        // vertices: `I` holds `uA`, `J` holds `uB`, `K` holds `uC` — the
+        // exact original UVs.
+        let uv = [
+            node_i.borrow().uv[0],
+            node_j.borrow().uv[1],
+            node_k.borrow().uv[2],
+        ];
+        let parent = child_node(vertices, uv, origin, level, base);
         for child in [&node_i, &node_j, &node_k, &node_c] {
             parent_of.insert(Rc::as_ptr(child) as usize, Rc::clone(&parent));
             merged.push(Rc::clone(child));

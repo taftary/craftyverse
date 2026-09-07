@@ -1,5 +1,6 @@
-//! The four embedded GLSL shaders and their runtime compilation to SPIR-V
-//! through naga (pure Rust, no native shader toolchain needed).
+//! The embedded GLSL shaders (geometry, text and textured pairs) and their
+//! runtime compilation to SPIR-V through naga (pure Rust, no native shader
+//! toolchain needed).
 
 use std::sync::Arc;
 
@@ -59,6 +60,35 @@ layout(binding = 0) uniform texture2D atlas_texture;
 layout(binding = 1) uniform sampler atlas_sampler;
 void main() {
     out_color = vec4(color, texture(sampler2D(atlas_texture, atlas_sampler), uv).r);
+}
+"#;
+
+/// Textured vertex shader: same `mvp` push-constant transform as the
+/// geometry shader, passes the texture coordinate through.
+pub const TEX_VERT: &str = r#"
+#version 450
+layout(location = 0) in vec3 pos;
+layout(location = 1) in vec2 uv;
+layout(location = 0) out vec2 out_uv;
+layout(push_constant) uniform PushMatrix { mat4 mvp; } pc;
+void main() {
+    gl_Position = pc.mvp * vec4(pos, 1.0);
+    out_uv = uv;
+}
+"#;
+
+/// Textured fragment shader: opaque color sampled from the checkerboard.
+pub const TEX_FRAG: &str = r#"
+#version 450
+layout(location = 0) in vec2 uv;
+layout(location = 0) out vec4 out_color;
+// Note: naga's GLSL frontend supports neither `layout(set = ...)` (resources
+// default to set 0) nor combined `sampler2D` uniforms, so the checkerboard is
+// bound as a separate texture and sampler.
+layout(binding = 0) uniform texture2D checkerboard_texture;
+layout(binding = 1) uniform sampler checkerboard_sampler;
+void main() {
+    out_color = vec4(texture(sampler2D(checkerboard_texture, checkerboard_sampler), uv).rgb, 1.0);
 }
 "#;
 

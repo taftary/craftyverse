@@ -1,6 +1,6 @@
 use glam::Vec3;
 use planet_crafter_engine::node::split_node;
-use planet_crafter_engine::scene::{DisplayOptions, build_scene};
+use planet_crafter_engine::scene::{DisplayOptions, ViewMode, build_scene};
 use planet_crafter_engine::testing::{ATTRIBUTES, DOT_SEGMENTS};
 
 use planet_crafter_tests::fixtures::test_node;
@@ -8,7 +8,7 @@ use planet_crafter_tests::fixtures::test_node;
 #[test]
 fn single_node_emits_all_element_kinds() {
     let node = test_node();
-    let mesh = build_scene(&[node], &DisplayOptions::default());
+    let mesh = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
 
     // 3 outline + 4 arrow shafts + at least one dashed origin segment.
     assert!(mesh.lines.len() >= (3 + 4 + 1) * 2);
@@ -34,7 +34,7 @@ fn split_scene_links_children_and_labels_all_nodes() {
     for corner in center.borrow().children.iter().flatten() {
         nodes.push(corner.clone());
     }
-    let mesh = build_scene(&nodes, &DisplayOptions::default());
+    let mesh = build_scene(&nodes, &DisplayOptions::default(), ViewMode::Mesh);
 
     // 4 nodes × (3 outline + 4 shafts) + dashed origin segments +
     // 6 child links (3 center→corner, 3 corner→center).
@@ -53,7 +53,7 @@ fn split_scene_links_children_and_labels_all_nodes() {
 
 #[test]
 fn empty_scene_produces_unit_fit_sphere() {
-    let mesh = build_scene(&[], &DisplayOptions::default());
+    let mesh = build_scene(&[], &DisplayOptions::default(), ViewMode::Mesh);
     // No node geometry, but the checkbox panel is always generated.
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
     assert!(mesh.labels.is_empty());

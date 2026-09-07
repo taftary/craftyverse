@@ -1,5 +1,5 @@
 use glam::Vec2;
-use planet_crafter_engine::scene::{DisplayOptions, OrbitCamera, build_scene};
+use planet_crafter_engine::scene::{DisplayOptions, OrbitCamera, ViewMode, build_scene};
 use planet_crafter_engine::testing::{MAX_PITCH, MAX_ZOOM, MIN_ZOOM};
 
 use planet_crafter_tests::fixtures::test_node;
@@ -7,7 +7,7 @@ use planet_crafter_tests::fixtures::test_node;
 #[test]
 fn camera_fits_all_geometry_in_clip_space_at_any_angle() {
     let node = test_node();
-    let mesh = build_scene(&[node], &DisplayOptions::default());
+    let mesh = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
 
     // The bounding-sphere fit is angle-independent: the default head-on
     // camera and orbited cameras all keep every vertex inside clip space.

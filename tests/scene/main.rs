@@ -6,3 +6,4 @@ mod geometry;
 mod labels;
 mod mesh;
 mod options;
+mod view;

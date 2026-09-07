@@ -4,7 +4,8 @@
 
 `Node` is the engine's 3D geometric and topological unit. It represents one
 non-degenerate triangle in a 3D plane, derives its geometry from
-explicit vertices, and stores up to three reciprocal links to adjacent nodes.
+explicit vertices, stores per-corner texture coordinates (UVs), and stores
+up to three reciprocal links to adjacent nodes.
 
 The Rust implementation uses `Vec3` and the shared reference type
 `NodeRef = Rc<RefCell<Node>>`. The caller supplies valid triangle vertices and
@@ -19,6 +20,14 @@ keeps node names unique.
 - `direction_to_origin: Vec3` - `origin - center`.
 - `directions: [Vec3; 3]` - outward perpendicular directions `[I, J, K]`.
 - `direction_of_node: Vec3` - normalized altitude from line `BC` toward `A`.
+- `uv: [Vec2; 3]` - per-corner texture coordinates `[uA, uB, uC]`, in the
+  same A/B/C order as `vertices`. UVs are duplicated per face exactly like
+  `vertices`: adjacent faces may hold different UVs for the same 3D vertex
+  (a UV seam, by design of the unwrapped layout - see
+  [`build_icosphere()`](icosphere.md)). `Node::new` defaults to
+  `DEFAULT_UV`, a canonical equilateral triangle (base 0.9, centered in
+  `[0, 1]^2`, `A` at the apex) so a lone triangle shows an undistorted
+  texture.
 
 #### Topology
 
@@ -49,6 +58,7 @@ struct Node {
     Vec3 direction_to_origin
     Vec3[3] directions
     Vec3 direction_of_node
+    Vec2[3] uv                  // [uA, uB, uC], A/B/C order
     NodeRef[3] children
     Integer[3]? back_ports
     String name
@@ -117,7 +127,8 @@ Node::new(name, vertices, origin) -> NodeRef
     line `BC` and normalize the resulting altitude.
 4. Compute the I/J/K directions.
 5. Set `direction_to_origin = origin - center`.
-6. Set `children` to `[None, None, None]` and `level` to `0`.
+6. Set `uv` to `DEFAULT_UV`, `children` to `[None, None, None]` and `level`
+    to `0`.
 
 The constructor assumes valid input rather than returning a validation error.
 
@@ -155,12 +166,18 @@ or infinite traversal.
   port convention (`reciprocal_index`), graph traversal, mesh cleanup
   (`destroy_mesh`), and the corner-weld lookups shared by sphere construction
   and mesh-level splits.
-- `tests/node/` - geometry, topology, subdivision, lifecycle, traversal, and
-  origin-propagation tests, split one file per submodule.
+- `crates/engine/src/node/uv.rs` - `DEFAULT_UV` and the icosahedral net
+  layout that seeds the base faces of `build_icosphere`.
+- `tests/node/` - geometry, topology, subdivision, lifecycle, traversal, UV,
+  and origin-propagation tests, split one file per submodule.
 
 ### Rules
 
 - `direction_of_node` is the normalized altitude from line `BC` toward `A`.
+- `uv` holds one texture coordinate per corner in A/B/C order and is
+  duplicated per face like `vertices`: a shared 3D vertex may carry different
+  UVs on adjacent faces (seams by design). `Node::new` assigns `DEFAULT_UV`;
+  only `build_icosphere` overrides it (with the net layout).
 - Child links are bidirectional and carry an explicit `back_ports` record.
 - `destroy()` takes the local port and back-port record, then clears the
   neighbor's recorded back-port slot.

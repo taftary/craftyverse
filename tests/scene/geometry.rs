@@ -1,6 +1,6 @@
 use glam::Vec3;
 use planet_crafter_engine::node::{Node, split_node};
-use planet_crafter_engine::scene::{DisplayOptions, build_scene};
+use planet_crafter_engine::scene::{DisplayOptions, ViewMode, build_scene};
 use planet_crafter_engine::testing::{
     DIRECTION_COLORS, DOT_SEGMENTS, plane_basis, push_arrowhead, push_disc,
 };
@@ -18,7 +18,7 @@ fn origin_arrow_is_skipped_when_node_is_at_origin() {
         ],
         Vec3::ZERO,
     );
-    let mesh = build_scene(&[node], &DisplayOptions::default());
+    let mesh = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
 
     // Only outline + arrow shafts remain.
     assert_eq!(mesh.lines.len(), (3 + 4) * 2);
@@ -38,7 +38,7 @@ fn open_ports_emit_bold_disc_per_null_port() {
         open_ports_ijk: [true; 3],
         ..DisplayOptions::none()
     };
-    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
 
     // One disc per open port (all three are null), no lines.
     assert_eq!(mesh.triangles.len(), 3 * DOT_SEGMENTS * 3);
@@ -50,12 +50,12 @@ fn open_ports_emit_bold_disc_per_null_port() {
 
     // The split center node is fully linked: no markers.
     let center = split_node(&node.borrow());
-    let mesh = build_scene(std::slice::from_ref(&center), &options);
+    let mesh = build_scene(std::slice::from_ref(&center), &options, ViewMode::Mesh);
     assert!(mesh.triangles.is_empty());
 
     // Each corner node has two open ports: two discs.
     let node_i = center.borrow().children[0].clone().unwrap();
-    let mesh = build_scene(&[node_i], &options);
+    let mesh = build_scene(&[node_i], &options, ViewMode::Mesh);
     assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
 }
 

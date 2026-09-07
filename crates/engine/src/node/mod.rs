@@ -26,20 +26,24 @@ mod geometry;
 mod icosphere;
 mod subdivision;
 mod topology;
+mod uv;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use glam::Vec3;
+use glam::{Vec2, Vec3};
 
 use geometry::{child_node, compute_directions};
 
 pub use icosphere::{IcosphereMesh, MAX_SUBDIVISIONS, build_icosphere};
 pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::{collect_nodes, destroy_mesh};
+pub use uv::DEFAULT_UV;
 
 #[cfg(feature = "test-internals")]
 pub use topology::{link, reciprocal_index};
+#[cfg(feature = "test-internals")]
+pub use uv::icosphere_net_uv;
 
 /// Shared, mutable reference to a [`Node`].
 ///
@@ -72,6 +76,14 @@ pub struct Node {
     pub directions: [Vec3; 3],
     /// Normalized altitude direction from the base edge `BC` toward `A`.
     pub direction_of_node: Vec3,
+    /// Texture coordinates `[uA, uB, uC]`, one per corner vertex, in A/B/C
+    /// order. Duplicated across neighbors exactly like [`vertices`](Self::vertices):
+    /// adjacent faces may hold different UVs for the same 3D vertex (a UV
+    /// seam, by design of the unwrapped layout). [`split_node`] interpolates
+    /// UVs linearly (flat midpoints, never sphere-projected) and
+    /// [`unsplit_nodes`] recovers them exactly; [`build_icosphere`] seeds the
+    /// base faces with the icosahedral net layout (see the `uv` module).
+    pub uv: [Vec2; 3],
 
     // --- Topology ---
     /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
@@ -152,7 +164,7 @@ impl Node {
     /// }
     /// ```
     pub fn new(name: impl Into<String>, vertices: [Vec3; 3], origin: Vec3) -> NodeRef {
-        child_node(vertices, origin, 0, name.into())
+        child_node(vertices, DEFAULT_UV, origin, 0, name.into())
     }
 
     /// Builds a node from an explicit vertices triplet.
@@ -160,7 +172,13 @@ impl Node {
     /// The center is the centroid of the triplet, `direction_to_origin` and the
     /// `[i, j, k]` directions are derived from the vertices. This constructor is
     /// used internally by [`Node::new`] and [`split_node`].
-    fn from_vertices(vertices: [Vec3; 3], origin: Vec3, level: u32, name: String) -> Self {
+    fn from_vertices(
+        vertices: [Vec3; 3],
+        uv: [Vec2; 3],
+        origin: Vec3,
+        level: u32,
+        name: String,
+    ) -> Self {
         let center = (vertices[0] + vertices[1] + vertices[2]) / 3.0;
         let base_direction = (vertices[2] - vertices[1]).normalize();
         let base_projection =
@@ -172,6 +190,7 @@ impl Node {
             direction_to_origin: origin - center,
             directions: compute_directions(&vertices, center),
             direction_of_node: height_vector.normalize(),
+            uv,
             children: [None, None, None],
             back_ports: [None, None, None],
             name,

@@ -40,6 +40,8 @@ A window opens showing the node visualization in a 3D perspective view:
 - **H** - toggle the north/south hemisphere split: the north half
   (`z >= origin.z`, facing the viewer) moves right and the south half left
   so the two halves can be inspected separately
+- **T** - cycle the view: mesh attributes -> textured 3D -> UV map (see
+  below)
 - **V** - toggle the "link violations" highlight: links with a broken
   back-port record are overdrawn in orange. Healthy meshes (including the
   icosphere) show none - it is a corruption indicator
@@ -54,6 +56,18 @@ text labels (name/level and A/B/C corner letters). A checkbox panel
 (top-left) toggles each of these attributes: left-click a checkbox to turn
 the matching attribute on or off. The scene is depth-tested 3D: orbiting
 only moves the camera, so the geometry is never rebuilt.
+
+The **T** key cycles three views:
+
+- **Mesh** (default) - the attribute/line debug view described above.
+- **Textured** - the filled 3D node triangles textured with a generated
+  checkerboard (22 x 10 checks, 4 per base-triangle edge), so UV stretch,
+  orientation and seams are visible directly on the mesh.
+- **UV map** - the same checkerboard on the UV layout itself, laid flat on a
+  plane: the icosahedral net wireframe in black plus a red cross dot at every
+  vertex, showing where the net is continuous and where it is cut.
+
+The checkbox panel and its labels are drawn in every view.
 
 ## Development
 

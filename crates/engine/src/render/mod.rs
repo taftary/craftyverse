@@ -5,23 +5,30 @@
 //! and windowing ([`winit`](https://crates.io/crates/winit)) code lives here;
 //! the rest of the crate stays GPU-independent.
 //!
-//! Rendering model: one render pass with a depth buffer, five pipelines —
-//! colored world lines, colored world triangles (arrowheads, discs), the
-//! pixel-space checkbox panel (lines and triangles, no depth test), and
-//! alpha-blended text quads sampled from the `text` glyph atlas. World-space
-//! geometry stays 3D and is placed on the GPU via a view-projection matrix
-//! push constant driven by the orbit camera, so camera changes never rebuild
-//! the geometry buffers; only the label anchors are re-projected on the CPU.
-//! Text and the checkbox panel are laid out in pixel space and mapped with
-//! separate transforms. Left-clicking a checkbox toggles the display of the
-//! matching node attribute.
+//! Rendering model: one render pass with a depth buffer, six pipelines —
+//! colored world lines, colored world triangles (arrowheads, discs),
+//! checkerboard-textured world triangles (`tex_pipeline`, sampled from the
+//! generated `checkerboard` texture), the pixel-space checkbox panel (lines
+//! and triangles, no depth test), and alpha-blended text quads sampled from
+//! the `text` glyph atlas. The world batches depend on the view mode (the T
+//! key cycles them): `Mesh` draws the attribute/line debug view, `Textured`
+//! the textured 3D node triangles, `UvMap` the textured UV net laid flat
+//! plus its wireframe overlay. World-space geometry stays 3D and is placed
+//! on the GPU via a view-projection matrix push constant driven by the orbit
+//! camera, so camera changes never rebuild the geometry buffers; only the
+//! label anchors are re-projected on the CPU. Text and the checkbox panel
+//! are laid out in pixel space and mapped with separate transforms.
+//! Left-clicking a checkbox toggles the display of the matching node
+//! attribute.
 //!
 //! GPU vertex and push-constant layouts live in `vertices`, the shaders and
-//! their runtime compilation in `shaders`, Vulkan object setup in `setup`, the
-//! renderer in `renderer`, and the winit event handling in `viewer`.
+//! their runtime compilation in `shaders`, the checkerboard debug texture in
+//! `checkerboard`, Vulkan object setup in `setup`, the renderer in
+//! `renderer`, and the winit event handling in `viewer`.
 //!
 //! The full contract is specified in `docs/book/specs/render.md`.
 
+mod checkerboard;
 mod renderer;
 mod setup;
 mod shaders;
@@ -38,13 +45,17 @@ use crate::node::{
 use viewer::Viewer;
 
 #[cfg(feature = "test-internals")]
+pub use checkerboard::{
+    CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, checkerboard_mips, mip_level_count,
+};
+#[cfg(feature = "test-internals")]
 pub use renderer::checkbox_at;
 #[cfg(feature = "test-internals")]
 pub use renderer::pixel_matrix;
 #[cfg(feature = "test-internals")]
 pub use setup::device_type_rank;
 #[cfg(feature = "test-internals")]
-pub use shaders::{GEOM_FRAG, GEOM_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
+pub use shaders::{GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
 #[cfg(feature = "test-internals")]
 pub use vertices::{PushMatrix, PushTransform};
 #[cfg(feature = "test-internals")]
@@ -285,6 +296,7 @@ impl Drop for IcosphereConfig {
 ///   scenarios only).
 /// - **H** — toggle the north/south hemisphere split display (icosphere
 ///   scenarios only).
+/// - **T** — cycle the view: mesh attributes → textured 3D → UV map.
 /// - **V** — toggle the broken-link highlight (same as
 ///   the "link violations" checkbox).
 /// - **Left drag** (outside the checkbox panel) or **W / A / S / D** — orbit

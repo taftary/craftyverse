@@ -1,6 +1,6 @@
 use glam::Vec2;
 use planet_crafter_engine::node::split_node;
-use planet_crafter_engine::scene::{Attribute, DisplayOptions, Port, build_scene};
+use planet_crafter_engine::scene::{Attribute, DisplayOptions, Port, ViewMode, build_scene};
 use planet_crafter_engine::testing::{ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS};
 
 use planet_crafter_tests::fixtures::test_node;
@@ -16,7 +16,7 @@ fn per_port_switches_gate_each_group() {
 
     // One port off: two discs remain, none in the disabled port's color.
     options.toggle(Attribute::OpenPort(Port::J));
-    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
     assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
     assert!(
         mesh.triangles
@@ -27,17 +27,17 @@ fn per_port_switches_gate_each_group() {
     // The master gates the whole group without touching the per-port
     // switches: no markers while off, the same selection returns when on.
     options.toggle(Attribute::OpenPorts);
-    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
     assert!(mesh.triangles.is_empty());
     options.toggle(Attribute::OpenPorts);
-    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
     assert_eq!(mesh.triangles.len(), 2 * DOT_SEGMENTS * 3);
 
     // Directions: only port I enabled — one shaft and one two-fin arrowhead.
     options.open_ports = false;
     options.directions = true;
     options.directions_ijk = [true, false, false];
-    let mesh = build_scene(std::slice::from_ref(&node), &options);
+    let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
     assert_eq!(mesh.lines.len(), 2);
     assert_eq!(mesh.triangles.len(), 6);
     assert!(
@@ -52,7 +52,7 @@ fn per_port_switches_gate_each_group() {
     options.directions = false;
     options.child_links = true;
     options.child_links_ijk = [true, false, true];
-    let mesh = build_scene(&[center], &options);
+    let mesh = build_scene(&[center], &options, ViewMode::Mesh);
     assert!(!mesh.lines.is_empty());
     assert!(
         mesh.lines
@@ -68,7 +68,7 @@ fn per_port_switches_gate_each_group() {
 fn disabled_attributes_emit_no_geometry() {
     let node = test_node();
     let options = DisplayOptions::none();
-    let mesh = build_scene(&[node], &options);
+    let mesh = build_scene(&[node], &options, ViewMode::Mesh);
 
     // Only the checkbox panel remains, so options can be turned back on.
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
@@ -88,7 +88,7 @@ fn toggle_gates_each_attribute() {
     options.toggle(Attribute::DirectionOfNode);
     assert!(!options.value(Attribute::Directions));
     assert!(!options.value(Attribute::DirectionOfNode));
-    let mesh = build_scene(&[node], &options);
+    let mesh = build_scene(&[node], &options, ViewMode::Mesh);
 
     // No direction arrowheads left; only the origin arrowhead (two fins) +
     // dot + the three open-port discs.
@@ -103,7 +103,7 @@ fn toggle_gates_each_attribute() {
 #[test]
 fn checkbox_contains_hit_tests_rectangle() {
     let node = test_node();
-    let mesh = build_scene(&[node], &DisplayOptions::default());
+    let mesh = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
 
     let checkbox = mesh.checkboxes[0];
     let center = (checkbox.min + checkbox.max) / 2.0;

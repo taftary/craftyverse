@@ -3,16 +3,29 @@
 ### Overview
 
 The `scene` module turns a set of `Node` instances into render-agnostic vertex
-data for the Vulkan debug viewer. It produces the same visualization the former
-SVG viewer did - triangle outlines, direction arrows (I/J/K and
-`direction_of_node`), dashed origin arrow, child links, open-port markers,
-center dots and text labels - but as plain CPU data: colored line and triangle
-lists in a y-up 3D world space, pixel-space UI geometry for the
-display-options panel, and world-anchored text labels.
+data for the Vulkan debug viewer. Which visualization it emits is selected by
+`ViewMode`:
 
-Each displayed attribute can be toggled through `DisplayOptions`; the scene
-also generates a pixel-space checkbox panel (geometry, labels and hit
-rectangles) that the viewer uses to flip the options at runtime. The module
+- `ViewMode::Mesh` (the `Default`) - the attribute/line debug view the former
+  SVG viewer produced: triangle outlines, direction arrows (I/J/K and
+  `direction_of_node`), dashed origin arrow, child links, open-port markers,
+  center dots and text labels, as colored line and triangle lists in a y-up
+  3D world space.
+- `ViewMode::Textured` - the filled world-space node triangles carrying
+  per-corner UVs (drawn by the renderer with a checkerboard texture).
+- `ViewMode::UvMap` - the same triangles laid flat on a world-space `z = 0`
+  plane (the UV net), plus a wireframe overlay with a cross dot at every UV
+  vertex.
+
+The output is plain CPU data: world-space geometry, pixel-space UI geometry
+for the display-options panel, and world-anchored text labels. The panel is
+emitted in every mode.
+
+In Mesh mode, each displayed attribute can be toggled through
+`DisplayOptions`; the scene also generates a pixel-space checkbox panel
+(geometry, labels and hit rectangles) that the viewer uses to flip the
+options at runtime (the panel is emitted and clickable in every mode, even
+though the textured and UV-map modes ignore the options). The module
 never mutates nodes and contains no GPU code, so it is fully unit-testable.
 
 The scene carries no camera transform of its own: world geometry stays 3D and
@@ -25,10 +38,24 @@ through `project_labels`, when the camera changes.
 - **Geometry**
   - `Vertex { pos: Vec3, color: [f32; 3] }` - colored vertex in world space
     (y-up); the UI batches use pixel-space positions with `z = 0`.
+  - `ViewMode { Mesh, Textured, UvMap }` - which visualization
+    `build_scene` emits (`Mesh` is the `Default`); `next()` cycles
+    Mesh -> Textured -> UvMap -> Mesh.
+  - `UvVertex { pos: Vec3, uv: Vec2 }` - textured vertex: world-space
+    position plus a texture coordinate; in `ViewMode::UvMap` the position
+    lies on the `z = 0` UV plane (`uv * UV_PLANE_SIZE` on x/y, where
+    `UV_PLANE_SIZE = 2.0` is the edge length of the world-space square the
+    `[0, 1]^2` UV space is laid out on).
   - `SceneMesh` - everything the renderer needs for one scene:
     - `lines: Vec<Vertex>` - line list (outlines, arrow shafts, dashes, child links).
     - `triangles: Vec<Vertex>` - triangle list (arrowheads, center dots,
       open-port markers).
+    - `tex_world: Vec<UvVertex>` - filled world-space node triangles with
+      UVs (`ViewMode::Textured` only).
+    - `tex_uv: Vec<UvVertex>` - the same triangles on the `z = 0` UV plane
+      (`ViewMode::UvMap` only).
+    - `uv_lines: Vec<Vertex>` - UV-net wireframe and vertex dots
+      (`ViewMode::UvMap` only).
     - `ui_lines` / `ui_triangles: Vec<Vertex>` - checkbox panel geometry in
       pixel space (`z = 0`).
     - `texts: Vec<TextRun>` - checkbox labels in pixel space.
@@ -36,7 +63,8 @@ through `project_labels`, when the camera changes.
       corner letters), projected to pixels when the camera is applied.
     - `checkboxes: Vec<Checkbox>` - hit rectangles, one per panel row.
     - `fit_center: Vec3` / `fit_radius: f32` - content bounding sphere, the
-      camera fit target (`(Vec3::ZERO, 1.0)` for an empty scene).
+      camera fit target, computed from the active mode's batches
+      (`(Vec3::ZERO, 1.0)` for an empty scene).
   - `TextRun<'a> { text: &'a str, anchor, size, color, centered }` - one
     pixel-space label; the text is borrowed (static attribute names for the
     panel, the source `WorldLabel` for projected labels). `anchor` is the
@@ -96,10 +124,13 @@ through `project_labels`, when the camera changes.
 
 ### Methods
 
-- `build_scene(nodes: &[NodeRef], options: &DisplayOptions) -> SceneMesh`
-  - generates the visualization of `nodes`, displaying the attributes enabled
-  in `options`. World geometry is viewport-independent; the checkbox panel is
-  top-left anchored in pixel space.
+- `build_scene(nodes: &[NodeRef], options: &DisplayOptions, view: ViewMode) -> SceneMesh`
+  - generates the visualization of `nodes` selected by `view`: Mesh mode
+    displays the attributes enabled in `options`; Textured and UvMap modes
+    emit only their `UvVertex` batches (plus the `uv_lines` overlay in UvMap
+    mode) and ignore `options`. World geometry is viewport-independent; the
+    checkbox panel is top-left anchored in pixel space and emitted in every
+    mode.
 - `level_color(level: u32) -> [f32; 3]` (crate-internal) - level palette,
   cycled by `level % 8` (same colors as the former SVG viewer).
 
@@ -109,7 +140,7 @@ the camera in `camera.rs`, colors in `colors.rs`, display options in
 checkbox panel in `panel.rs`. Tests live in `tests/scene/`, split one file
 per submodule.
 
-### Generated Elements (per node, each gated by its `DisplayOptions` flag)
+### Generated Elements (Mesh mode, per node, each gated by its `DisplayOptions` flag)
 
 - **Child links** - medium dashed line (dash `arrow_len / 6`, gap half of
   that) from the node's center to each non-empty child's center, colored with
@@ -142,6 +173,25 @@ per submodule.
   (radius `arrow_len * 0.12`) at its midpoint, color `#ff5722`. Meshes
   whose links are all wired through the topology helpers emit nothing.
 
+### Generated Elements (Textured and UvMap modes, per node)
+
+The attribute elements above are Mesh-mode only. The textured modes emit no
+attribute geometry and no labels - only these batches (plus the always-on
+checkbox panel):
+
+- **Textured triangles** (`tex_world`, Textured mode) - the node's three
+  corners as `UvVertex`: world positions from `node.vertices`, texture
+  coordinates from `node.uv`.
+- **UV plane triangles** (`tex_uv`, UvMap mode) - the same three corners with
+  the position mapped onto the `z = 0` UV plane (`uv * UV_PLANE_SIZE` on
+  x/y) and the same texture coordinates, so the rendered plane shows exactly
+  what the texture lookup sees.
+- **UV wireframe** (`uv_lines`, UvMap mode) - the node's UV-triangle outline
+  (3 edges), color `UV_LINE_COLOR` (`#000000`).
+- **UV vertex dots** (`uv_lines`, UvMap mode) - one axis-aligned cross per
+  corner (half-length `UV_DOT_SIZE = 0.01`), color `UV_DOT_COLOR`
+  (`#d92626`), showing how the vertices are distributed over the projection.
+
 ### Checkbox Panel (always generated)
 
 One row per attribute, top-left anchored in pixel space: a 12 px box outline
@@ -169,7 +219,10 @@ reachable.
 - **View fit** - all emitted world points contribute to a running bounding
   box; the content bounding sphere (box center, maximal distance over the
   emitted world-space vertices and the world label anchors) is what
-  `OrbitCamera::view_projection` frames, with a 5 % margin. Including the
+  `OrbitCamera::view_projection` frames, with a 5 % margin. Only the active
+  view mode's batches participate: Mesh-mode lines/triangles/labels in Mesh
+  mode, `tex_world` in Textured mode, `tex_uv` and `uv_lines` in UvMap mode,
+  so the camera frames the UV plane directly in UvMap mode. Including the
   anchors keeps a labels-only scene (no emitted geometry) fitted correctly.
   A sphere fit is angle-independent, so orbiting never rescales the view. The
   checkbox panel is a pixel-space overlay and does not contribute to the fit.
