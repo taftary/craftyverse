@@ -99,7 +99,8 @@ pub(crate) fn split_node_with_midpoints(node: &Node, midpoints: [Vec3; 3]) -> No
     // triplet. Names derive from `node.name` to stay unique. UVs are split
     // with the same barycentric pattern, but their midpoints are always flat
     // linear interpolations — the sphere projection of the 3D midpoints does
-    // not apply to texture space.
+    // not apply to texture space. Parity propagates topologically: corner
+    // children inherit the parent parity, the center child flips it.
     let level = old_level + 1;
     let [vertices_i, vertices_j, vertices_k, vertices_center] =
         triangle_points(&node.vertices, midpoints);
@@ -109,15 +110,38 @@ pub(crate) fn split_node_with_midpoints(node: &Node, midpoints: [Vec3; 3]) -> No
         midpoint(node.uv[2], node.uv[0]),
     ];
     let [uv_i, uv_j, uv_k, uv_center] = triangle_points(&node.uv, uv_midpoints);
-    let node_i = child_node(vertices_i, uv_i, origin, level, format!("{}.I", node.name));
-    let node_j = child_node(vertices_j, uv_j, origin, level, format!("{}.J", node.name));
-    let node_k = child_node(vertices_k, uv_k, origin, level, format!("{}.K", node.name));
+    let parity = node.parity;
+    let node_i = child_node(
+        vertices_i,
+        uv_i,
+        origin,
+        level,
+        format!("{}.I", node.name),
+        parity,
+    );
+    let node_j = child_node(
+        vertices_j,
+        uv_j,
+        origin,
+        level,
+        format!("{}.J", node.name),
+        parity,
+    );
+    let node_k = child_node(
+        vertices_k,
+        uv_k,
+        origin,
+        level,
+        format!("{}.K", node.name),
+        parity,
+    );
     let node_center = child_node(
         vertices_center,
         uv_center,
         origin,
         level,
         format!("{}.C", node.name),
+        parity.flipped(),
     );
 
     // 4. Internal interconnection (bidirectional). Each center port is
@@ -353,9 +377,13 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
                 .expect("split group center"),
             &node_k
         ));
-        let (origin, level) = {
+        let (origin, level, parity) = {
             let node = node_i.borrow();
-            (node.center + node.direction_to_origin, node.level - 1)
+            (
+                node.center + node.direction_to_origin,
+                node.level - 1,
+                node.parity,
+            )
         };
         let vertices = [
             node_i.borrow().vertices[0],
@@ -364,13 +392,14 @@ pub fn unsplit_nodes(first: &NodeRef) -> Vec<NodeRef> {
         ];
         // The parent's UVs are recovered from the same corners as the
         // vertices: `I` holds `uA`, `J` holds `uB`, `K` holds `uC` — the
-        // exact original UVs.
+        // exact original UVs. Parity comes from the same channel: corner
+        // children inherit the parent parity, so any corner holds it.
         let uv = [
             node_i.borrow().uv[0],
             node_j.borrow().uv[1],
             node_k.borrow().uv[2],
         ];
-        let parent = child_node(vertices, uv, origin, level, base);
+        let parent = child_node(vertices, uv, origin, level, base, parity);
         for child in [&node_i, &node_j, &node_k, &node_c] {
             parent_of.insert(Rc::as_ptr(child) as usize, Rc::clone(&parent));
             merged.push(Rc::clone(child));

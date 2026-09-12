@@ -2,6 +2,7 @@
 
 mod geometry;
 mod icosphere;
+mod parity;
 mod subdivision;
 mod topology;
 mod uv;

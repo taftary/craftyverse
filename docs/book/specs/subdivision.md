@@ -50,6 +50,12 @@ the sphere projection applied to 3D edge midpoints never applies to texture
 space. UV interpolation is affine, so UV continuity across a shared edge is
 preserved by the split wherever the parent edge was UV-continuous.
 
+Child parities propagate topologically, not geometrically: the corner
+children `NodeI` / `NodeJ` / `NodeK` inherit `node.parity` and `NodeCenter`
+receives the flipped parity. The label therefore stays predictable across
+subdivision: a child's parity is its parent's times -1 per `.C` segment in
+its name path.
+
 Only center-to-corner links are created:
 
 - `NodeCenter.children[0] = NodeJ`, with `NodeJ.children[2] = NodeCenter`.
@@ -111,7 +117,8 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
    midpoints. The parent UVs are recovered from the same corners
    (`uA = I.uv[0]`, `uB = J.uv[1]`, `uC = K.uv[2]`) - the exact original
    UVs, because the corner children inherit the parent's corner UVs
-   verbatim.
+   verbatim. The parent parity is recovered from the same channel: corner
+   children inherit the parent parity, so `I.parity` holds it exactly.
 4. Re-link the parents across the old edges: a corner's external port
    number equals its parent edge's port number, so every link between
    corners of different groups maps verbatim to a parent link with the
@@ -133,6 +140,9 @@ nodes. Calling it on an unsplittable mesh returns the same nodes.
   `triangle_points` pattern as the 3D vertices; the sphere projection of 3D
   midpoints never applies to texture space. Unsplit recovers the parent UVs
   exactly from the corner children (`[I.uv[0], J.uv[1], K.uv[2]]`).
+- Parity propagates topologically: corner children inherit the parent
+  parity, the center child flips it, and unsplit recovers the parent's from
+  a corner child (`I.parity`).
 - Welding resolves ports geometrically by exact vertex comparison and
   requires bit-identical shared vertices; open ports stay open.
 - A split group merges back only with exactly the four `.I` / `.J` / `.K` /

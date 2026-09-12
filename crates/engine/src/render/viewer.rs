@@ -13,7 +13,7 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
-use crate::scene::{Attribute, DisplayOptions, OrbitCamera, ViewMode};
+use crate::scene::{Attribute, DisplayOptions, OrbitCamera, PanelItem, ViewMode};
 
 use super::Scenario;
 use super::renderer::Renderer;
@@ -86,8 +86,9 @@ impl Viewer {
         renderer.request_redraw();
     }
 
-    /// Left-click toggles the checkbox under the cursor; a left press
-    /// anywhere else starts an orbit drag.
+    /// Left-click toggles the checkbox or selects the texture-effect radio
+    /// row under the cursor; a left press anywhere else starts an orbit
+    /// drag.
     fn on_mouse_input(&mut self, state: ElementState, button: MouseButton) {
         if button != MouseButton::Left {
             return;
@@ -97,11 +98,16 @@ impl Viewer {
                 let Some(renderer) = self.renderer.as_mut() else {
                     return;
                 };
-                if let Some(attribute) = renderer.checkbox_at(self.cursor) {
-                    self.options.toggle(attribute);
-                    self.refresh_scene();
-                } else {
-                    self.dragging = true;
+                match renderer.panel_item_at(self.cursor) {
+                    Some(PanelItem::Attribute(attribute)) => {
+                        self.options.toggle(attribute);
+                        self.refresh_scene();
+                    }
+                    Some(PanelItem::Effect(effect)) => {
+                        self.options.effect = effect;
+                        self.refresh_scene();
+                    }
+                    None => self.dragging = true,
                 }
             }
             ElementState::Released => self.dragging = false,

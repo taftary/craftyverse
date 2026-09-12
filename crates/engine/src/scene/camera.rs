@@ -84,6 +84,21 @@ impl OrbitCamera {
         *self = Self::default();
     }
 
+    /// World-space position of the camera eye for the same fit as
+    /// [`view_projection`](Self::view_projection): on the yaw/pitch sphere
+    /// around `center` at the fitted distance.
+    pub fn eye_position(&self, center: Vec3, radius: f32, viewport: Vec2) -> Vec3 {
+        let viewport = viewport.max(Vec2::ONE);
+        let radius = radius.max(MIN_FIT_RADIUS);
+        let aspect = viewport.x / viewport.y;
+        let half_fov_y = FIELD_OF_VIEW * 0.5;
+        let half_fov_x = (half_fov_y.tan() * aspect).atan();
+        let distance = radius / half_fov_y.min(half_fov_x).sin() * FIT_MARGIN / self.zoom;
+        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
+        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
+        center + Vec3::new(sin_yaw * cos_pitch, sin_pitch, cos_yaw * cos_pitch) * distance
+    }
+
     /// View-projection matrix fitting the content sphere (`center`, `radius`)
     /// into `viewport` pixels.
     ///
@@ -106,15 +121,10 @@ impl OrbitCamera {
         let viewport = viewport.max(Vec2::ONE);
         let radius = radius.max(MIN_FIT_RADIUS);
         let aspect = viewport.x / viewport.y;
-        let half_fov_y = FIELD_OF_VIEW * 0.5;
-        let half_fov_x = (half_fov_y.tan() * aspect).atan();
-        let distance = radius / half_fov_y.min(half_fov_x).sin() * FIT_MARGIN / self.zoom;
+        let eye = self.eye_position(center, radius, viewport);
+        let distance = (eye - center).length();
         let near = (distance - 2.0 * radius).max(radius * 1e-3);
         let far = distance + 2.0 * radius;
-        let (sin_yaw, cos_yaw) = self.yaw.sin_cos();
-        let (sin_pitch, cos_pitch) = self.pitch.sin_cos();
-        let eye =
-            center + Vec3::new(sin_yaw * cos_pitch, sin_pitch, cos_yaw * cos_pitch) * distance;
         let view = look_at_mat4(eye, center, Vec3::Y);
         directx::perspective(FIELD_OF_VIEW, aspect, near, far) * view
     }

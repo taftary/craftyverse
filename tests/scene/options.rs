@@ -1,7 +1,9 @@
 use glam::Vec2;
 use planet_crafter_engine::node::split_node;
-use planet_crafter_engine::scene::{Attribute, DisplayOptions, Port, ViewMode, build_scene};
-use planet_crafter_engine::testing::{ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS};
+use planet_crafter_engine::scene::{
+    Attribute, DisplayOptions, PanelItem, Port, TextureEffect, ViewMode, build_scene,
+};
+use planet_crafter_engine::testing::{ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS, EFFECTS};
 
 use planet_crafter_tests::fixtures::test_node;
 
@@ -73,11 +75,13 @@ fn disabled_attributes_emit_no_geometry() {
     // Only the checkbox panel remains, so options can be turned back on.
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
     assert!(mesh.labels.is_empty());
-    assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
-    assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
-    // Unticked boxes: outlines but no fills.
-    assert_eq!(mesh.ui_lines.len(), ATTRIBUTES.len() * 4 * 2);
-    assert!(mesh.ui_triangles.is_empty());
+    let row_count = ATTRIBUTES.len() + EFFECTS.len();
+    assert_eq!(mesh.texts.len(), row_count);
+    assert_eq!(mesh.panel_rows.len(), row_count);
+    // Unticked boxes: outlines but no fills — except the radio row of the
+    // active texture effect, which always has exactly one selection.
+    assert_eq!(mesh.ui_lines.len(), row_count * 4 * 2);
+    assert_eq!(mesh.ui_triangles.len(), 2 * 3);
 }
 
 #[test]
@@ -96,18 +100,53 @@ fn toggle_gates_each_attribute() {
         mesh.triangles.len(),
         (2 + DOT_SEGMENTS + 3 * DOT_SEGMENTS) * 3
     );
-    // Two of the checkboxes are unticked.
-    assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() - 2) * 2 * 3);
+    // Two of the checkboxes are unticked; the one active effect radio row
+    // stays filled.
+    assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() - 2 + 1) * 2 * 3);
 }
 
 #[test]
-fn checkbox_contains_hit_tests_rectangle() {
+fn effect_radio_rows_select_exactly_one_effect() {
+    let node = test_node();
+    for (selected, _) in EFFECTS {
+        let options = DisplayOptions {
+            effect: selected,
+            ..DisplayOptions::default()
+        };
+        let mesh = build_scene(std::slice::from_ref(&node), &options, ViewMode::Mesh);
+
+        // One panel row per attribute plus one per effect, in order.
+        let effect_rows = &mesh.panel_rows[ATTRIBUTES.len()..];
+        assert_eq!(effect_rows.len(), EFFECTS.len());
+        for (row, &(effect, _)) in effect_rows.iter().zip(EFFECTS.iter()) {
+            assert_eq!(row.item, PanelItem::Effect(effect));
+        }
+        // Fills: every attribute is on by default, plus exactly the
+        // selected effect's radio row.
+        assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() + 1) * 2 * 3);
+    }
+
+    // The default effect is the checkerboard.
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        &DisplayOptions::default(),
+        ViewMode::Mesh,
+    );
+    assert!(
+        mesh.panel_rows
+            .iter()
+            .any(|row| row.item == PanelItem::Effect(TextureEffect::Checkerboard))
+    );
+}
+
+#[test]
+fn panel_row_contains_hit_tests_rectangle() {
     let node = test_node();
     let mesh = build_scene(&[node], &DisplayOptions::default(), ViewMode::Mesh);
 
-    let checkbox = mesh.checkboxes[0];
-    let center = (checkbox.min + checkbox.max) / 2.0;
-    assert!(checkbox.contains(center));
-    assert!(!checkbox.contains(checkbox.min - Vec2::ONE));
-    assert!(!checkbox.contains(checkbox.max + Vec2::ONE));
+    let row = mesh.panel_rows[0];
+    let center = (row.min + row.max) / 2.0;
+    assert!(row.contains(center));
+    assert!(!row.contains(row.min - Vec2::ONE));
+    assert!(!row.contains(row.max + Vec2::ONE));
 }

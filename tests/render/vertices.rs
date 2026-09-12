@@ -1,5 +1,5 @@
 use glam::{Mat4, Vec2, Vec3, Vec4};
-use planet_crafter_engine::testing::{PushMatrix, PushTransform, pixel_matrix};
+use planet_crafter_engine::testing::{PushMatrix, PushTex, PushTransform, pixel_matrix};
 
 #[test]
 fn push_matrix_from_glam_mat4() {
@@ -7,6 +7,15 @@ fn push_matrix_from_glam_mat4() {
     let push = PushMatrix::from(matrix);
     assert_eq!(push.mvp, matrix.to_cols_array_2d());
     assert_eq!(PushMatrix::IDENTITY.mvp, Mat4::IDENTITY.to_cols_array_2d());
+}
+
+#[test]
+fn push_tex_packs_matrix_camera_and_fragment_mode() {
+    let matrix = Mat4::from_scale(Vec3::new(2.0, 3.0, 4.0));
+    let push = PushTex::new(matrix.to_cols_array_2d(), [5.0, 6.0, 7.0], 2);
+    assert_eq!(push.mvp, matrix.to_cols_array_2d());
+    assert_eq!(push.camera_pos, [5.0, 6.0, 7.0]);
+    assert_eq!(push.mode, 2);
 }
 
 #[test]

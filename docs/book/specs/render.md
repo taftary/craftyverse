@@ -35,11 +35,18 @@ drawn in every mode. Draw order:
    triangle outlines, arrow shafts, dashes. Vertex: `pos: vec3` + `color`.
 2. **World triangles** (`TriangleList`, depth-tested, Mesh mode) -
    arrowheads and discs. Same shaders and vertex format as lines.
-3. **Checkerboard triangles** (`TriangleList`, depth-tested, Textured and
-   UvMap modes) - the filled node triangles sampled from the generated
-   checkerboard (see "Checkerboard Texture" below). Vertex: `pos: vec3` +
-   `uv`; transformed by the same `world_mvp` push constant (the UV map is a
-   world-space `z = 0` plane).
+3. **Textured triangles** (`TriangleList`, depth-tested, Textured and
+   UvMap modes) - the filled node triangles. Vertex: `pos: vec3` +
+   `uv: vec2` + `bary: vec3` + `parity: float` + `radial: vec3`; the shared
+   `PushTex` push
+   constant carries the `world_mvp` matrix (the UV map is a world-space
+   `z = 0` plane), the camera world position (the fresnel view direction)
+   and the **fragment mode**: the Textured batch pushes the
+   selected `TextureEffect::shader_mode()` (1..=10, procedural effect
+   evaluated from `bary`, `parity` and `radial` - see "Procedural Texture"
+   below),
+   the UV-map batch pushes mode 0 (sample the generated checkerboard, see
+   "Checkerboard Texture" below).
 4. **UV overlay lines** (`LineList`, no depth test, UvMap mode) - the net
    wireframe and vertex dots, drawn through the depthless panel line
    pipeline but with the `world_mvp` push constant, so the overlay floats on
@@ -71,13 +78,65 @@ drawn in every mode. Draw order:
   fins, discs) is double-sided by design.
 - Background is cleared to white, matching the former SVG output.
 
+### Procedural Texture
+
+The Textured view mode shades each triangle with a **procedural per-triangle
+texture** (`scene::TextureEffect`, selected through the `fx` radio rows of
+the display-options panel). Every effect is a pure function of the
+triangle-local **barycentric coordinates** `(uA, uB, uC)` - the unit basis
+emitted per corner by the scene and interpolated by the rasterizer - the
+node's **topology parity** sign (see [`node`](node.md)) and, for the radial
+effects, the node's normalized `direction_to_origin` (negated into the
+outward surface normal; on an icosphere that is the planet normal); the
+fresnel effect also reads the camera world position from the `PushTex` push
+constant. Effects never read
+UVs, so the output is independent of UV seams by construction. The texture
+is computed per triangle: each triangle evaluates the effect in its own
+barycentric space, so subdivision re-tiles the pattern per leaf (the
+gradient is the exception in appearance: child barycentric fields are linear
+restrictions of the parent's, so it looks identical at every level).
+
+Fragment modes and effect formulas (CPU reference in `procedural.rs`, gated
+behind `test-internals`; the GLSL in `TEX_FRAG` mirrors it formula-for-
+formula with the same constants, and a test asserts the constants match).
+The stripe effects are one formula over different barycentric coordinates;
+`n` is the outward radial (`-normalize(direction_to_origin)`):
+
+- **0 - texture** (UvMap only): sample the checkerboard.
+- **1 - gradient**: `color = (uA, uB, uC)` (red/green/blue per corner).
+- **2 - checkerboard**: `v = (floor(uA * 8) + floor(uB * 8) + floor(uC * 8))
+  mod 2`, inverted when `parity < 0`. With `uA + uB + uC = 1` the floor sum
+  is 7 on up-pointing sub-triangles and 6 on down-pointing ones, so
+  edge-adjacent sub-triangles alternate by construction; parity flips the
+  phase.
+- **3 - stripes I**: `v = floor(uC * 8) mod 2`, inverted when `parity < 0` -
+  8 bands whose iso-lines are parallel to edge `AB` (direction `I`).
+- **4 - stripes J**: the same over `uA` - bands parallel to edge `BC`
+  (direction `J`); `uA` is the altitude coordinate, so these are also the
+  altitude-aligned stripes.
+- **5 - stripes K**: the same over `uB` - bands parallel to edge `CA`
+  (direction `K`).
+- **6 - edge mask**: mirror the coordinates first when `parity < 0` (swap
+  `uB`/`uC`), then `v = (uC <= 0.15)` - a band along edge `AB` that flips to
+  edge `CA` on `Acb` triangles.
+- **7 - radial rgb**: `color = n * 0.5 + 0.5` (normal visualization).
+- **8 - diffuse**: `v = max(dot(n, normalize(1,1,1)), 0)` - Lambert
+  grayscale.
+- **9 - latitude**: `v = floor((dot(n, Y) * 0.5 + 0.5) * 12) mod 2` - 12
+  bands pole to pole.
+- **10 - fresnel**: `v = 1 - |dot(n, normalize(camera_pos - world_pos))|`
+  - bright silhouette edges.
+
 ### Checkerboard Texture
 
 The debug texture is generated at startup (`checkerboard.rs`), not loaded:
 a 2048 x 968 RGBA8 checkerboard (22 x 10 checks, 4 per base-triangle edge,
 matching the ~2.117 aspect of the icosahedral net) uploaded with a full mip
 chain and a linear / clamp-to-edge sampler (`setup::upload_checkerboard`),
-bound like the glyph atlas (binding 0 = texture, binding 1 = sampler).
+bound like the glyph atlas (binding 0 = texture, binding 1 = sampler). Only
+the UV-map view samples it (fragment mode 0) - its role is UV seam/stretch
+diagnosis, which the seam-independent procedural texture deliberately
+cannot fill.
 
 Seam safety: the icosahedral net has cut edges whose two sides sample
 distant UV regions (see [icosphere](icosphere.md)), so naive mip generation
@@ -117,9 +176,10 @@ dilation margin around each UV island remains the strategy.
 - **Mouse wheel** - zoom the camera (×1.1 per notch, clamped to 0.05..=20).
 - **R** - reset the camera to the default head-on view.
 - **Left click** - the cursor position (physical pixels, tracked from
-  `CursorMoved` events) is hit-tested against the scene's `Checkbox`
-  rectangles; on a hit the matching `DisplayOptions` flag is toggled and the
-  scene is rebuilt.
+  `CursorMoved` events) is hit-tested against the scene's `PanelRow`
+  rectangles; on a hit either the matching `DisplayOptions` flag is toggled
+  (attribute checkbox) or `DisplayOptions.effect` is set (texture-effect
+  radio row), and the scene is rebuilt.
 - **Resize** - swapchain, depth buffer and framebuffers are recreated, and
   the scene is rebuilt because the view fit and the text anchors depend on
   the viewport.
@@ -135,7 +195,7 @@ The camera angles persist across scenario switches; the fit target
    with surface support; prefers discrete > integrated > virtual > CPU.
 3. `Device`, `Swapchain` (FIFO present mode, i.e. vsync), render pass with a
    color and a depth attachment, depth image, per-image framebuffers.
-4. Shaders: six inline GLSL sources (geometry, checkerboard-texture and text
+4. Shaders: six inline GLSL sources (geometry, textured and text
    vert/frag pairs)
    compiled to SPIR-V **at runtime with [`naga`](https://crates.io/crates/naga)**
    - pure Rust, no native shader toolchain needed.
@@ -195,9 +255,10 @@ Folder module `crates/engine/src/render/`:
   `resumed()`; routes resize, mouse, wheel, keyboard and redraw events.
 - **`renderer.rs`** - **`Renderer`**: owns all Vulkan objects (device,
   swapchain, depth image, pipelines, buffers, descriptor sets), the current
-  checkbox hit rectangles, the world-anchored labels and the camera fit
+  panel hit rectangles, the selected texture effect, the world-anchored
+  labels and the camera fit
   target; exposes `set_scene()`, `set_camera()`, `draw_frame()`,
-  `checkbox_at()` and swapchain recreation. All five draw batches go through
+  `panel_item_at()` and swapchain recreation. All five draw batches go through
   one `record_draw()` helper.
 - **`buffers.rs`** - **`VertexBuffer`**, the reusable scene vertex buffers:
   in-place mapped rewrites while the batch fits the allocation, doubling
@@ -209,11 +270,16 @@ Folder module `crates/engine/src/render/`:
   SPIR-V (`compile_spirv()`, headless and unit-tested; `load_shader()` adds
   the device-side `ShaderModule`).
 - **`vertices.rs`** - GPU vertex layouts (`GeomVertex`, `TextVertexGpu`,
-  `UvVertexGpu`) and the push constants (`PushMatrix` view-projection,
-  `PushTransform` text transform).
+  `TexVertexGpu`) and the push constants (`PushMatrix` view-projection,
+  `PushTex` view-projection plus camera world position and textured fragment
+  mode, `PushTransform` text transform).
 - **`checkerboard.rs`** - the analytic checkerboard generator (one RGBA8
   image per mip level, every level evaluated from the global parity
   function), headless and unit-tested.
+- **`procedural.rs`** - the CPU reference of the procedural texture effects
+  (gradient, parity checkerboard, I/J/K edge stripes, edge-flip mask, and
+  the radial effects: normal RGB, diffuse, latitude, fresnel), gated
+  behind `test-internals` and unit-tested; the `TEX_FRAG` GLSL mirrors it.
 
 ### Rules
 
@@ -221,9 +287,13 @@ Folder module `crates/engine/src/render/`:
   stays GPU-independent.
 - World-space geometry uses a `mat4` view-projection push constant; UI uses a
   pixel-space matrix; text uses a 2D scale/offset push constant.
-- The view mode selects the world batches (mesh attributes, checkerboard 3D,
-  or UV map plus depthless overlay); the checkbox panel and text are drawn in
-  every mode.
+- The view mode selects the world batches (mesh attributes, procedural 3D
+  triangles, or UV map plus depthless overlay); the checkbox panel and text
+  are drawn in every mode.
+- The Textured mode shades per pixel from the interpolated barycentric
+  coordinates, the parity sign and the radial direction (fragment modes
+  1..=10), never from UVs;
+  the checkerboard texture is sampled only by the UV-map view (mode 0).
 - The debug texture is generated, not loaded; every mip level is evaluated
   analytically from the global checker function so sampling never bleeds
   across the UV net's seams.

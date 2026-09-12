@@ -1,7 +1,7 @@
 use glam::Vec3;
 use planet_crafter_engine::node::split_node;
 use planet_crafter_engine::scene::{DisplayOptions, ViewMode, build_scene};
-use planet_crafter_engine::testing::{ATTRIBUTES, DOT_SEGMENTS};
+use planet_crafter_engine::testing::{ATTRIBUTES, DOT_SEGMENTS, EFFECTS};
 
 use planet_crafter_tests::fixtures::test_node;
 
@@ -18,12 +18,15 @@ fn single_node_emits_all_element_kinds() {
     // 1 name label + 3 corner labels, anchored in world space.
     assert_eq!(mesh.labels.len(), 4);
     assert_eq!(mesh.labels[0].text, "root L0");
-    // Checkbox labels are pixel-space text runs.
-    assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
-    // One checkbox row per attribute, all ticked by default.
-    assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
-    assert_eq!(mesh.ui_lines.len(), ATTRIBUTES.len() * 4 * 2);
-    assert_eq!(mesh.ui_triangles.len(), ATTRIBUTES.len() * 2 * 3);
+    // Checkbox labels are pixel-space text runs; the panel has one row per
+    // attribute plus one radio row per texture effect.
+    let row_count = ATTRIBUTES.len() + EFFECTS.len();
+    assert_eq!(mesh.texts.len(), row_count);
+    // One row per panel item, all ticked by default (exactly one effect is
+    // selected).
+    assert_eq!(mesh.panel_rows.len(), row_count);
+    assert_eq!(mesh.ui_lines.len(), row_count * 4 * 2);
+    assert_eq!(mesh.ui_triangles.len(), (ATTRIBUTES.len() + 1) * 2 * 3);
 }
 
 #[test]
@@ -48,7 +51,7 @@ fn split_scene_links_children_and_labels_all_nodes() {
     // 4 nodes × (1 name label + 3 corner labels).
     assert_eq!(mesh.labels.len(), 16);
     assert_eq!(mesh.labels[0].text, "root.C L1");
-    assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
+    assert_eq!(mesh.texts.len(), ATTRIBUTES.len() + EFFECTS.len());
 }
 
 #[test]
@@ -57,8 +60,8 @@ fn empty_scene_produces_unit_fit_sphere() {
     // No node geometry, but the checkbox panel is always generated.
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty());
     assert!(mesh.labels.is_empty());
-    assert_eq!(mesh.texts.len(), ATTRIBUTES.len());
-    assert_eq!(mesh.checkboxes.len(), ATTRIBUTES.len());
+    assert_eq!(mesh.texts.len(), ATTRIBUTES.len() + EFFECTS.len());
+    assert_eq!(mesh.panel_rows.len(), ATTRIBUTES.len() + EFFECTS.len());
     assert_eq!(mesh.fit_center, Vec3::ZERO);
     assert_eq!(mesh.fit_radius, 1.0);
 }

@@ -13,7 +13,11 @@ use super::colors::{
     CORNER_LABEL_COLOR, DIRECTION_COLORS, LABEL_COLOR, NODE_DIRECTION_COLOR, ORIGIN_COLOR,
     UV_DOT_COLOR, UV_LINE_COLOR, VIOLATION_COLOR, level_color,
 };
-use super::{Bounds, LabelOffset, SceneBuilder, UvVertex, Vertex, WorldLabel, uv_plane_pos};
+use super::{Bounds, LabelOffset, SceneBuilder, TexVertex, Vertex, WorldLabel, uv_plane_pos};
+
+/// Barycentric coordinates of the triangle corners, in A/B/C order: the
+/// rasterizer interpolates them into the per-pixel `(uA, uB, uC)` space.
+const CORNER_BARY: [Vec3; 3] = [Vec3::X, Vec3::Y, Vec3::Z];
 
 /// Arrow length factor relative to the node's own size (same as `Svg::new`).
 const ARROW_SCALE: f32 = 0.5;
@@ -161,24 +165,48 @@ fn node_normal(node: &Node) -> Vec3 {
 
 impl SceneBuilder {
     /// Textured mode: the node's filled world-space triangle with per-corner
-    /// UVs, in the same A/B/C order as `node.vertices`. Never alters the
-    /// node. The attribute geometry is not emitted in this mode — it would
-    /// z-fight the filled triangles.
+    /// UVs, barycentric corner coordinates, the node's parity sign and its
+    /// normalized `direction_to_origin`, in the same A/B/C order as
+    /// `node.vertices`. Never alters the node. The attribute geometry is not
+    /// emitted in this mode — it would z-fight the filled triangles.
     pub(super) fn add_textured_triangle(&mut self, node: &Node) {
-        for (&pos, uv) in node.vertices.iter().zip(node.uv) {
+        let parity = node.parity.sign() as f32;
+        let radial = node
+            .direction_to_origin
+            .try_normalize()
+            .unwrap_or(Vec3::ZERO);
+        for ((&pos, uv), bary) in node.vertices.iter().zip(node.uv).zip(CORNER_BARY) {
             let pos = tracked(&mut self.bounds, pos);
-            self.tex_world.push(UvVertex { pos, uv });
+            self.tex_world.push(TexVertex {
+                pos,
+                uv,
+                bary,
+                parity,
+                radial,
+            });
         }
     }
 
     /// UV-map mode: the node's UV net laid flat on the z = 0 plane — the
-    /// filled triangle with per-corner UVs, its wireframe, and one cross dot
-    /// per corner. Never alters the node.
+    /// filled triangle with per-corner UVs (plus the same barycentric,
+    /// parity and radial attributes the textured vertex format carries), its
+    /// wireframe, and one cross dot per corner. Never alters the node.
     pub(super) fn add_uv_triangle(&mut self, node: &Node) {
         let corners = node.uv.map(uv_plane_pos);
-        for (pos, uv) in corners.into_iter().zip(node.uv) {
+        let parity = node.parity.sign() as f32;
+        let radial = node
+            .direction_to_origin
+            .try_normalize()
+            .unwrap_or(Vec3::ZERO);
+        for ((pos, uv), bary) in corners.into_iter().zip(node.uv).zip(CORNER_BARY) {
             let pos = tracked(&mut self.bounds, pos);
-            self.tex_uv.push(UvVertex { pos, uv });
+            self.tex_uv.push(TexVertex {
+                pos,
+                uv,
+                bary,
+                parity,
+                radial,
+            });
         }
         for (from, to) in [(0, 1), (1, 2), (2, 0)] {
             push_line(

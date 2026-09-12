@@ -6,8 +6,8 @@ use glam::Vec2;
 
 use super::colors::{DIRECTION_COLORS, LABEL_COLOR, UI_COLOR};
 use super::geometry::{push_line, push_triangle};
-use super::options::{ATTRIBUTES, Attribute};
-use super::{Checkbox, SceneBuilder, TextRun, Vertex};
+use super::options::{ATTRIBUTES, EFFECTS, PanelItem};
+use super::{PanelRow, SceneBuilder, TextRun, Vertex};
 
 /// Checkbox panel metrics (pixels, y-down); top-left anchored.
 const PANEL_PAD: f32 = 8.0;
@@ -49,30 +49,58 @@ fn fill_rect(buf: &mut Vec<Vertex>, min: Vec2, max: Vec2, color: [f32; 3]) {
 
 impl SceneBuilder {
     /// Checkbox panel (top-left, pixel space): one row per attribute — a box,
-    /// filled when the attribute is on, plus its label. Per-port sub-switches
-    /// are indented under their group master and labeled with the port's
-    /// direction color. Always generated so the options stay reachable when
-    /// every attribute is off.
+    /// filled when the attribute is on, plus its label — then one radio row
+    /// per texture effect, filled for the active effect. Per-port
+    /// sub-switches are indented under their group master and labeled with
+    /// the port's direction color. Always generated so the options stay
+    /// reachable when every attribute is off.
     pub(super) fn add_checkbox_panel(&mut self) {
         for (row, &(attribute, label)) in ATTRIBUTES.iter().enumerate() {
-            self.add_checkbox_row(row, attribute, label);
+            let indent = attribute.port().map_or(0.0, |_| CHECKBOX_SUB_INDENT);
+            let label_color = attribute
+                .port()
+                .map_or(LABEL_COLOR, |port| DIRECTION_COLORS[port.index()]);
+            let on = self.options.value(attribute);
+            self.add_panel_row(
+                row,
+                PanelItem::Attribute(attribute),
+                label,
+                indent,
+                label_color,
+                on,
+            );
+        }
+        for (index, &(effect, label)) in EFFECTS.iter().enumerate() {
+            let on = self.options.effect == effect;
+            self.add_panel_row(
+                ATTRIBUTES.len() + index,
+                PanelItem::Effect(effect),
+                label,
+                0.0,
+                LABEL_COLOR,
+                on,
+            );
         }
     }
 
-    /// One panel row for `attribute` with text `label` at row index `row`:
-    /// box outline, inset fill when on, label and clickable rectangle.
-    fn add_checkbox_row(&mut self, row: usize, attribute: Attribute, label: &'static str) {
-        let indent = attribute.port().map_or(0.0, |_| CHECKBOX_SUB_INDENT);
-        let label_color = attribute
-            .port()
-            .map_or(LABEL_COLOR, |port| DIRECTION_COLORS[port.index()]);
+    /// One panel row for `item` with text `label` at row index `row`: box
+    /// outline, inset fill when `on`, label and clickable rectangle.
+    fn add_panel_row(
+        &mut self,
+        row: usize,
+        item: PanelItem,
+        label: &'static str,
+        indent: f32,
+        label_color: [f32; 3],
+        on: bool,
+    ) {
         let min = Vec2::new(
             PANEL_PAD + indent,
             PANEL_PAD + row as f32 * CHECKBOX_ROW_HEIGHT,
         );
         let max = min + Vec2::splat(CHECKBOX_SIZE);
         rect_outline(&mut self.ui_lines, min, max, UI_COLOR);
-        if self.options.value(attribute) {
+        if on {
             fill_rect(
                 &mut self.ui_triangles,
                 min + Vec2::splat(3.0),
@@ -94,8 +122,8 @@ impl SceneBuilder {
         // The clickable rectangle covers the box and the label (width
         // estimated from the monospace advance).
         let label_width = label.len() as f32 * CHECKBOX_LABEL_SIZE * 0.6;
-        self.checkboxes.push(Checkbox {
-            attribute,
+        self.panel_rows.push(PanelRow {
+            item,
             min,
             max: Vec2::new(anchor.x + label_width, max.y),
         });

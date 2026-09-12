@@ -51,7 +51,7 @@ use glam::{Vec2, Vec3};
 use crate::node::NodeRef;
 
 pub use camera::{OrbitCamera, project_labels};
-pub use options::{Attribute, Checkbox, DisplayOptions, Port};
+pub use options::{Attribute, DisplayOptions, PanelItem, PanelRow, Port, TextureEffect};
 
 #[cfg(feature = "test-internals")]
 pub use camera::{MAX_PITCH, MAX_ZOOM, MIN_ZOOM};
@@ -63,7 +63,7 @@ pub use colors::{
 #[cfg(feature = "test-internals")]
 pub use geometry::{DOT_SEGMENTS, plane_basis, push_arrowhead, push_disc};
 #[cfg(feature = "test-internals")]
-pub use options::ATTRIBUTES;
+pub use options::{ATTRIBUTES, EFFECTS};
 
 /// Colored vertex: world-space (y-up) for the `lines`/`triangles` batches,
 /// pixel-space with `z = 0` for the UI batches.
@@ -102,15 +102,29 @@ impl ViewMode {
     }
 }
 
-/// Textured vertex: a world-space position plus its texture coordinate. In
-/// [`ViewMode::UvMap`] the position lies on the z = 0 UV plane.
+/// Textured vertex: a world-space position plus the attributes the textured
+/// pipelines interpolate. In [`ViewMode::UvMap`] the position lies on the
+/// z = 0 UV plane.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct UvVertex {
+pub struct TexVertex {
     /// Position in world space (y-up); on the z = 0 UV plane in
     /// [`ViewMode::UvMap`].
     pub pos: Vec3,
-    /// Texture coordinate.
+    /// Texture coordinate (sampled by the UV-map view; the procedural
+    /// effects never read it).
     pub uv: Vec2,
+    /// Barycentric coordinate of the corner: `(1, 0, 0)` at `A`,
+    /// `(0, 1, 0)` at `B`, `(0, 0, 1)` at `C`. Interpolated across the
+    /// triangle, it gives the per-pixel procedural space `(uA, uB, uC)`.
+    pub bary: Vec3,
+    /// Topology parity of the node as its sign (`+1.0` / `-1.0`), constant
+    /// across the triangle.
+    pub parity: f32,
+    /// Normalized `direction_to_origin` of the node (the inward radial on a
+    /// sphere), constant across the triangle; `Vec3::ZERO` when the node
+    /// sits at its origin. The radial effects negate it for the outward
+    /// surface normal.
+    pub radial: Vec3,
 }
 
 /// Edge length of the world-space square the [0, 1]² UV space is laid out on
@@ -187,13 +201,14 @@ pub struct SceneMesh {
     /// Colored triangle list in world space. Includes arrowheads, center
     /// dots, and open-port markers.
     pub triangles: Vec<Vertex>,
-    /// Filled world-space node triangles with per-corner UVs, in the same
-    /// A/B/C order as the nodes' vertices. Emitted only in
-    /// [`ViewMode::Textured`] mode (empty otherwise).
-    pub tex_world: Vec<UvVertex>,
+    /// Filled world-space node triangles with per-corner UVs, barycentric
+    /// coordinates and parity, in the same A/B/C order as the nodes'
+    /// vertices. Emitted only in [`ViewMode::Textured`] mode (empty
+    /// otherwise).
+    pub tex_world: Vec<TexVertex>,
     /// The node triangles laid flat on the z = 0 UV plane, textured. Emitted
     /// only in [`ViewMode::UvMap`] mode (empty otherwise).
-    pub tex_uv: Vec<UvVertex>,
+    pub tex_uv: Vec<TexVertex>,
     /// UV-net wireframe plus vertex-distribution dots, on the z = 0 UV plane.
     /// Emitted only in [`ViewMode::UvMap`] mode (empty otherwise).
     pub uv_lines: Vec<Vertex>,
@@ -206,8 +221,9 @@ pub struct SceneMesh {
     /// World-anchored labels (node name/level and corner letters), projected
     /// to pixel space by [`project_labels`] when the camera changes.
     pub labels: Vec<WorldLabel>,
-    /// Checkbox hit rectangles, in the same order as the panel rows.
-    pub checkboxes: Vec<Checkbox>,
+    /// Panel hit rectangles, in the same order as the panel rows (attribute
+    /// checkboxes, then texture-effect radio rows).
+    pub panel_rows: Vec<PanelRow>,
     /// Center of the content bounding sphere (world space).
     pub fit_center: Vec3,
     /// Radius of the content bounding sphere: the maximal distance from
@@ -238,14 +254,14 @@ pub struct SceneMesh {
 /// ```
 /// use glam::Vec3;
 /// use planet_crafter_engine::node::Node;
-/// use planet_crafter_engine::scene::{ViewMode, build_scene, Attribute, DisplayOptions};
+/// use planet_crafter_engine::scene::{ViewMode, build_scene, Attribute, DisplayOptions, PanelItem};
 ///
 /// let node = Node::new("root", [Vec3::new(0.0, 2.0 / 3.0, 0.0), Vec3::new(0.5, -1.0 / 3.0, 0.0), Vec3::new(-0.5, -1.0 / 3.0, 0.0)], Vec3::ZERO);
 /// let mut options = DisplayOptions::default();
 /// options.toggle(Attribute::Labels);
 /// let scene = build_scene(&[node], &options, ViewMode::Mesh);
 /// assert!(scene.labels.is_empty());
-/// assert!(scene.checkboxes.iter().any(|c| c.attribute == Attribute::Labels));
+/// assert!(scene.panel_rows.iter().any(|row| row.item == PanelItem::Attribute(Attribute::Labels)));
 /// ```
 ///
 /// # View-fit invariant
@@ -316,10 +332,11 @@ impl Bounds {
 struct SceneBuilder {
     lines: Vec<Vertex>,
     triangles: Vec<Vertex>,
-    /// Filled world-space triangles with UVs (Textured mode).
-    tex_world: Vec<UvVertex>,
+    /// Filled world-space triangles with UVs, barycentric coordinates and
+    /// parity (Textured mode).
+    tex_world: Vec<TexVertex>,
     /// UV-net triangles on the z = 0 plane (UvMap mode).
-    tex_uv: Vec<UvVertex>,
+    tex_uv: Vec<TexVertex>,
     /// UV-net wireframe and vertex-distribution dots (UvMap mode).
     uv_lines: Vec<Vertex>,
     labels: Vec<WorldLabel>,
@@ -328,7 +345,7 @@ struct SceneBuilder {
     ui_triangles: Vec<Vertex>,
     /// Checkbox labels, already anchored in pixel space.
     ui_labels: Vec<TextRun<'static>>,
-    checkboxes: Vec<Checkbox>,
+    panel_rows: Vec<PanelRow>,
     options: DisplayOptions,
     view: ViewMode,
     bounds: Bounds,
@@ -365,7 +382,7 @@ impl SceneBuilder {
             ui_triangles: self.ui_triangles,
             texts: self.ui_labels,
             labels: self.labels,
-            checkboxes: self.checkboxes,
+            panel_rows: self.panel_rows,
             fit_center,
             fit_radius,
         }

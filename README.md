@@ -29,7 +29,9 @@ A window opens showing the node visualization in a 3D perspective view:
 - **2** - split node (center + 3 corner nodes)
 - **3** - icosphere (live)
 - **4** - quad patch (8 triangles) with one continuous UV layout across the
-  shared edges (best seen in the Textured and UV map views)
+  shared edges; the second triangle of each cell is seeded with the opposite
+  topology parity, so the alternating effects are visible at level 0 (best
+  seen in the Textured and UV map views)
 - **Left drag** (outside the checkbox panel) or **W / A / S / D** - orbit the
   camera around the scene
 - **Mouse wheel** - zoom the camera
@@ -62,12 +64,20 @@ only moves the camera, so the geometry is never rebuilt.
 The **T** key cycles three views:
 
 - **Mesh** (default) - the attribute/line debug view described above.
-- **Textured** - the filled 3D node triangles textured with a generated
-  checkerboard (22 x 10 checks, 4 per base-triangle edge), so UV stretch,
-  orientation and seams are visible directly on the mesh.
-- **UV map** - the same checkerboard on the UV layout itself, laid flat on a
-  plane: the icosahedral net wireframe in black plus a red cross dot at every
-  vertex, showing where the net is continuous and where it is cut.
+- **Textured** - the filled 3D node triangles shaded with a procedural
+  per-triangle texture, computed per pixel from barycentric coordinates,
+  each triangle's topology parity and its radial direction (never from UVs,
+  so UV seams cannot affect it). Ten effects, selected with the **fx** radio
+  rows in the checkbox panel: gradient (barycentric RGB), checkerboard,
+  stripes I/J/K (bands parallel to AB/BC/CA), edge mask (these five flip
+  phase with the triangle's parity - watch the 5 dark base faces of the
+  icosphere and the flipped center children after a split), and the radial
+  effects radial rgb, diffuse, latitude and fresnel (best seen on the
+  icosphere).
+- **UV map** - a generated checkerboard (22 x 10 checks) on the UV layout
+  itself, laid flat on a plane: the icosahedral net wireframe in black plus
+  a red cross dot at every vertex, showing where the net is continuous and
+  where it is cut.
 
 The checkbox panel and its labels are drawn in every view.
 

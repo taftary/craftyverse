@@ -52,6 +52,49 @@ pub use uv::icosphere_net_uv;
 /// ownership model used for the bidirectional `children` links.
 pub type NodeRef = Rc<RefCell<Node>>;
 
+/// Topology parity of a triangle: `Abc` (+1) or `Acb` (-1).
+///
+/// Parity is a stored topological label, not a value derived from 3D
+/// geometry: on the icosphere it coincides with the base-face winding (the 15
+/// outward faces are `Abc`, the 5 deliberately reversed ones `Acb`), but a
+/// flat mesh has no outward reference, so builders seed it explicitly.
+/// [`split_node`] propagates it — corner children inherit the parent parity,
+/// the center child flips — and [`unsplit_nodes`] recovers the parent's from
+/// any corner child. The procedural texture uses it as a per-triangle phase
+/// bit for alternating effects (checkerboard, stripes, masks, edge-flips).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Parity {
+    /// `ABC` label, sign +1.
+    Abc,
+    /// `ACB` label, sign -1.
+    Acb,
+}
+
+impl Parity {
+    /// The sign of the parity: `+1` for `Abc`, `-1` for `Acb`.
+    pub fn sign(self) -> i8 {
+        match self {
+            Parity::Abc => 1,
+            Parity::Acb => -1,
+        }
+    }
+
+    /// The opposite parity (the center child's parity after a split).
+    pub fn flipped(self) -> Parity {
+        match self {
+            Parity::Abc => Parity::Acb,
+            Parity::Acb => Parity::Abc,
+        }
+    }
+
+    /// `Abc` for a non-negative `sign`, `Acb` for a negative one. Used to
+    /// seed parity from a geometric winding test (face normal vs. radial
+    /// direction); a zero sign — a degenerate reference — maps to `Abc`.
+    pub fn from_sign(sign: f32) -> Parity {
+        if sign < 0.0 { Parity::Acb } else { Parity::Abc }
+    }
+}
+
 /// A geometric node: a triangle with directional vectors and
 /// bidirectional links to adjacent nodes.
 ///
@@ -113,6 +156,11 @@ pub struct Node {
     /// Split depth. `0` for a root node; incremented by one for every
     /// generation produced by [`split_node`]. There is no upper bound.
     pub level: u32,
+    /// Topology parity of the triangle (see [`Parity`]). [`Node::new`] seeds
+    /// `Abc`; [`build_icosphere`] seeds each base face from its actual
+    /// winding; other builders assign the field directly (the same pattern
+    /// as [`uv`](Self::uv)).
+    pub parity: Parity,
 }
 
 impl Node {
@@ -165,7 +213,7 @@ impl Node {
     /// }
     /// ```
     pub fn new(name: impl Into<String>, vertices: [Vec3; 3], origin: Vec3) -> NodeRef {
-        child_node(vertices, DEFAULT_UV, origin, 0, name.into())
+        child_node(vertices, DEFAULT_UV, origin, 0, name.into(), Parity::Abc)
     }
 
     /// Builds a node from an explicit vertices triplet.
@@ -179,6 +227,7 @@ impl Node {
         origin: Vec3,
         level: u32,
         name: String,
+        parity: Parity,
     ) -> Self {
         let center = (vertices[0] + vertices[1] + vertices[2]) / 3.0;
         let base_direction = (vertices[2] - vertices[1]).normalize();
@@ -196,6 +245,7 @@ impl Node {
             back_ports: [None, None, None],
             name,
             level,
+            parity,
         }
     }
 

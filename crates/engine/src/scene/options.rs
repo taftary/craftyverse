@@ -77,6 +77,71 @@ impl Attribute {
     }
 }
 
+/// One procedural texture effect of the textured view mode.
+///
+/// Each variant corresponds to a radio row in the display-options panel:
+/// exactly one effect is active at a time. The effect is evaluated per
+/// pixel from the triangle-local barycentric coordinates, the node's
+/// topology parity and its radial direction (see `render::procedural` for
+/// the CPU reference); it never reads UVs, so it is independent of UV
+/// seams.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum TextureEffect {
+    /// Barycentric gradient: `uA` → red, `uB` → green, `uC` → blue.
+    Gradient,
+    /// Sub-triangle checkerboard, phase-flipped by parity (default).
+    #[default]
+    Checkerboard,
+    /// Stripes along `uC`: iso-lines parallel to edge `AB` (direction `I`),
+    /// phase-flipped by parity.
+    StripesI,
+    /// Stripes along `uA` (the altitude coordinate): iso-lines parallel to
+    /// edge `BC` (direction `J`), phase-flipped by parity.
+    StripesJ,
+    /// Stripes along `uB`: iso-lines parallel to edge `CA` (direction `K`),
+    /// phase-flipped by parity.
+    StripesK,
+    /// Band mask along one edge, edge-flipped by parity.
+    EdgeMask,
+    /// Outward radial direction as RGB (normal visualization).
+    RadialRgb,
+    /// Diffuse lighting: `dot(outward radial, light dir)` grayscale.
+    Diffuse,
+    /// Latitude bands around the poles (stripes of `dot(radial, Y)`).
+    Latitude,
+    /// Fresnel rim: bright silhouette edges (`1 - |dot(radial, view)|`).
+    Fresnel,
+}
+
+impl TextureEffect {
+    /// Fragment-shader mode selecting this effect (1..=10). Mode 0 is
+    /// reserved: it samples the checkerboard texture (the UV-map view).
+    pub fn shader_mode(self) -> u32 {
+        match self {
+            TextureEffect::Gradient => 1,
+            TextureEffect::Checkerboard => 2,
+            TextureEffect::StripesI => 3,
+            TextureEffect::StripesJ => 4,
+            TextureEffect::StripesK => 5,
+            TextureEffect::EdgeMask => 6,
+            TextureEffect::RadialRgb => 7,
+            TextureEffect::Diffuse => 8,
+            TextureEffect::Latitude => 9,
+            TextureEffect::Fresnel => 10,
+        }
+    }
+}
+
+/// The panel row item a click hit: an attribute checkbox (toggles) or a
+/// texture-effect radio row (selects).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PanelItem {
+    /// Attribute checkbox row.
+    Attribute(Attribute),
+    /// Texture-effect radio row.
+    Effect(TextureEffect),
+}
+
 /// Which node attributes the visualization displays.
 ///
 /// Toggled at runtime through the checkbox panel; everything is on by default.
@@ -107,6 +172,9 @@ pub struct DisplayOptions {
     /// Highlight switch for links that violate the reciprocal port rule
     /// (`child.children[2 - port]` does not point back).
     pub link_violations: bool,
+    /// Active procedural texture effect of the textured view mode (a radio
+    /// selection, not a toggle; ignored by the other view modes).
+    pub effect: TextureEffect,
 }
 
 impl Default for DisplayOptions {
@@ -124,6 +192,7 @@ impl Default for DisplayOptions {
             center_dot: true,
             labels: true,
             link_violations: true,
+            effect: TextureEffect::default(),
         }
     }
 }
@@ -169,6 +238,7 @@ impl DisplayOptions {
             center_dot: false,
             labels: false,
             link_violations: false,
+            effect: TextureEffect::default(),
         }
     }
 
@@ -218,13 +288,29 @@ pub const ATTRIBUTES: [(Attribute, &str); 18] = [
     (Attribute::LinkViolations, "link violations"),
 ];
 
-/// Clickable area of one checkbox (pixel space, y-down).
+/// Texture-effect radio rows of the display-options panel, in display order
+/// (right below the attribute checkboxes). Exactly one is active at a time.
+pub const EFFECTS: [(TextureEffect, &str); 10] = [
+    (TextureEffect::Gradient, "fx gradient"),
+    (TextureEffect::Checkerboard, "fx checkerboard"),
+    (TextureEffect::StripesI, "fx stripes I"),
+    (TextureEffect::StripesJ, "fx stripes J"),
+    (TextureEffect::StripesK, "fx stripes K"),
+    (TextureEffect::EdgeMask, "fx edge mask"),
+    (TextureEffect::RadialRgb, "fx radial rgb"),
+    (TextureEffect::Diffuse, "fx diffuse"),
+    (TextureEffect::Latitude, "fx latitude"),
+    (TextureEffect::Fresnel, "fx fresnel"),
+];
+
+/// Clickable area of one panel row (pixel space, y-down).
 ///
-/// The viewer hit-tests mouse clicks against these rectangles.
+/// The viewer hit-tests mouse clicks against these rectangles; clicking
+/// toggles an attribute checkbox or selects a texture-effect radio row.
 #[derive(Clone, Copy, Debug)]
-pub struct Checkbox {
-    /// Attribute controlled by this checkbox.
-    pub attribute: Attribute,
+pub struct PanelRow {
+    /// Panel item controlled by this row.
+    pub item: PanelItem,
     /// Top-left corner of the clickable rectangle (checkbox box plus label),
     /// in pixels.
     pub min: Vec2,
@@ -232,7 +318,7 @@ pub struct Checkbox {
     pub max: Vec2,
 }
 
-impl Checkbox {
+impl PanelRow {
     /// Returns `true` if `point` (pixels, y-down) is inside the clickable
     /// rectangle.
     pub fn contains(&self, point: Vec2) -> bool {

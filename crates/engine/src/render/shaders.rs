@@ -64,31 +64,114 @@ void main() {
 "#;
 
 /// Textured vertex shader: same `mvp` push-constant transform as the
-/// geometry shader, passes the texture coordinate through.
+/// geometry shader (the shared `PushTex` block also carries the camera
+/// position and the fragment mode, unused here), passes the texture
+/// coordinate, the barycentric coordinate, the parity sign, the world
+/// position and the radial direction through.
 pub const TEX_VERT: &str = r#"
 #version 450
 layout(location = 0) in vec3 pos;
 layout(location = 1) in vec2 uv;
+layout(location = 2) in vec3 bary;
+layout(location = 3) in float parity;
+layout(location = 4) in vec3 radial;
 layout(location = 0) out vec2 out_uv;
-layout(push_constant) uniform PushMatrix { mat4 mvp; } pc;
+layout(location = 1) out vec3 out_bary;
+layout(location = 2) out float out_parity;
+layout(location = 3) out vec3 out_world_pos;
+layout(location = 4) out vec3 out_radial;
+layout(push_constant) uniform PushTex { mat4 mvp; vec3 camera_pos; uint mode; } pc;
 void main() {
     gl_Position = pc.mvp * vec4(pos, 1.0);
     out_uv = uv;
+    out_bary = bary;
+    out_parity = parity;
+    out_world_pos = pos;
+    out_radial = radial;
 }
 "#;
 
-/// Textured fragment shader: opaque color sampled from the checkerboard.
+/// Textured fragment shader: mode 0 (the UV-map view) samples the
+/// checkerboard texture; modes 1..=10 evaluate a procedural per-triangle
+/// effect from the interpolated barycentric coordinates, the parity sign
+/// and the radial direction — never the UVs, so the procedural output is
+/// seam-independent. The effect functions mirror `render::procedural`
+/// formula-for-formula.
 pub const TEX_FRAG: &str = r#"
 #version 450
 layout(location = 0) in vec2 uv;
+layout(location = 1) in vec3 bary;
+layout(location = 2) in float parity;
+layout(location = 3) in vec3 world_pos;
+layout(location = 4) in vec3 radial;
 layout(location = 0) out vec4 out_color;
 // Note: naga's GLSL frontend supports neither `layout(set = ...)` (resources
 // default to set 0) nor combined `sampler2D` uniforms, so the checkerboard is
 // bound as a separate texture and sampler.
 layout(binding = 0) uniform texture2D checkerboard_texture;
 layout(binding = 1) uniform sampler checkerboard_sampler;
+layout(push_constant) uniform PushTex { mat4 mvp; vec3 camera_pos; uint mode; } pc;
+
+// Procedural effect constants: keep in sync with render::procedural (the
+// render tests assert it). LIGHT_DIR is normalize(vec3(1, 1, 1)) written
+// out (normalize() is not a GLSL constant expression).
+const float CHECKER_CELLS = 8.0;
+const float STRIPE_BANDS = 8.0;
+const float MASK_EDGE_WIDTH = 0.15;
+const vec3 LIGHT_DIR = vec3(0.5773503, 0.5773503, 0.5773503);
+const float LATITUDE_BANDS = 12.0;
+
+float apply_parity(float value, float parity_sign) {
+    return parity_sign < 0.0 ? 1.0 - value : value;
+}
+
+float checker(vec3 bary_coords, float parity_sign) {
+    vec3 q = floor(bary_coords * CHECKER_CELLS);
+    return apply_parity(mod(q.x + q.y + q.z, 2.0), parity_sign);
+}
+
+float stripes(float u, float parity_sign) {
+    return apply_parity(mod(floor(u * STRIPE_BANDS), 2.0), parity_sign);
+}
+
+float edge_mask(vec3 bary_coords, float parity_sign) {
+    vec3 b = parity_sign < 0.0 ? vec3(bary_coords.x, bary_coords.z, bary_coords.y) : bary_coords;
+    return b.z <= MASK_EDGE_WIDTH ? 1.0 : 0.0;
+}
+
 void main() {
-    out_color = vec4(texture(sampler2D(checkerboard_texture, checkerboard_sampler), uv).rgb, 1.0);
+    if (pc.mode == 0u) {
+        out_color = vec4(texture(sampler2D(checkerboard_texture, checkerboard_sampler), uv).rgb, 1.0);
+        return;
+    }
+    // `radial` carries the normalized direction_to_origin (inward on a
+    // sphere); the radial effects use the outward surface normal.
+    vec3 normal = -radial;
+    vec3 color;
+    if (pc.mode == 1u) {
+        color = bary;
+    } else if (pc.mode == 2u) {
+        color = vec3(checker(bary, parity));
+    } else if (pc.mode == 3u) {
+        color = vec3(stripes(bary.z, parity));
+    } else if (pc.mode == 4u) {
+        color = vec3(stripes(bary.x, parity));
+    } else if (pc.mode == 5u) {
+        color = vec3(stripes(bary.y, parity));
+    } else if (pc.mode == 6u) {
+        color = vec3(edge_mask(bary, parity));
+    } else if (pc.mode == 7u) {
+        color = normal * 0.5 + 0.5;
+    } else if (pc.mode == 8u) {
+        color = vec3(max(dot(normal, LIGHT_DIR), 0.0));
+    } else if (pc.mode == 9u) {
+        float t = dot(normal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
+        color = vec3(mod(floor(t * LATITUDE_BANDS), 2.0));
+    } else {
+        vec3 view_dir = normalize(pc.camera_pos - world_pos);
+        color = vec3(1.0 - abs(dot(normal, view_dir)));
+    }
+    out_color = vec4(color, 1.0);
 }
 "#;
 

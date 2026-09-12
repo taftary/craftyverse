@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use glam::{Vec2, Vec3};
 
-use super::{Node, NodeRef};
+use super::{Node, NodeRef, Parity};
 
 /// Midpoint between two points. Generic over the vector type so vertex and
 /// UV midpoints share one implementation.
@@ -61,8 +61,9 @@ pub(crate) fn child_node(
     origin: Vec3,
     level: u32,
     name: String,
+    parity: Parity,
 ) -> NodeRef {
     Rc::new(RefCell::new(Node::from_vertices(
-        vertices, uv, origin, level, name,
+        vertices, uv, origin, level, name, parity,
     )))
 }

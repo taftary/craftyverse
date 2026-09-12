@@ -1,5 +1,5 @@
 use glam::Vec3;
-use planet_crafter_engine::node::{Node, split_node, unfold_uvs};
+use planet_crafter_engine::node::{Node, Parity, split_node, unfold_uvs};
 use planet_crafter_engine::render::Scenario;
 
 fn main() {
@@ -29,7 +29,10 @@ fn main() {
 
     // 4. Flat 2 x 2 quad patch (8 triangles) unfolded into one continuous
     // UV space. Grid coordinates are exact f32 values, so shared corners
-    // weld bit-exactly; each cell is split along the p00-p11 diagonal.
+    // weld bit-exactly; each cell is split along the p00-p11 diagonal. The
+    // second triangle of each cell is seeded with the opposite parity:
+    // manual seeding is the builder's degree of freedom on flat meshes, and
+    // it demonstrates the alternating and edge-flipped effects at level 0.
     let mut patch_nodes = Vec::new();
     for j in 0..2 {
         for i in 0..2 {
@@ -43,11 +46,9 @@ fn main() {
                 [p00, p11, p10],
                 origin,
             ));
-            patch_nodes.push(Node::new(
-                format!("patch.{i}.{j}.b"),
-                [p00, p01, p11],
-                origin,
-            ));
+            let b = Node::new(format!("patch.{i}.{j}.b"), [p00, p01, p11], origin);
+            b.borrow_mut().parity = Parity::Acb;
+            patch_nodes.push(b);
         }
     }
     unfold_uvs(&patch_nodes);

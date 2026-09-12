@@ -56,6 +56,14 @@ corner children inherit their parent's winding and the center child
 reverses it - and nothing may rely on it; every derived direction is
 winding-independent by construction.
 
+The winding label is stored explicitly as each face's
+[`parity`](node.md): at base-face construction it is seeded from the
+geometric winding test `dot(cross(B - A, C - A), center - origin)` -
+outward-wound faces become `Abc` (+1), the 5 reversed faces `Acb` (-1) -
+and from there the subdivision propagation takes over (corner children
+inherit, the center child flips), so the parity of any face at any level
+is the base face's parity times -1 per `.C` segment in its name path.
+
 ### Icosahedral UV Net
 
 The 20 base faces are unwrapped into the classic flat net, after
@@ -98,6 +106,9 @@ classification at every level.
 - 5 of the 20 base faces are deliberately wound inward to make the port
   pattern satisfiable; winding is not a mesh invariant and nothing may
   rely on it.
+- Each base face's `parity` is seeded from its geometric winding (outward
+  = `Abc`, the 5 reversed faces = `Acb`) and propagated topologically by
+  the subdivision machinery.
 - Each base face is seeded with its icosahedral net UV triangle (Bourke
   layout: 10-face zigzag strip plus the two 5-face polar fans, normalized
   into `[0, 1]^2` with a 1 % margin); 19 of the 30 icosahedron edges are

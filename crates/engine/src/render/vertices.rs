@@ -26,15 +26,22 @@ pub(crate) struct TextVertexGpu {
     pub(crate) color: [f32; 3],
 }
 
-/// Vertex of the textured pipeline: world-space position plus texture
-/// coordinate.
+/// Vertex of the textured pipeline: world-space position, texture
+/// coordinate, barycentric corner coordinate, topology parity sign and
+/// radial direction.
 #[derive(BufferContents, Vertex, Clone, Copy)]
 #[repr(C)]
-pub(crate) struct UvVertexGpu {
+pub(crate) struct TexVertexGpu {
     #[format(R32G32B32_SFLOAT)]
     pub(crate) pos: [f32; 3],
     #[format(R32G32_SFLOAT)]
     pub(crate) uv: [f32; 2],
+    #[format(R32G32B32_SFLOAT)]
+    pub(crate) bary: [f32; 3],
+    #[format(R32_SFLOAT)]
+    pub(crate) parity: f32,
+    #[format(R32G32B32_SFLOAT)]
+    pub(crate) radial: [f32; 3],
 }
 
 /// View-projection matrix push constant of the geometry pipelines (one per
@@ -63,6 +70,38 @@ impl From<Mat4> for PushMatrix {
     fn from(matrix: Mat4) -> Self {
         PushMatrix {
             mvp: matrix.to_cols_array_2d(),
+        }
+    }
+}
+
+/// View-projection matrix, camera world position and fragment mode of the
+/// textured pipeline: mode 0 samples the checkerboard texture (the UV-map
+/// view), modes 1..=10 select a procedural effect (see
+/// `scene::TextureEffect::shader_mode`). Both textured shader stages declare
+/// the same block; the vertex stage reads only `mvp`, the fragment stage
+/// reads `mode` (plus `camera_pos` for the fresnel effect). The field order
+/// keeps the GLSL offsets matching the `repr(C)` layout: `vec3 camera_pos`
+/// at 64, `uint mode` at 76, 80 bytes total.
+#[derive(BufferContents, Clone, Copy)]
+#[repr(C)]
+pub struct PushTex {
+    /// View-projection matrix in column-major order.
+    pub mvp: [[f32; 4]; 4],
+    /// Camera eye position in world space (fresnel view direction).
+    pub camera_pos: [f32; 3],
+    /// Fragment mode: 0 = sample the checkerboard, 1..=10 = procedural
+    /// effect.
+    pub mode: u32,
+}
+
+impl PushTex {
+    /// Packs the view-projection matrix (column-major), the camera eye
+    /// position and the fragment `mode`.
+    pub fn new(mvp: [[f32; 4]; 4], camera_pos: [f32; 3], mode: u32) -> Self {
+        PushTex {
+            mvp,
+            camera_pos,
+            mode,
         }
     }
 }

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use planet_crafter_engine::node::{
-    IcosphereMesh, NodeRef, build_icosphere, collect_nodes, destroy_mesh,
+    IcosphereMesh, NodeRef, Parity, build_icosphere, collect_nodes, destroy_mesh,
 };
 
 const EPSILON: f32 = 1e-3;
@@ -274,4 +274,30 @@ fn every_link_has_a_consistent_back_port() {
             assert_eq!(child.back_ports[back], Some(port));
         }
     }
+}
+
+#[test]
+fn base_faces_seed_parity_from_their_winding() {
+    let mesh = build_icosphere("planet", 1.0, 0, Vec3::ZERO);
+    assert_eq!(mesh.faces.len(), 20);
+    let mut acb_count = 0;
+    for face in &mesh.faces {
+        let face = face.borrow();
+        let [a, b, c] = face.vertices;
+        // The geometric winding: face normal vs. the radial direction (the
+        // origin is `Vec3::ZERO`). Outward-wound faces are `Abc`.
+        let winding = (b - a).cross(c - a).dot(face.center);
+        let expected = if winding < 0.0 {
+            Parity::Acb
+        } else {
+            Parity::Abc
+        };
+        assert_eq!(face.parity, expected, "face {}", face.name);
+        if face.parity == Parity::Acb {
+            acb_count += 1;
+        }
+    }
+    // The 5 deliberately inward-wound faces (see the icosphere spec).
+    assert_eq!(acb_count, 5);
+    destroy_mesh(&mesh.faces[0]);
 }

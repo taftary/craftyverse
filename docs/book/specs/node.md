@@ -4,7 +4,8 @@
 
 `Node` is the engine's 3D geometric and topological unit. It represents one
 non-degenerate triangle in a 3D plane, derives its geometry from
-explicit vertices, stores per-corner texture coordinates (UVs), and stores
+explicit vertices, stores per-corner texture coordinates (UVs), carries a
+topology parity label, and stores
 up to three reciprocal links to adjacent nodes.
 
 The Rust implementation uses `Vec3` and the shared reference type
@@ -49,6 +50,17 @@ keeps node names unique.
 
 - `name: String` - caller-provided identifier.
 - `level: u32` - split depth; roots start at `0`.
+- `parity: Parity` - topology parity of the triangle: `Abc` (+1) or `Acb`
+  (-1). A stored topological label, not derived from 3D geometry: on the
+  icosphere it is seeded from the base-face winding (see
+  [`build_icosphere()`](icosphere.md)); on flat meshes there is no outward
+  reference, so builders assign the field directly (the same pattern as
+  `uv`). [`split_node`](subdivision.md) propagates it - corner children
+  inherit the parent parity, the center child flips it - and
+  [`unsplit_nodes`](subdivision.md) recovers the parent's from a corner
+  child. The procedural texture (see
+  [`render`](render.md)) uses it as a per-triangle phase bit for alternating
+  effects; it never affects geometry, links, or UVs.
 
 ### Pseudocode Representation
 
@@ -64,6 +76,7 @@ struct Node {
     Integer[3]? back_ports
     String name
     Integer level
+    Parity parity               // Abc (+1) or Acb (-1)
 }
 ```
 
@@ -156,8 +169,8 @@ Node::new(name, vertices, origin) -> NodeRef
     line `BC` and normalize the resulting altitude.
 4. Compute the I/J/K directions.
 5. Set `direction_to_origin = origin - center`.
-6. Set `uv` to `DEFAULT_UV`, `children` to `[None, None, None]` and `level`
-    to `0`.
+6. Set `uv` to `DEFAULT_UV`, `children` to `[None, None, None]`, `level`
+    to `0` and `parity` to `Abc` (+1).
 
 The constructor assumes valid input rather than returning a validation error.
 
@@ -210,6 +223,11 @@ or infinite traversal.
   only `build_icosphere` (with the net layout) and `unfold_uvs` (with a
   generalized unfold) override it.
 - Child links are bidirectional and carry an explicit `back_ports` record.
+- `parity` is a stored topological label (`Abc` = +1, `Acb` = -1), seeded to
+  `Abc` by `Node::new`, seeded from the geometric winding by
+  `build_icosphere`, and assigned directly by any other builder. Split
+  propagation is topological: corner children inherit it, the center child
+  flips it, and unsplit recovers the parent's from a corner child.
 - `destroy()` takes the local port and back-port record, then clears the
   neighbor's recorded back-port slot.
 - Node names ending in `.I`, `.J`, `.K`, `.C` are reserved for the

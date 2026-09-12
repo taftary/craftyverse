@@ -12,7 +12,7 @@ use planet_crafter_engine::scene::{ViewMode, build_scene};
 /// Runs the renderer-neutral-scene demonstration.
 ///
 /// A single node is turned into lines, triangles, world-anchored labels, and
-/// UI checkboxes without touching any Vulkan object.
+/// UI panel rows without touching any Vulkan object.
 pub fn run() {
     let node = Node::new(
         "root",
@@ -29,7 +29,7 @@ pub fn run() {
     assert!(!scene.triangles.is_empty());
     assert!(!scene.labels.is_empty());
     assert!(!scene.texts.is_empty());
-    assert!(!scene.checkboxes.is_empty());
+    assert!(!scene.panel_rows.is_empty());
     assert!(scene.fit_radius > 0.0);
 }
 

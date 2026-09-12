@@ -2,6 +2,7 @@
 
 mod buffers;
 mod checkerboard;
+mod procedural;
 mod renderer;
 mod setup;
 mod shaders;

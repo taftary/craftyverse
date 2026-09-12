@@ -1,5 +1,5 @@
-use glam::Vec3;
-use planet_crafter_engine::node::{Node, NodeRef, build_icosphere, destroy_mesh};
+use glam::{Vec2, Vec3};
+use planet_crafter_engine::node::{Node, NodeRef, Parity, build_icosphere, destroy_mesh};
 use planet_crafter_engine::scene::{DisplayOptions, ViewMode, build_scene};
 use planet_crafter_engine::testing::UV_PLANE_SIZE;
 
@@ -51,12 +51,18 @@ fn textured_mode_emits_world_space_uv_triangles() {
         assert_eq!(vertex.pos, node.vertices[index]);
         assert_eq!(vertex.uv, node.uv[index]);
     }
+    // Barycentric corners are the unit basis in A/B/C order; the node's
+    // default parity is `Abc` (+1).
+    assert_eq!(mesh.tex_world[0].bary, Vec3::X);
+    assert_eq!(mesh.tex_world[1].bary, Vec3::Y);
+    assert_eq!(mesh.tex_world[2].bary, Vec3::Z);
+    assert!(mesh.tex_world.iter().all(|vertex| vertex.parity == 1.0));
     // The attribute geometry would z-fight the filled triangles.
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty() && mesh.labels.is_empty());
     assert!(mesh.tex_uv.is_empty() && mesh.uv_lines.is_empty());
     // The checkbox panel is still emitted.
     assert!(!mesh.ui_lines.is_empty() && !mesh.ui_triangles.is_empty());
-    assert!(!mesh.texts.is_empty() && !mesh.checkboxes.is_empty());
+    assert!(!mesh.texts.is_empty() && !mesh.panel_rows.is_empty());
 }
 
 #[test]
@@ -99,7 +105,7 @@ fn uv_map_mode_lays_uv_net_flat() {
     assert_eq!(mesh.uv_lines.len(), 6 + 12);
     assert!(mesh.lines.is_empty() && mesh.triangles.is_empty() && mesh.labels.is_empty());
     assert!(mesh.tex_world.is_empty());
-    assert!(!mesh.checkboxes.is_empty());
+    assert!(!mesh.panel_rows.is_empty());
 }
 
 #[test]
@@ -185,6 +191,99 @@ fn empty_scene_fits_unit_sphere_in_all_modes() {
         assert_eq!(mesh.fit_center, Vec3::ZERO, "fit center in {view:?} mode");
         assert_eq!(mesh.fit_radius, 1.0, "fit radius in {view:?} mode");
         assert!(mesh.tex_world.is_empty() && mesh.tex_uv.is_empty() && mesh.uv_lines.is_empty());
-        assert!(!mesh.checkboxes.is_empty());
+        assert!(!mesh.panel_rows.is_empty());
     }
+}
+
+#[test]
+fn uv_map_mode_carries_bary_and_parity_too() {
+    let node = static_node();
+    node.borrow_mut().parity = Parity::Acb;
+    let mesh = build_scene(
+        std::slice::from_ref(&node),
+        &DisplayOptions::default(),
+        ViewMode::UvMap,
+    );
+    assert_eq!(mesh.tex_uv.len(), 3);
+    assert_eq!(mesh.tex_uv[0].bary, Vec3::X);
+    assert_eq!(mesh.tex_uv[1].bary, Vec3::Y);
+    assert_eq!(mesh.tex_uv[2].bary, Vec3::Z);
+    assert!(mesh.tex_uv.iter().all(|vertex| vertex.parity == -1.0));
+}
+
+#[test]
+fn procedural_attributes_are_independent_of_uv_seams() {
+    // Two triangles with the same 3D corners but different UVs — a UV
+    // seam. The procedural attributes (bary, parity) must be identical:
+    // the seam cannot alter the procedural texture.
+    let points = [
+        Vec3::new(0.0, 2.0 / 3.0, 0.0),
+        Vec3::new(0.5, -1.0 / 3.0, 0.0),
+        Vec3::new(-0.5, -1.0 / 3.0, 0.0),
+    ];
+    let a = Node::new("seam.a", points, Vec3::ZERO);
+    let b = Node::new("seam.b", points, Vec3::ZERO);
+    b.borrow_mut().uv = [
+        Vec2::new(0.9, 0.9),
+        Vec2::new(0.1, 0.9),
+        Vec2::new(0.5, 0.1),
+    ];
+    let mesh = build_scene(&[a, b], &DisplayOptions::default(), ViewMode::Textured);
+    assert_eq!(mesh.tex_world.len(), 6);
+    let (tri_a, tri_b) = mesh.tex_world.split_at(3);
+    for index in 0..3 {
+        assert_eq!(tri_a[index].pos, tri_b[index].pos);
+        assert_ne!(tri_a[index].uv, tri_b[index].uv);
+        assert_eq!(tri_a[index].bary, tri_b[index].bary);
+        assert_eq!(tri_a[index].parity, tri_b[index].parity);
+    }
+}
+
+#[test]
+fn textured_mode_emits_the_nodes_parity_sign() {
+    let icosphere = build_icosphere("planet", 1.0, 1, Vec3::ZERO);
+    let mesh = build_scene(
+        &icosphere.faces,
+        &DisplayOptions::default(),
+        ViewMode::Textured,
+    );
+    for (face, triangle) in icosphere.faces.iter().zip(mesh.tex_world.chunks_exact(3)) {
+        let sign = face.borrow().parity.sign() as f32;
+        assert!(triangle.iter().all(|vertex| vertex.parity == sign));
+    }
+    // Both parities are present: the 5 reversed base faces and the flipped
+    // center children.
+    assert!(mesh.tex_world.iter().any(|vertex| vertex.parity == 1.0));
+    assert!(mesh.tex_world.iter().any(|vertex| vertex.parity == -1.0));
+    destroy_mesh(&icosphere.faces[0]);
+}
+
+#[test]
+fn textured_mode_emits_the_inward_radial_direction() {
+    // On an icosphere the normalized `direction_to_origin` is the inward
+    // radial: the radial effects read it as the (negated) surface normal.
+    let origin = Vec3::ZERO;
+    let icosphere = build_icosphere("planet", 1.0, 1, origin);
+    let mesh = build_scene(
+        &icosphere.faces,
+        &DisplayOptions::default(),
+        ViewMode::Textured,
+    );
+    for (face, triangle) in icosphere.faces.iter().zip(mesh.tex_world.chunks_exact(3)) {
+        let inward = (origin - face.borrow().center).normalize();
+        for vertex in triangle {
+            assert!(
+                (vertex.radial.length() - 1.0).abs() < 1e-4,
+                "radial not normalized: {:?}",
+                vertex.radial
+            );
+            assert!(
+                (vertex.radial - inward).length() < 1e-4,
+                "radial {:?} vs inward {:?}",
+                vertex.radial,
+                inward
+            );
+        }
+    }
+    destroy_mesh(&icosphere.faces[0]);
 }

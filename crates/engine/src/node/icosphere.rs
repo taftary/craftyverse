@@ -29,7 +29,11 @@
 //! `abc -> acb`). Winding is therefore not a mesh invariant — corner
 //! children inherit their parent's winding and the center child reverses
 //! it — and nothing may rely on it; the renderer uses no backface culling,
-//! and every derived direction is winding-independent by construction.
+//! and every derived direction is winding-independent by construction. The
+//! winding label is stored explicitly as each node's
+//! [`parity`](super::Parity), seeded from the geometric winding at base-face
+//! construction and propagated topologically by the split (corner children
+//! inherit, the center child flips).
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -37,6 +41,7 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use super::NodeRef;
+use super::Parity;
 use super::geometry::midpoint;
 use super::subdivision::split_node_with_midpoints;
 use super::topology::{corner_near, corner_nodes, link, port_on_edge};
@@ -164,7 +169,14 @@ pub fn build_icosphere(
                 [vertices[a], vertices[b], vertices[c]],
                 origin,
             );
-            node.borrow_mut().uv = net[face_index];
+            let mut node_mut = node.borrow_mut();
+            node_mut.uv = net[face_index];
+            // Parity is the winding label: outward-wound faces (normal and
+            // radial direction agree) are `Abc`, the 5 reversed faces `Acb`.
+            let [p_a, p_b, p_c] = node_mut.vertices;
+            let winding = (p_b - p_a).cross(p_c - p_a).dot(node_mut.center - origin);
+            node_mut.parity = Parity::from_sign(winding);
+            drop(node_mut);
             node
         })
         .collect();

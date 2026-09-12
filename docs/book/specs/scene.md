@@ -12,7 +12,10 @@ data for the Vulkan debug viewer. Which visualization it emits is selected by
   center dots and text labels, as colored line and triangle lists in a y-up
   3D world space.
 - `ViewMode::Textured` - the filled world-space node triangles carrying
-  per-corner UVs (drawn by the renderer with a checkerboard texture).
+  per-corner UVs, barycentric coordinates and the node's parity sign (drawn
+  by the renderer with the selected procedural texture effect - see
+  [`render`](render.md); the UVs ride along but the procedural effects never
+  read them).
 - `ViewMode::UvMap` - the same triangles laid flat on a world-space `z = 0`
   plane (the UV net), plus a wireframe overlay with a cross dot at every UV
   vertex.
@@ -25,7 +28,9 @@ In Mesh mode, each displayed attribute can be toggled through
 `DisplayOptions`; the scene also generates a pixel-space checkbox panel
 (geometry, labels and hit rectangles) that the viewer uses to flip the
 options at runtime (the panel is emitted and clickable in every mode, even
-though the textured and UV-map modes ignore the options). The module
+though the textured and UV-map modes ignore the options). Below the
+attribute checkboxes, one radio row per `TextureEffect` selects the active
+procedural effect of the Textured mode (`DisplayOptions.effect`). The module
 never mutates nodes and contains no GPU code, so it is fully unit-testable.
 
 The scene carries no camera transform of its own: world geometry stays 3D and
@@ -41,18 +46,28 @@ through `project_labels`, when the camera changes.
   - `ViewMode { Mesh, Textured, UvMap }` - which visualization
     `build_scene` emits (`Mesh` is the `Default`); `next()` cycles
     Mesh -> Textured -> UvMap -> Mesh.
-  - `UvVertex { pos: Vec3, uv: Vec2 }` - textured vertex: world-space
-    position plus a texture coordinate; in `ViewMode::UvMap` the position
-    lies on the `z = 0` UV plane (`uv * UV_PLANE_SIZE` on x/y, where
+  - `TexVertex { pos: Vec3, uv: Vec2, bary: Vec3, parity: f32, radial: Vec3 }` -
+    textured
+    vertex: world-space position plus the attributes the textured pipelines
+    interpolate: the texture coordinate (only the UV-map view samples it),
+    the corner's barycentric coordinate (`(1, 0, 0)` at `A`, `(0, 1, 0)` at
+    `B`, `(0, 0, 1)` at `C` - interpolated across the triangle it becomes
+    the per-pixel procedural space `(uA, uB, uC)`), the node's topology
+    parity as its sign (`+1.0` / `-1.0`, constant across the triangle), and
+    the node's normalized `direction_to_origin` (the inward radial on a
+    sphere, constant across the triangle, `Vec3::ZERO` when degenerate; the
+    radial effects negate it for the outward surface normal). In
+    `ViewMode::UvMap` the position lies on the `z = 0` UV plane
+    (`uv * UV_PLANE_SIZE` on x/y, where
     `UV_PLANE_SIZE = 2.0` is the edge length of the world-space square the
     `[0, 1]^2` UV space is laid out on).
   - `SceneMesh` - everything the renderer needs for one scene:
     - `lines: Vec<Vertex>` - line list (outlines, arrow shafts, dashes, child links).
     - `triangles: Vec<Vertex>` - triangle list (arrowheads, center dots,
       open-port markers).
-    - `tex_world: Vec<UvVertex>` - filled world-space node triangles with
-      UVs (`ViewMode::Textured` only).
-    - `tex_uv: Vec<UvVertex>` - the same triangles on the `z = 0` UV plane
+    - `tex_world: Vec<TexVertex>` - filled world-space node triangles with
+      UVs, barycentric coordinates and parity (`ViewMode::Textured` only).
+    - `tex_uv: Vec<TexVertex>` - the same triangles on the `z = 0` UV plane
       (`ViewMode::UvMap` only).
     - `uv_lines: Vec<Vertex>` - UV-net wireframe and vertex dots
       (`ViewMode::UvMap` only).
@@ -61,7 +76,8 @@ through `project_labels`, when the camera changes.
     - `texts: Vec<TextRun>` - checkbox labels in pixel space.
     - `labels: Vec<WorldLabel>` - world-anchored labels (node name/level and
       corner letters), projected to pixels when the camera is applied.
-    - `checkboxes: Vec<Checkbox>` - hit rectangles, one per panel row.
+    - `panel_rows: Vec<PanelRow>` - hit rectangles, one per panel row
+      (attribute checkboxes first, then the texture-effect radio rows).
     - `fit_center: Vec3` / `fit_radius: f32` - content bounding sphere, the
       camera fit target, computed from the active mode's batches
       (`(Vec3::ZERO, 1.0)` for an empty scene).
@@ -96,6 +112,9 @@ through `project_labels`, when the camera changes.
     convention (depth `z ∈ [0, 1]`, y-up NDC) - the same convention the
     pixel-space pipelines (text, checkbox panel) are authored in - so
     world geometry, labels and UI stay aligned.
+  - `OrbitCamera::eye_position(center, radius, viewport) -> Vec3` - the
+    world-space eye position of the same fit (the fresnel effect's view
+    direction origin).
   - `project_labels(labels, mvp, viewport) -> Vec<TextRun>` - projects the
     world anchors to pixels, resolves each `LabelOffset`, and drops labels
     behind the camera; the returned runs borrow their text from the labels.
@@ -117,9 +136,24 @@ through `project_labels`, when the camera changes.
   - `DisplayOptions` - one `bool` per master and single attribute plus a
     `[bool; 3]` per group (`child_links_ijk`, `open_ports_ijk`,
     `directions_ijk`), all on by default; `value(attribute)` reads the state,
-    `toggle(attribute)` flips it.
-  - `Checkbox { attribute, min, max }` - clickable rectangle in pixels,
-    y-down (checkbox box plus label); `contains(point)` hit-tests a pixel
+    `toggle(attribute)` flips it. A plain `effect: TextureEffect` field holds
+    the active procedural effect (a radio selection, not a toggle;
+    `TextureEffect::Checkerboard` by default) and is read by the Textured
+    mode and the radio rows.
+  - `TextureEffect` - the procedural texture effects of the Textured mode,
+    one radio row each (`EFFECTS` lists them in display order):
+    `Gradient`, `Checkerboard` (the default), `StripesI` / `StripesJ` /
+    `StripesK` (edge-aligned bands parallel to `AB` / `BC` / `CA`),
+    `EdgeMask`, and the radial effects `RadialRgb`, `Diffuse`, `Latitude`,
+    `Fresnel`. `shader_mode()` maps each to
+    the fragment mode `1..=10` (mode 0 is reserved for sampling the
+    checkerboard texture in the UV-map view). See [`render`](render.md) for
+    the effect contract.
+  - `PanelItem { Attribute(Attribute), Effect(TextureEffect) }` - what a
+    panel row controls: an attribute checkbox (toggles) or a texture-effect
+    radio row (selects).
+  - `PanelRow { item: PanelItem, min, max }` - clickable rectangle in
+    pixels, y-down (row box plus label); `contains(point)` hit-tests a pixel
     position.
 
 ### Methods
@@ -127,8 +161,11 @@ through `project_labels`, when the camera changes.
 - `build_scene(nodes: &[NodeRef], options: &DisplayOptions, view: ViewMode) -> SceneMesh`
   - generates the visualization of `nodes` selected by `view`: Mesh mode
     displays the attributes enabled in `options`; Textured and UvMap modes
-    emit only their `UvVertex` batches (plus the `uv_lines` overlay in UvMap
-    mode) and ignore `options`. World geometry is viewport-independent; the
+    emit only their `TexVertex` batches (plus the `uv_lines` overlay in UvMap
+    mode) and ignore the attribute toggles. `options.effect` selects the
+    procedural effect everywhere (the shader reads it in Textured mode; the
+    radio rows show it in every mode). World geometry is
+    viewport-independent; the
     checkbox panel is top-left anchored in pixel space and emitted in every
     mode.
 - `level_color(level: u32) -> [f32; 3]` (crate-internal) - level palette,
@@ -180,11 +217,13 @@ attribute geometry and no labels - only these batches (plus the always-on
 checkbox panel):
 
 - **Textured triangles** (`tex_world`, Textured mode) - the node's three
-  corners as `UvVertex`: world positions from `node.vertices`, texture
-  coordinates from `node.uv`.
+  corners as `TexVertex`: world positions from `node.vertices`, texture
+  coordinates from `node.uv`, the unit-basis barycentric coordinate of the
+  corner, `node.parity.sign()` as `parity`, and the normalized
+  `node.direction_to_origin` as `radial`.
 - **UV plane triangles** (`tex_uv`, UvMap mode) - the same three corners with
   the position mapped onto the `z = 0` UV plane (`uv * UV_PLANE_SIZE` on
-  x/y) and the same texture coordinates, so the rendered plane shows exactly
+  x/y) and the same attributes, so the rendered plane shows exactly
   what the texture lookup sees.
 - **UV wireframe** (`uv_lines`, UvMap mode) - the node's UV-triangle outline
   (3 edges), color `UV_LINE_COLOR` (`#000000`).
@@ -194,9 +233,12 @@ checkbox panel):
 
 ### Checkbox Panel (always generated)
 
-One row per attribute, top-left anchored in pixel space: a 12 px box outline
-(`#424242`), filled with an inset square when the attribute is on, plus the
-attribute label (11 px, `#212121`). Per-port sub-switches sit directly under
+One row per attribute, then one radio row per texture effect, top-left
+anchored in pixel space: a 12 px box outline
+(`#424242`), filled with an inset square when the attribute is on (or the
+effect is the active one - exactly one effect is selected at any time), plus
+the label (11 px, `#212121`; effect labels read `fx ...`). Per-port
+sub-switches sit directly under
 their group master, indented by 16 px, with their label colored with the
 port's I/J/K direction color. The clickable rectangle covers the box and
 the label (the label width is estimated from the monospace advance). The panel

@@ -7,23 +7,29 @@
 //!
 //! Rendering model: one render pass with a depth buffer, six pipelines —
 //! colored world lines, colored world triangles (arrowheads, discs),
-//! checkerboard-textured world triangles (`tex_pipeline`, sampled from the
-//! generated `checkerboard` texture), the pixel-space checkbox panel (lines
-//! and triangles, no depth test), and alpha-blended text quads sampled from
-//! the `text` glyph atlas. The world batches depend on the view mode (the T
+//! textured world triangles (`tex_pipeline`, procedural per-triangle
+//! effects in the `Textured` view and the generated `checkerboard` texture
+//! in the `UvMap` view, switched by a push-constant fragment mode), the
+//! pixel-space checkbox panel (lines and triangles, no depth test), and
+//! alpha-blended text quads sampled from the `text` glyph atlas. The world
+//! batches depend on the view mode (the T
 //! key cycles them): `Mesh` draws the attribute/line debug view, `Textured`
-//! the textured 3D node triangles, `UvMap` the textured UV net laid flat
-//! plus its wireframe overlay. World-space geometry stays 3D and is placed
+//! the 3D node triangles shaded with the selected procedural effect
+//! (barycentric coordinates, topology parity and radial direction, never
+//! UVs), `UvMap` the
+//! checkerboard-textured UV net laid flat plus its wireframe overlay.
+//! World-space geometry stays 3D and is placed
 //! on the GPU via a view-projection matrix push constant driven by the orbit
 //! camera, so camera changes never rebuild the geometry buffers; only the
 //! label anchors are re-projected on the CPU. Text and the checkbox panel
 //! are laid out in pixel space and mapped with separate transforms.
 //! Left-clicking a checkbox toggles the display of the matching node
-//! attribute.
+//! attribute; left-clicking an `fx` radio row selects the procedural effect.
 //!
 //! GPU vertex and push-constant layouts live in `vertices`, the shaders and
 //! their runtime compilation in `shaders`, the checkerboard debug texture in
-//! `checkerboard`, the reusable scene vertex buffers in `buffers`, Vulkan
+//! `checkerboard`, the CPU reference of the procedural texture effects in
+//! `procedural`, the reusable scene vertex buffers in `buffers`, Vulkan
 //! object setup in `setup`, the renderer in `renderer`, and the winit event
 //! handling in `viewer`.
 //!
@@ -31,6 +37,8 @@
 
 mod buffers;
 mod checkerboard;
+#[cfg(feature = "test-internals")]
+mod procedural;
 mod renderer;
 mod setup;
 mod shaders;
@@ -53,7 +61,12 @@ pub use checkerboard::{
     CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, checkerboard_mips, mip_level_count,
 };
 #[cfg(feature = "test-internals")]
-pub use renderer::checkbox_at;
+pub use procedural::{
+    CHECKER_CELLS, LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, STRIPE_BANDS, checker, diffuse,
+    edge_mask, fresnel, gradient, latitude, radial_rgb, stripes,
+};
+#[cfg(feature = "test-internals")]
+pub use renderer::panel_item_at;
 #[cfg(feature = "test-internals")]
 pub use renderer::pixel_matrix;
 #[cfg(feature = "test-internals")]
@@ -61,7 +74,7 @@ pub use setup::device_type_rank;
 #[cfg(feature = "test-internals")]
 pub use shaders::{GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
 #[cfg(feature = "test-internals")]
-pub use vertices::{PushMatrix, PushTransform};
+pub use vertices::{PushMatrix, PushTex, PushTransform};
 #[cfg(feature = "test-internals")]
 pub use viewer::scenario_index_of;
 

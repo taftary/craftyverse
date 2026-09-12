@@ -38,13 +38,15 @@ use vulkano::{Validated, VulkanError};
 use winit::window::Window;
 
 use crate::node::NodeRef;
-use crate::scene::{self, Attribute, Checkbox, DisplayOptions, OrbitCamera, TextRun, WorldLabel};
+use crate::scene::{self, DisplayOptions, OrbitCamera, PanelItem, PanelRow, TextRun, WorldLabel};
 use crate::text::TextAtlas;
 
 use super::buffers::VertexBuffer;
 use super::setup;
 use super::shaders::{GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, load_shader};
-use super::vertices::{GeomVertex, PushMatrix, PushTransform, TextVertexGpu, UvVertexGpu};
+use super::vertices::{
+    GeomVertex, PushMatrix, PushTex, PushTransform, TexVertexGpu, TextVertexGpu,
+};
 
 /// Owns the window, the Vulkan objects and the current scene's vertex
 /// buffers; redraws on request from the viewer.
@@ -73,13 +75,16 @@ pub(crate) struct Renderer {
     ui_line_buffer: VertexBuffer<GeomVertex>,
     ui_tri_buffer: VertexBuffer<GeomVertex>,
     text_buffer: Option<Subbuffer<[TextVertexGpu]>>,
-    tex_world_buffer: VertexBuffer<UvVertexGpu>,
-    tex_uv_buffer: VertexBuffer<UvVertexGpu>,
+    tex_world_buffer: VertexBuffer<TexVertexGpu>,
+    tex_uv_buffer: VertexBuffer<TexVertexGpu>,
     uv_line_buffer: VertexBuffer<GeomVertex>,
     /// View mode the scene was built with (drives the world batches drawn).
     view_mode: scene::ViewMode,
-    /// Checkbox hit rectangles of the current scene (pixel space).
-    checkboxes: Vec<Checkbox>,
+    /// Procedural effect of the current scene (drives the tex_world
+    /// fragment mode).
+    effect: scene::TextureEffect,
+    /// Panel hit rectangles of the current scene (pixel space).
+    panel_rows: Vec<PanelRow>,
     /// World-anchored labels of the current scene, re-projected on camera
     /// changes.
     labels: Vec<WorldLabel>,
@@ -92,6 +97,9 @@ pub(crate) struct Renderer {
     camera: OrbitCamera,
     world_mvp: PushMatrix,
     pixel_mvp: PushMatrix,
+    /// World-space eye position of the current camera (the fresnel view
+    /// direction of the textured pipeline).
+    camera_eye: Vec3,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
     window_resized: bool,
 }
@@ -191,7 +199,7 @@ impl Renderer {
             &device,
             tex_vs,
             tex_fs,
-            UvVertexGpu::per_vertex(),
+            TexVertexGpu::per_vertex(),
             PrimitiveTopology::TriangleList,
             None,
             true,
@@ -246,7 +254,8 @@ impl Renderer {
             tex_uv_buffer: VertexBuffer::new(),
             uv_line_buffer: VertexBuffer::new(),
             view_mode: scene::ViewMode::Mesh,
-            checkboxes: Vec::new(),
+            effect: scene::TextureEffect::default(),
+            panel_rows: Vec::new(),
             labels: Vec::new(),
             ui_texts: Vec::new(),
             fit_center: Vec3::ZERO,
@@ -254,6 +263,7 @@ impl Renderer {
             camera: OrbitCamera::default(),
             world_mvp: PushMatrix::IDENTITY,
             pixel_mvp: PushMatrix::IDENTITY,
+            camera_eye: Vec3::ZERO,
             previous_frame_end: Some(sync::now(device).boxed()),
             window_resized: false,
         }
@@ -278,6 +288,7 @@ impl Renderer {
         view_mode: scene::ViewMode,
     ) {
         self.view_mode = view_mode;
+        self.effect = options.effect;
         let mesh = scene::build_scene(scenario, options, view_mode);
 
         // The in-place buffer rewrites below must not race a frame still in
@@ -297,9 +308,12 @@ impl Renderer {
             pos: v.pos.to_array(),
             color: v.color,
         };
-        let to_uv = |v: &scene::UvVertex| UvVertexGpu {
+        let to_uv = |v: &scene::TexVertex| TexVertexGpu {
             pos: v.pos.to_array(),
             uv: v.uv.to_array(),
+            bary: v.bary.to_array(),
+            parity: v.parity,
+            radial: v.radial.to_array(),
         };
         self.line_buffer.update(
             &self.memory_allocator,
@@ -330,7 +344,7 @@ impl Renderer {
             &mesh.uv_lines.iter().map(to_geom).collect::<Vec<_>>(),
         );
 
-        self.checkboxes = mesh.checkboxes;
+        self.panel_rows = mesh.panel_rows;
         self.labels = mesh.labels;
         self.ui_texts = mesh.texts;
         self.fit_center = mesh.fit_center;
@@ -355,6 +369,9 @@ impl Renderer {
             .view_projection(self.fit_center, self.fit_radius, viewport);
         self.world_mvp = PushMatrix::from(mvp);
         self.pixel_mvp = PushMatrix::from(pixel_matrix(viewport));
+        self.camera_eye = self
+            .camera
+            .eye_position(self.fit_center, self.fit_radius, viewport);
 
         let mut text_data = Vec::new();
         for run in &scene::project_labels(&self.labels, &mvp, viewport) {
@@ -390,9 +407,9 @@ impl Renderer {
         );
     }
 
-    /// Attribute whose checkbox contains `point` (physical pixels), if any.
-    pub(crate) fn checkbox_at(&self, point: Vec2) -> Option<Attribute> {
-        checkbox_at(&self.checkboxes, point)
+    /// Panel item whose row contains `point` (physical pixels), if any.
+    pub(crate) fn panel_item_at(&self, point: Vec2) -> Option<PanelItem> {
+        panel_item_at(&self.panel_rows, point)
     }
 
     /// Asks winit for a redraw (delivered as a `RedrawRequested` event).
@@ -493,12 +510,16 @@ impl Renderer {
                 }
             }
             scene::ViewMode::Textured => {
-                // Filled node triangles sampled from the checkerboard.
+                // Filled node triangles with the selected procedural effect.
                 if let Some((tex_world, count)) = self.tex_world_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.tex_pipeline,
-                        self.world_mvp,
+                        PushTex::new(
+                            self.world_mvp.mvp,
+                            self.camera_eye.to_array(),
+                            self.effect.shader_mode(),
+                        ),
                         &tex_world,
                         count,
                         Some(&self.tex_descriptor_set),
@@ -506,12 +527,13 @@ impl Renderer {
                 }
             }
             scene::ViewMode::UvMap => {
-                // The textured UV net laid flat on the z = 0 world plane…
+                // The UV net laid flat on the z = 0 world plane, sampled
+                // from the checkerboard (fragment mode 0)…
                 if let Some((tex_uv, count)) = self.tex_uv_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.tex_pipeline,
-                        self.world_mvp,
+                        PushTex::new(self.world_mvp.mvp, self.camera_eye.to_array(), 0),
                         &tex_uv,
                         count,
                         Some(&self.tex_descriptor_set),
@@ -621,12 +643,12 @@ pub fn pixel_matrix(viewport: Vec2) -> Mat4 {
     )
 }
 
-/// Attribute of the first checkbox containing `point`, if any.
-pub fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attribute> {
-    checkboxes
+/// Panel item of the first row containing `point`, if any.
+pub fn panel_item_at(panel_rows: &[PanelRow], point: Vec2) -> Option<PanelItem> {
+    panel_rows
         .iter()
-        .find(|checkbox| checkbox.contains(point))
-        .map(|checkbox| checkbox.attribute)
+        .find(|row| row.contains(point))
+        .map(|row| row.item)
 }
 
 /// Records one draw batch: binds `pipeline`, `transform` as push constants
