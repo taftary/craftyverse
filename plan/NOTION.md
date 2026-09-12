@@ -1,7 +1,7 @@
 # 🌍 **Procedural Planet Runtime Specification**
 
 ### **Goal**
-Build a mobile‑optimized procedural planet runtime system where the player can move freely around a planet, transition through all planetary layers (space → orbit → atmosphere → sky → terrain), and only the necessary terrain chunks are active.
+Build a procedural planet runtime system (desktop Vulkan baseline, designed within mobile performance budgets) where the player can move freely around a planet, transition through all planetary layers (space → orbit → atmosphere → sky → terrain), and only the necessary terrain chunks are active.
 
 ## **Planet**
 
@@ -64,6 +64,7 @@ The runtime must support the following ordered layers:
 - Atmosphere
 - Sky
 - Terrain
+- Publishes the authoritative flattening blend factor and floating‑origin anchor each frame (see Ground Flattening Requirement).
 - Communicates layer to other systems.
 
 ### **2. Chunk LOD Runtime System**
@@ -73,17 +74,21 @@ The runtime must support the following ordered layers:
 
 - Chunk activation/deactivation
 - Chunk subdivision/merge
-- Frustum culling
-- Horizon culling
-- LOD decisions based solely on **player distance to chunk**.
-- Must limit LOD operations per frame for mobile performance.
+- LOD decisions based solely on **player position**: distance from the player to the chunk center. Player orientation never participates.
+- Split and merge use separate thresholds with hysteresis: merge threshold = split threshold × 1.3 per level.
+- LOD distance thresholds follow a geometric progression (×2 per level), matching the subdivision hierarchy.
+- Restricted subdivision: the level difference across any shared edge is at most 1; chunk‑border skirts mask the residual seams.
+- Must limit LOD operations per frame (configurable budget, initially 2 split/merge operations per frame).
+- Frustum culling and horizon culling are **not** LOD operations; they belong to the camera-driven visibility pass (see Chunk Visibility Requirement).
 
 ## **Chunk Visibility Requirement**
 
-- **Only the side of the planet where the player is located should be rendered.**
-- All other sides must not be rendered.
-- When the player moves, visible chunks must be recalculated.
-- Goal: **reduce mesh count as much as possible**.
+- Loading and rendering are separate concerns:
+- **Loading** follows the player: the active zone is a full sphere around the player position, independent of orientation.
+- **Rendering** follows the camera: chunks are culled by the camera frustum and by the planet horizon.
+- The camera may detach from the player; LOD and loading still follow the player, culling still follows the camera. A detached camera sees whatever is loaded around the player, including gaps.
+- When the player or camera moves, visible chunks must be recalculated.
+- Goal: **reduce rendered mesh count as much as possible**.
 
 ## **Dynamic Mesh Loading Requirement**
 
@@ -92,6 +97,7 @@ The runtime must support the following ordered layers:
 
 - Chunks must **load** when entering the player’s active zone.
 - Chunks must **unload** when leaving the player’s active zone.
+- The active zone is a sphere around the player position (see Chunk Visibility Requirement).
 - Loading/unloading must be continuous and distance‑based.
 - System must always maintain the minimum number of active meshes.
 
@@ -105,15 +111,21 @@ The runtime must support the following ordered layers:
 - Vertex displacement
 - Vertex refinement
 - Vertex simplification
+- No parent/child layered rendering during LOD transitions; a transition only rewrites vertex data in pooled slots.
 - Mesh pooling must be used for all runtime operations.
 
 ## **Ground Flattening Requirement**
 
+- Purpose: simpler ground gameplay - movement, building, and physics use flat local math near the ground.
 - As the player approaches ground level:
 
-- The spherical terrain must **smoothly transition** into a **flat terrain**.
-- The flat terrain must replace the curved geometry under the player.
-- The transition must be seamless and distance‑based.
+- The spherical terrain must **smoothly transition** into a **flat terrain** through a **shader-side morph**: a uniform blend factor displaces vertices toward the local tangent plane in the vertex shader.
+- The morph applies to the **whole visible region** with one global blend factor; the visible flattening of terrain during descent is an intended effect.
+- The transition must be seamless and distance‑based, blended across the sky layer.
+- Gameplay transitions with it: gravity, movement, and building blend from spherical (radial gravity) to flat (fixed down) using the same normalized factor as the shader.
+- The flat frame is a **continuous floating origin**, re‑anchored to the player’s ground projection every frame (this also bounds float32 precision error far from the planet center).
+- One authoritative blend factor and anchor is published per frame so rendering, physics, and picking never disagree.
+- Pooled vertex data stays spherical; no CPU vertex rewrites are used for flattening.
 
 ## **Atmosphere Requirement**
 
@@ -126,6 +138,7 @@ The runtime must support the following ordered layers:
 - Sky → fog and horizon
 - Terrain → full sky
 - Uses normalized distance factor for blending.
+- At full ground flattening, the curved shell reads as a sky dome above flat ground; the shell itself stays curved.
 
 ### **4. Rendering Flow Controller**
 
@@ -137,29 +150,31 @@ The runtime must support the following ordered layers:
 - Sky: fog, horizon, sky color
 - Terrain: flat ground
 - Controls shader detail levels and visual transitions.
-- Handles smooth transformation from **sphere** to **flat terrain** as player approaches ground.
+- Owns the camera‑driven visibility pass: frustum culling and horizon culling.
+- Applies the smooth transformation from **sphere** to **flat terrain** using the authoritative blend factor and floating origin published by the Planet Runtime Manager.
 
-## **Inline LOD Zoom Requirement (Fibonacci‑based)**
+## **LOD Zoom Transitions**
 
-- System must use a **Fibonacci‑based inline LOD zoom method**.
+- "Zoom" means the player approaching or leaving; it is handled entirely by the distance‑based Chunk LOD Runtime System. There is no separate zoom system.
+- (Superseded: the earlier Fibonacci‑based inline zoom requirement. Distance thresholds follow a geometric ×2 progression instead, matching the subdivision hierarchy.)
 - When zooming **in**:
 
-- New vertex‑refined meshes must be created **under** the current meshes.
-- Zoom transitions must follow Fibonacci‑based scaling.
+- Chunks split by rewriting vertex data in pooled mesh slots.
+- No new mesh objects are created for any chunk or LOD level.
 - When zooming **out**:
 
-- The process must be reversed.
-- Higher‑level meshes replace lower‑level ones smoothly.
-- All zoom operations must reuse the same mesh objects.
+- The process is reversed: coarser vertex data replaces finer data in the same pooled slots.
+- All zoom operations reuse the same mesh objects.
 
-## **Mobile Performance Requirements**
+## **Performance Requirements**
 
+- Desktop Vulkan is the validated baseline; the mobile rules below are design constraints, not validated targets (no mobile build or CI exists yet).
 - Minimal draw calls.
-- Only nearby chunks active.
-- Only player‑side chunks rendered.
+- Only nearby chunks active (active zone sphere around the player).
+- Only camera‑visible chunks rendered (frustum + horizon culling).
 - Mesh pooling.
-- Async vertex updates.
+- Fully asynchronous vertex updates: worker threads with double‑buffered staging; workers consume extracted geometry data, not node graph references (the graph is single‑threaded).
 - Single terrain shader.
 - Single curved‑atmosphere shader.
 - No per‑frame CPU terrain generation.
-- Hard limit on LOD operations per frame.
+- Hard, configurable limit on LOD operations per frame (initially 2).

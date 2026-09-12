@@ -1,6 +1,6 @@
 # Related Existing Systems
 
-This document records the existing PlanetCrafter code that can be reused for the procedural planet runtime described in `NOTION.md`.
+This document records the existing PlanetCrafter code that can be reused for the procedural planet runtime described in `NOTION.md`. It also traces each runtime requirement to existing code, records open questions in the specification, and proposes an implementation order.
 
 ## Primary Reuse Target: Node Graph
 
@@ -123,7 +123,7 @@ The topology helpers support chunk visibility and graph traversal:
 - `reciprocal_index` exposes the normal `0 <-> 2`, `1 <-> 1` port mapping.
 - `collect_nodes` performs breadth-first traversal with pointer deduplication.
 - `destroy_mesh` breaks all reciprocal `Rc` cycles before deallocation.
-- `corner_near` and `port_on_edge` support edge welding.
+- Internal `pub(crate)` helpers `corner_near` and `port_on_edge` support edge welding; they are engine internals, not public API.
 
 Relevant implementation: [crates/engine/src/node/topology.rs](../crates/engine/src/node/topology.rs)
 
@@ -194,6 +194,8 @@ Relevant files:
 
 Important limitation: the current renderer rebuilds scene vertex lists when the scenario or display state changes, and `VertexBuffer` may allocate a larger buffer when capacity is insufficient. This is useful allocation reuse, but it is not yet a complete fixed-size mesh pool for runtime terrain chunks.
 
+Visibility limitation: `TexVertexGpu` and `VertexBuffer` are `pub(crate)`. A runtime mesh pool must therefore live inside the engine crate, or these types must be deliberately exposed as a public surface; they cannot be consumed from `crates/game` or the tests package as-is.
+
 ## Existing Tests to Protect During Reuse
 
 The node tests cover the invariants that a runtime layer must preserve:
@@ -227,7 +229,7 @@ The first runtime implementation should reuse these existing pieces:
 6. `unsplit_nodes` for complete-group coarsening.
 7. `direction_to_origin`, `center`, and `vertices` for player-side and horizon tests.
 8. `uv`, `seed_distance`, and `parity` for stable vertex/shader attributes.
-9. `VertexBuffer` as a starting point for GPU allocation reuse.
+9. `VertexBuffer` as a starting point for GPU allocation reuse (currently `pub(crate)`; see the visibility note in "Existing Rendering Reuse").
 10. Existing node tests as invariants for every runtime transition.
 
 ## Missing Runtime Layer
@@ -241,10 +243,9 @@ The following requirements from `NOTION.md` are not implemented by the current n
 - Player-side visibility, frustum culling, and horizon culling.
 - A fixed-capacity mesh pool that reuses render slots.
 - In-place or pooled vertex updates for active chunks.
-- Sphere-to-flat terrain displacement and ground flattening.
+- Shader-side sphere-to-flat morph and altitude blending (see Decision 3).
 - Curved atmosphere rendering and atmospheric transitions.
-- Fibonacci-based zoom scaling policy.
-- Async or staged vertex updates suitable for mobile hardware.
+- Fully asynchronous vertex updates with worker threads (see Decision 4).
 
 ## Design Constraint: Node Reuse vs Mesh Reuse
 
@@ -256,7 +257,161 @@ Recommended separation:
 - Add a runtime chunk handle or pool slot that owns a stable render allocation.
 - Assign and unassign node generations to pool slots as visibility changes.
 - Update vertex contents in assigned slots instead of creating one GPU mesh per node or LOD.
-- Use `split_node` or a future local refinement operation to obtain topology changes, while keeping render resources pooled.
+- Use the local refinement operation defined in Decision 5 to obtain topology changes, while keeping render resources pooled.
 - Add explicit ownership and cleanup for any retained node generations; do not drop linked graphs without `destroy_mesh` or equivalent link cleanup.
 
 This preserves the existing node and icosphere logic while leaving room for mobile-specific scheduling and rendering policy.
+
+## Requirement Traceability
+
+| NOTION.md requirement | Existing reuse | Gap |
+| --- | --- | --- |
+| Planet radius known; base planet graph | `build_icosphere`, `origin`, `radius` | None for topology; the runtime must store radius and origin as first-class configuration |
+| Layer classification (space / orbit / atmosphere / sky / terrain) | `center` and `direction_to_origin` give the planet center | Planet runtime manager, atmosphere multiplier, normalized blending factor |
+| Chunk LOD by player distance | `split_node`, `unsplit_nodes`, `level`, `name` | New local refinement operation, restricted subdivision and crack masking (Decision 5), per-frame operation budget |
+| Player-side-only rendering | `direction_to_origin` and `center` for side and horizon tests | Visibility pass with frustum and horizon culling |
+| Dynamic load/unload by active zone | `children` adjacency, `collect_nodes` traversal | Active-zone tracking and chunk assignment policy |
+| Mesh reuse and pooling | `VertexBuffer` capacity reuse (`pub(crate)`) | Fixed-capacity chunk pool with stable render slots |
+| Split/unsplit through vertex updates only | Subdivision preserves vertices, UVs, and ring values | In-place vertex writes into pooled slots |
+| Ground flattening | None | Shader-side morph system and a single authoritative altitude blend factor; policy fixed by Decision 3 |
+| Curved atmosphere by distance | None | Atmosphere shell geometry, shader, and layer blending |
+| LOD zoom transitions | `split_node` hierarchy | None beyond the LOD scheduler; superseded by Decision 2 (geometric x2 thresholds, pooled vertex reuse only) |
+| Mobile performance limits | Headless-testable engine design | Fixed operation budget and fully async vertex pipeline (Decision 4); single terrain and atmosphere shaders |
+
+## Decisions
+
+### Decision 1: LOD and visibility inputs (resolves open question 1)
+
+- LOD metric: distance from the player position to the chunk center
+  (`Node::center`). Player orientation never participates.
+- Split and merge use separate thresholds with a ratio-based hysteresis
+  band: merge threshold = split threshold x 1.3 per level.
+- The active zone is a full sphere around the player; chunks load in all
+  directions, including behind the camera.
+- The camera may detach from the player. LOD and the active zone always
+  follow the player; a detached camera sees whatever is loaded around the
+  player, including gaps and lower detail. Frustum and horizon culling are
+  render-time operations driven by the camera, never by LOD state.
+- Consequence: LOD selection and visibility are separate systems. LOD
+  consumes player position only; culling consumes the camera only.
+
+### Decision 2: LOD zoom transitions (resolves open question 2)
+
+- "Zoom" means the player approaching or leaving; it is the same
+  distance-based LOD from Decision 1, not a separate system.
+- The Fibonacci-based scaling requirement is dropped. LOD distance
+  thresholds follow a geometric progression (x2 per level), matching the
+  subdivision hierarchy (each triangle refines into four children).
+- The mesh reuse requirement wins over the contradictory "create new
+  refined meshes under current meshes" sentence in NOTION.md: split and
+  merge only rewrite vertex data in pooled mesh slots. No new mesh objects
+  are created for any chunk or LOD level, and no parent/child layered
+  rendering occurs during transitions.
+
+### Decision 3: Ground flattening (resolves open question 3)
+
+- Purpose: simpler ground gameplay - movement, building, and physics use
+  flat local math near the ground.
+- Mechanism: shader-side morph. A uniform blend factor displaces vertices
+  toward the local tangent plane in the vertex shader. Pooled vertex data
+  stays spherical; no CPU vertex rewrites for flattening.
+- Scope: the whole visible region morphs with one global blend factor.
+  The visible flattening of terrain during descent is an intended effect.
+- Gameplay: gravity, movement, and building work in flat local
+  coordinates near the ground. The switch between spherical (radial
+  gravity) and flat (fixed down) is blended by altitude across the sky
+  layer, using the same normalized factor as the shader morph.
+- Anchor: the flat frame is a continuous floating origin, re-anchored to
+  the player's ground projection every frame. This also bounds float32
+  precision error far from the planet center.
+- Consequence: the flat gameplay frame and the spherical mesh data
+  coexist; the runtime manager must publish one authoritative blend factor
+  and anchor per frame so the shader, physics, and picking never disagree.
+  At full flatten, the curved atmosphere shell reads as a sky dome above
+  flat ground, which keeps the curved-atmosphere requirement intact.
+
+### Decision 4: Performance scope (resolves open question 4)
+
+- Desktop-first, budget-aware: build and validate on the desktop Vulkan
+  baseline. Mobile rules (few draw calls, operation budgets, single
+  terrain and atmosphere shaders) are design constraints, not validated
+  targets. No mobile toolchain or CI work.
+- The per-frame LOD operation budget is a fixed configurable constant
+  from the start (initial value: 2 split/merge operations per frame),
+  tuned by profiling later.
+- Vertex updates are fully asynchronous from day one: worker threads with
+  double-buffered staging.
+- Consequence: the node graph is `Rc<RefCell<Node>>`-based and therefore
+  `!Send`; worker threads cannot traverse it. Async updates must extract
+  geometry inputs on the main thread, compute vertex data on workers, and
+  hand results back for GPU upload. This shapes the mesh pool interface
+  in phase 3.
+
+### Decision 5: Local refinement and boundary conformity
+
+- The existing whole-graph operations (`split_nodes`, `unsplit_nodes`)
+  are generation tools, not runtime chunk operations. Runtime LOD uses a
+  new local refinement operation that splits one chunk and retargets the
+  neighboring links that pointed at the parent, plus the matching local
+  merge built on the existing `unsplit_nodes` group rules.
+- Restricted subdivision: the level difference across any shared edge is
+  at most 1. When a split would violate this, the scheduler splits the
+  coarser neighbor first; forced neighbor splits count against the same
+  per-frame operation budget (Decision 4).
+- With the level difference bounded, residual T-junction seams along
+  chunk borders are masked by short skirts (a downward flange at chunk
+  edges), displaced by the same terrain shader; no cross-chunk vertex
+  stitching is attempted at runtime.
+- Consequence: chunk borders never need runtime vertex welding, which
+  keeps the mesh pool's per-slot vertex rewrite model (Decision 2)
+  valid.
+
+## Open Questions in NOTION.md
+
+All four questions are resolved; see the Decisions section. The original
+questions are kept here for traceability:
+
+1. LOD inputs vs visibility inputs. Resolved: see Decision 1. LOD uses
+   player position only; culling uses the camera only.
+2. Fibonacci-based inline LOD zoom. Resolved: see Decision 2. Zoom is
+   ordinary distance-based LOD, thresholds are geometric (x2 per level),
+   and transitions reuse pooled mesh slots through vertex updates only.
+3. Ground flattening. Resolved: see Decision 3. Shader-side morph toward
+   the tangent plane over the whole visible region, gameplay blended from
+   spherical to flat by altitude, continuous floating origin.
+4. Mobile scope. Resolved: see Decision 4. Desktop-first with mobile rules
+   as design constraints, a fixed per-frame operation budget, and fully
+   asynchronous vertex updates from the start.
+
+## Suggested Implementation Phases
+
+Each phase is independently testable, and earlier phases unblock later ones:
+
+1. Planet runtime manager. Player position to distance, direction, and
+   layer classification with a normalized blending factor. Pure math over
+   `glam`, no GPU dependency, fully unit-testable headless. This is the
+   recommended first deliverable because every later system consumes its
+   output.
+2. LOD scheduler. Distance-based split and merge decisions over the node
+   graph using the local refinement operation and `unsplit_nodes`, with a
+   bounded per-frame operation queue (thresholds and hysteresis per
+   Decision 1, geometric x2 progression and vertex-only transitions per
+   Decision 2, budget of 2 operations per frame per Decision 4, restricted
+   subdivision and border skirts per Decision 5). Covers all zoom
+   behavior; there is no separate zoom system.
+3. Mesh pool. Fixed-capacity render slots with in-place vertex updates,
+   built around `VertexBuffer` (requires engine-internal placement or a
+   deliberate public surface). Fully asynchronous vertex updates with
+   worker threads and double-buffered staging per Decision 4; because the
+   `Rc<RefCell<Node>>` graph is `!Send`, workers consume extracted
+   geometry, not node references.
+4. Visibility. Player-side, horizon, and frustum culling over active
+   chunks using `center` and `direction_to_origin`.
+5. Ground flattening. Shader-side sphere-to-tangent-plane morph with a
+   single authoritative blend factor and a continuous floating origin, per
+   Decision 3.
+6. Atmosphere. Curved shell rendering and layer-driven blending (reads as
+   a sky dome at full flatten, per Decision 3).
+
+Each phase has a feature specification in `plan/features/` (one file per
+phase) and is tracked in `plan/TODO.md`.
