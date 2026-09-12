@@ -165,17 +165,24 @@ fn node_normal(node: &Node) -> Vec3 {
 
 impl SceneBuilder {
     /// Textured mode: the node's filled world-space triangle with per-corner
-    /// UVs, barycentric corner coordinates, the node's parity sign and its
-    /// normalized `direction_to_origin`, in the same A/B/C order as
-    /// `node.vertices`. Never alters the node. The attribute geometry is not
-    /// emitted in this mode — it would z-fight the filled triangles.
+    /// UVs, barycentric corner coordinates, the node's parity sign, its
+    /// normalized `direction_to_origin` and its ring field, in the same
+    /// A/B/C order as `node.vertices`. Never alters the node. The attribute
+    /// geometry is not emitted in this mode — it would z-fight the filled
+    /// triangles.
     pub(super) fn add_textured_triangle(&mut self, node: &Node) {
         let parity = node.parity.sign() as f32;
         let radial = node
             .direction_to_origin
             .try_normalize()
             .unwrap_or(Vec3::ZERO);
-        for ((&pos, uv), bary) in node.vertices.iter().zip(node.uv).zip(CORNER_BARY) {
+        for (index, ((&pos, uv), bary)) in node
+            .vertices
+            .iter()
+            .zip(node.uv)
+            .zip(CORNER_BARY)
+            .enumerate()
+        {
             let pos = tracked(&mut self.bounds, pos);
             self.tex_world.push(TexVertex {
                 pos,
@@ -183,14 +190,16 @@ impl SceneBuilder {
                 bary,
                 parity,
                 radial,
+                ring: node.seed_distance[index],
             });
         }
     }
 
     /// UV-map mode: the node's UV net laid flat on the z = 0 plane — the
     /// filled triangle with per-corner UVs (plus the same barycentric,
-    /// parity and radial attributes the textured vertex format carries), its
-    /// wireframe, and one cross dot per corner. Never alters the node.
+    /// parity, radial and ring attributes the textured vertex format
+    /// carries), its wireframe, and one cross dot per corner. Never alters
+    /// the node.
     pub(super) fn add_uv_triangle(&mut self, node: &Node) {
         let corners = node.uv.map(uv_plane_pos);
         let parity = node.parity.sign() as f32;
@@ -198,7 +207,12 @@ impl SceneBuilder {
             .direction_to_origin
             .try_normalize()
             .unwrap_or(Vec3::ZERO);
-        for ((pos, uv), bary) in corners.into_iter().zip(node.uv).zip(CORNER_BARY) {
+        for (index, ((pos, uv), bary)) in corners
+            .into_iter()
+            .zip(node.uv)
+            .zip(CORNER_BARY)
+            .enumerate()
+        {
             let pos = tracked(&mut self.bounds, pos);
             self.tex_uv.push(TexVertex {
                 pos,
@@ -206,6 +220,7 @@ impl SceneBuilder {
                 bary,
                 parity,
                 radial,
+                ring: node.seed_distance[index],
             });
         }
         for (from, to) in [(0, 1), (1, 2), (2, 0)] {

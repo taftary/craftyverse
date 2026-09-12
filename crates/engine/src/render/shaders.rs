@@ -67,7 +67,7 @@ void main() {
 /// geometry shader (the shared `PushTex` block also carries the camera
 /// position and the fragment mode, unused here), passes the texture
 /// coordinate, the barycentric coordinate, the parity sign, the world
-/// position and the radial direction through.
+/// position, the radial direction and the ring-field value through.
 pub const TEX_VERT: &str = r#"
 #version 450
 layout(location = 0) in vec3 pos;
@@ -75,11 +75,13 @@ layout(location = 1) in vec2 uv;
 layout(location = 2) in vec3 bary;
 layout(location = 3) in float parity;
 layout(location = 4) in vec3 radial;
+layout(location = 5) in float ring;
 layout(location = 0) out vec2 out_uv;
 layout(location = 1) out vec3 out_bary;
 layout(location = 2) out float out_parity;
 layout(location = 3) out vec3 out_world_pos;
 layout(location = 4) out vec3 out_radial;
+layout(location = 5) out float out_ring;
 layout(push_constant) uniform PushTex { mat4 mvp; vec3 camera_pos; uint mode; } pc;
 void main() {
     gl_Position = pc.mvp * vec4(pos, 1.0);
@@ -88,15 +90,16 @@ void main() {
     out_parity = parity;
     out_world_pos = pos;
     out_radial = radial;
+    out_ring = ring;
 }
 "#;
 
 /// Textured fragment shader: mode 0 (the UV-map view) samples the
-/// checkerboard texture; modes 1..=10 evaluate a procedural per-triangle
-/// effect from the interpolated barycentric coordinates, the parity sign
-/// and the radial direction — never the UVs, so the procedural output is
-/// seam-independent. The effect functions mirror `render::procedural`
-/// formula-for-formula.
+/// checkerboard texture; modes 1..=11 evaluate a procedural per-triangle
+/// effect from the interpolated barycentric coordinates, the parity sign,
+/// the radial direction and the ring field — never the UVs, so the
+/// procedural output is seam-independent. The effect functions mirror
+/// `render::procedural` formula-for-formula.
 pub const TEX_FRAG: &str = r#"
 #version 450
 layout(location = 0) in vec2 uv;
@@ -104,6 +107,7 @@ layout(location = 1) in vec3 bary;
 layout(location = 2) in float parity;
 layout(location = 3) in vec3 world_pos;
 layout(location = 4) in vec3 radial;
+layout(location = 5) in float ring;
 layout(location = 0) out vec4 out_color;
 // Note: naga's GLSL frontend supports neither `layout(set = ...)` (resources
 // default to set 0) nor combined `sampler2D` uniforms, so the checkerboard is
@@ -167,9 +171,11 @@ void main() {
     } else if (pc.mode == 9u) {
         float t = dot(normal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
         color = vec3(mod(floor(t * LATITUDE_BANDS), 2.0));
-    } else {
+    } else if (pc.mode == 10u) {
         vec3 view_dir = normalize(pc.camera_pos - world_pos);
         color = vec3(1.0 - abs(dot(normal, view_dir)));
+    } else {
+        color = vec3(mod(floor(ring), 2.0));
     }
     out_color = vec4(color, 1.0);
 }

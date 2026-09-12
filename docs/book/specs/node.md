@@ -30,6 +30,17 @@ keeps node names unique.
   `[0, 1]^2`, `A` at the apex) so a lone triangle shows an undistorted
   texture. `unfold_uvs` gives any other triangle assembly a continuous
   layout (see below).
+- `seed_distance: [f32; 3]` - per-corner ring field: distance to the
+  nearest seed vertex of the mesh, in band-width units (`1.0` = one ring
+  band of the procedural `rings` effect). A mesh-global scalar field -
+  unlike `uv`, continuous across the whole mesh by construction (shared
+  corners hold identical values). Seeded by
+  `assign_geodesic_ring_field` / `assign_planar_ring_field` (and
+  automatically by [`build_icosphere()`](icosphere.md)), interpolated
+  linearly by [`split_node`](subdivision.md) (flat midpoints, a documented
+  approximation of the true distance field) and recovered exactly by
+  [`unsplit_nodes`](subdivision.md). `Node::new` seeds `DEFAULT_RING` (all
+  zero: unseeded meshes show a single ring band).
 
 #### Topology
 
@@ -72,6 +83,7 @@ struct Node {
     Vec3[3] directions
     Vec3 direction_of_node
     Vec2[3] uv                  // [uA, uB, uC], A/B/C order
+    f32[3] seed_distance        // ring field, band-width units, A/B/C order
     NodeRef[3] children
     Integer[3]? back_ports
     String name
@@ -169,7 +181,8 @@ Node::new(name, vertices, origin) -> NodeRef
     line `BC` and normalize the resulting altitude.
 4. Compute the I/J/K directions.
 5. Set `direction_to_origin = origin - center`.
-6. Set `uv` to `DEFAULT_UV`, `children` to `[None, None, None]`, `level`
+6. Set `uv` to `DEFAULT_UV`, `seed_distance` to `DEFAULT_RING` (all zero),
+   `children` to `[None, None, None]`, `level`
     to `0` and `parity` to `Abc` (+1).
 
 The constructor assumes valid input rather than returning a validation error.
@@ -211,8 +224,12 @@ or infinite traversal.
 - `crates/engine/src/node/uv.rs` - `DEFAULT_UV`, the icosahedral net
   layout that seeds the base faces of `build_icosphere`, and the
   generalized unfold of arbitrary assemblies (`unfold_uvs`).
+- `crates/engine/src/node/ring.rs` - `DEFAULT_RING`, `RING_BANDS`, and the
+  ring-field seeding helpers (`assign_geodesic_ring_field`,
+  `assign_planar_ring_field`).
 - `tests/node/` - geometry, topology, subdivision, lifecycle, traversal, UV,
-  and origin-propagation tests, split one file per submodule.
+  parity, ring-field, and origin-propagation tests, split one file per
+  submodule.
 
 ### Rules
 
@@ -228,6 +245,12 @@ or infinite traversal.
   `build_icosphere`, and assigned directly by any other builder. Split
   propagation is topological: corner children inherit it, the center child
   flips it, and unsplit recovers the parent's from a corner child.
+- `seed_distance` is a mesh-global ring field in band-width units: seeded
+  per distinct corner position (shared corners hold identical values, so
+  the field is continuous across the mesh), interpolated linearly by the
+  split (flat midpoints, like `uv` — an approximation of the true distance
+  field that tightens with every level) and recovered exactly by unsplit
+  (`[I[0], J[1], K[2]]`, like `uv`).
 - `destroy()` takes the local port and back-port record, then clears the
   neighbor's recorded back-port slot.
 - Node names ending in `.I`, `.J`, `.K`, `.C` are reserved for the

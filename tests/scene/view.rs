@@ -287,3 +287,27 @@ fn textured_mode_emits_the_inward_radial_direction() {
     }
     destroy_mesh(&icosphere.faces[0]);
 }
+
+#[test]
+fn textured_mode_emits_the_ring_field() {
+    let icosphere = build_icosphere("planet", 1.0, 1, Vec3::ZERO);
+    let mesh = build_scene(
+        &icosphere.faces,
+        &DisplayOptions::default(),
+        ViewMode::Textured,
+    );
+    let mut saw_seed = false;
+    let mut saw_bands = false;
+    for (face, triangle) in icosphere.faces.iter().zip(mesh.tex_world.chunks_exact(3)) {
+        let ring = face.borrow().seed_distance;
+        for (index, vertex) in triangle.iter().enumerate() {
+            assert_eq!(vertex.ring, ring[index]);
+            saw_seed |= ring[index] == 0.0;
+            saw_bands |= ring[index] > 1.0;
+        }
+    }
+    // Seeded mesh: the 12 base vertices sit in band zero, other corners
+    // span several bands.
+    assert!(saw_seed && saw_bands);
+    destroy_mesh(&icosphere.faces[0]);
+}

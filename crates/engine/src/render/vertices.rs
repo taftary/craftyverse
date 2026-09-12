@@ -27,8 +27,8 @@ pub(crate) struct TextVertexGpu {
 }
 
 /// Vertex of the textured pipeline: world-space position, texture
-/// coordinate, barycentric corner coordinate, topology parity sign and
-/// radial direction.
+/// coordinate, barycentric corner coordinate, topology parity sign, radial
+/// direction and ring-field value.
 #[derive(BufferContents, Vertex, Clone, Copy)]
 #[repr(C)]
 pub(crate) struct TexVertexGpu {
@@ -42,6 +42,8 @@ pub(crate) struct TexVertexGpu {
     pub(crate) parity: f32,
     #[format(R32G32B32_SFLOAT)]
     pub(crate) radial: [f32; 3],
+    #[format(R32_SFLOAT)]
+    pub(crate) ring: f32,
 }
 
 /// View-projection matrix push constant of the geometry pipelines (one per
@@ -76,7 +78,7 @@ impl From<Mat4> for PushMatrix {
 
 /// View-projection matrix, camera world position and fragment mode of the
 /// textured pipeline: mode 0 samples the checkerboard texture (the UV-map
-/// view), modes 1..=10 select a procedural effect (see
+/// view), modes 1..=11 select a procedural effect (see
 /// `scene::TextureEffect::shader_mode`). Both textured shader stages declare
 /// the same block; the vertex stage reads only `mvp`, the fragment stage
 /// reads `mode` (plus `camera_pos` for the fresnel effect). The field order
@@ -89,7 +91,7 @@ pub struct PushTex {
     pub mvp: [[f32; 4]; 4],
     /// Camera eye position in world space (fresnel view direction).
     pub camera_pos: [f32; 3],
-    /// Fragment mode: 0 = sample the checkerboard, 1..=10 = procedural
+    /// Fragment mode: 0 = sample the checkerboard, 1..=11 = procedural
     /// effect.
     pub mode: u32,
 }

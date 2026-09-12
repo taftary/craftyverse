@@ -314,6 +314,7 @@ impl Renderer {
             bary: v.bary.to_array(),
             parity: v.parity,
             radial: v.radial.to_array(),
+            ring: v.ring,
         };
         self.line_buffer.update(
             &self.memory_allocator,

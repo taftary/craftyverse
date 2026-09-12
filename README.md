@@ -66,14 +66,17 @@ The **T** key cycles three views:
 - **Mesh** (default) - the attribute/line debug view described above.
 - **Textured** - the filled 3D node triangles shaded with a procedural
   per-triangle texture, computed per pixel from barycentric coordinates,
-  each triangle's topology parity and its radial direction (never from UVs,
-  so UV seams cannot affect it). Ten effects, selected with the **fx** radio
-  rows in the checkbox panel: gradient (barycentric RGB), checkerboard,
-  stripes I/J/K (bands parallel to AB/BC/CA), edge mask (these five flip
-  phase with the triangle's parity - watch the 5 dark base faces of the
-  icosphere and the flipped center children after a split), and the radial
-  effects radial rgb, diffuse, latitude and fresnel (best seen on the
-  icosphere).
+  each triangle's topology parity, its radial direction and its ring field
+  (never from UVs, so UV seams cannot affect it). Eleven effects, selected
+  with the **fx** radio rows in the checkbox panel: gradient (barycentric
+  RGB), checkerboard, stripes I/J/K (bands parallel to AB/BC/CA - the
+  triangle-topology view: bands re-anchor per triangle by design), edge
+  mask (these five flip phase with the triangle's parity - watch the 5 dark
+  base faces of the icosphere and the flipped center children after a
+  split), the radial effects radial rgb, diffuse, latitude and fresnel
+  (best seen on the icosphere), and rings (evenly spaced rings around the
+  mesh's seed vertices, continuous across triangles - the distributed
+  counterpart of the stripes).
 - **UV map** - a generated checkerboard (22 x 10 checks) on the UV layout
   itself, laid flat on a plane: the icosahedral net wireframe in black plus
   a red cross dot at every vertex, showing where the net is continuous and

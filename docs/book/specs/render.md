@@ -37,14 +37,14 @@ drawn in every mode. Draw order:
    arrowheads and discs. Same shaders and vertex format as lines.
 3. **Textured triangles** (`TriangleList`, depth-tested, Textured and
    UvMap modes) - the filled node triangles. Vertex: `pos: vec3` +
-   `uv: vec2` + `bary: vec3` + `parity: float` + `radial: vec3`; the shared
-   `PushTex` push
+   `uv: vec2` + `bary: vec3` + `parity: float` + `radial: vec3` +
+   `ring: float`; the shared `PushTex` push
    constant carries the `world_mvp` matrix (the UV map is a world-space
    `z = 0` plane), the camera world position (the fresnel view direction)
    and the **fragment mode**: the Textured batch pushes the
-   selected `TextureEffect::shader_mode()` (1..=10, procedural effect
-   evaluated from `bary`, `parity` and `radial` - see "Procedural Texture"
-   below),
+   selected `TextureEffect::shader_mode()` (1..=11, procedural effect
+   evaluated from `bary`, `parity`, `radial` and `ring` - see "Procedural
+   Texture" below),
    the UV-map batch pushes mode 0 (sample the generated checkerboard, see
    "Checkerboard Texture" below).
 4. **UV overlay lines** (`LineList`, no depth test, UvMap mode) - the net
@@ -85,16 +85,21 @@ texture** (`scene::TextureEffect`, selected through the `fx` radio rows of
 the display-options panel). Every effect is a pure function of the
 triangle-local **barycentric coordinates** `(uA, uB, uC)` - the unit basis
 emitted per corner by the scene and interpolated by the rasterizer - the
-node's **topology parity** sign (see [`node`](node.md)) and, for the radial
-effects, the node's normalized `direction_to_origin` (negated into the
-outward surface normal; on an icosphere that is the planet normal); the
+node's **topology parity** sign (see [`node`](node.md)), for the radial
+effects the node's normalized `direction_to_origin` (negated into the
+outward surface normal; on an icosphere that is the planet normal), and for
+the rings effect the corner's **ring-field** value (mesh-global distance to
+the nearest seed vertex, continuous across triangles); the
 fresnel effect also reads the camera world position from the `PushTex` push
 constant. Effects never read
-UVs, so the output is independent of UV seams by construction. The texture
-is computed per triangle: each triangle evaluates the effect in its own
+UVs, so the output is independent of UV seams by construction. The barycentric
+effects are computed per triangle: each triangle evaluates the effect in its
+own
 barycentric space, so subdivision re-tiles the pattern per leaf (the
 gradient is the exception in appearance: child barycentric fields are linear
-restrictions of the parent's, so it looks identical at every level).
+restrictions of the parent's, so it looks identical at every level). The
+ring field is the mesh-global counterpart: shared corners hold identical
+values, so its bands continue across triangles and stay evenly spaced.
 
 Fragment modes and effect formulas (CPU reference in `procedural.rs`, gated
 behind `test-internals`; the GLSL in `TEX_FRAG` mirrors it formula-for-
@@ -126,6 +131,10 @@ The stripe effects are one formula over different barycentric coordinates;
   bands pole to pole.
 - **10 - fresnel**: `v = 1 - |dot(n, normalize(camera_pos - world_pos))|`
   - bright silhouette edges.
+- **11 - rings**: `v = floor(ring) mod 2` - alternating bands of the
+  seed-distance field: evenly spaced rings around the mesh's seed vertices,
+  continuous across triangles, no parity flip (see
+  [`node`](node.md) for the field contract).
 
 ### Checkerboard Texture
 
@@ -277,8 +286,9 @@ Folder module `crates/engine/src/render/`:
   image per mip level, every level evaluated from the global parity
   function), headless and unit-tested.
 - **`procedural.rs`** - the CPU reference of the procedural texture effects
-  (gradient, parity checkerboard, I/J/K edge stripes, edge-flip mask, and
-  the radial effects: normal RGB, diffuse, latitude, fresnel), gated
+  (gradient, parity checkerboard, I/J/K edge stripes, edge-flip mask, the
+  radial effects: normal RGB, diffuse, latitude, fresnel, and the
+  seed-distance rings), gated
   behind `test-internals` and unit-tested; the `TEX_FRAG` GLSL mirrors it.
 
 ### Rules
@@ -291,8 +301,9 @@ Folder module `crates/engine/src/render/`:
   triangles, or UV map plus depthless overlay); the checkbox panel and text
   are drawn in every mode.
 - The Textured mode shades per pixel from the interpolated barycentric
-  coordinates, the parity sign and the radial direction (fragment modes
-  1..=10), never from UVs;
+  coordinates, the parity sign, the radial direction and the ring field
+  (fragment modes
+  1..=11), never from UVs;
   the checkerboard texture is sampled only by the UV-map view (mode 0).
 - The debug texture is generated, not loaded; every mip level is evaluated
   analytically from the global checker function so sampling never bleeds

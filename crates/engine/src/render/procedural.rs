@@ -109,3 +109,11 @@ pub fn latitude(outward: Vec3) -> f32 {
 pub fn fresnel(outward: Vec3, view_dir: Vec3) -> f32 {
     1.0 - outward.dot(view_dir).abs()
 }
+
+/// Rings, `0.0` or `1.0`: alternating bands of the seed-distance field
+/// (distance to the mesh's nearest seed vertex, in band-width units) —
+/// evenly spaced rings around the seed vertices, continuous across the
+/// mesh. Parity does not apply.
+pub fn rings(seed_distance: f32) -> f32 {
+    ((seed_distance.floor() as i64).rem_euclid(2)) as f32
+}

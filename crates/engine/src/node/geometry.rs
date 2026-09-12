@@ -55,15 +55,17 @@ pub(crate) fn compute_directions(vertices: &[Vec3; 3], center: Vec3) -> [Vec3; 3
 }
 
 /// Creates a node from an explicit vertices triplet, wrapped in a `NodeRef`.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn child_node(
     vertices: [Vec3; 3],
     uv: [Vec2; 3],
+    ring: [f32; 3],
     origin: Vec3,
     level: u32,
     name: String,
     parity: Parity,
 ) -> NodeRef {
     Rc::new(RefCell::new(Node::from_vertices(
-        vertices, uv, origin, level, name, parity,
+        vertices, uv, ring, origin, level, name, parity,
     )))
 }

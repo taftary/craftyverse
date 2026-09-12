@@ -38,6 +38,14 @@ Refinement inherits the UVs by flat linear interpolation
 texture space - so UVs stay continuous inside each base face and across the
 net's preserved edges, with seams exactly on the cut edges.
 
+After the final refinement level, the mesh's ring field is seeded
+(`assign_geodesic_ring_field`, see [`node`](node.md)): every leaf corner
+receives its geodesic distance to the nearest of the 12 base vertices, in
+bands of `1 / RING_BANDS` of the base-edge arc. Seed vertices sit exactly
+in band zero; the field is continuous across the whole sphere and its ring
+bands are evenly spaced along every geodesic (verified by
+`tests/node/ring.rs`).
+
 It returns an `IcosphereMesh` with the fully linked leaf `faces`
 (`20 * 4^subdivisions` entries) and the closed-form `vertex_count`
 (`10 * 4^subdivisions + 2`). Cleanup: `destroy_mesh` on any face before
@@ -109,6 +117,9 @@ classification at every level.
 - Each base face's `parity` is seeded from its geometric winding (outward
   = `Abc`, the 5 reversed faces = `Acb`) and propagated topologically by
   the subdivision machinery.
+- The ring field is seeded geodesically: each leaf corner gets its arc
+  distance to the nearest base vertex in bands of `1 / RING_BANDS` of the
+  base-edge arc (seed vertices exactly zero).
 - Each base face is seeded with its icosahedral net UV triangle (Bourke
   layout: 10-face zigzag strip plus the two 5-face polar fans, normalized
   into `[0, 1]^2` with a 1 % margin); 19 of the 30 icosahedron edges are

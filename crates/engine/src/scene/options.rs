@@ -111,10 +111,14 @@ pub enum TextureEffect {
     Latitude,
     /// Fresnel rim: bright silhouette edges (`1 - |dot(radial, view)|`).
     Fresnel,
+    /// Rings: alternating bands of the seed-distance field — evenly spaced
+    /// rings around the mesh's seed vertices, continuous across triangles.
+    /// No parity flip.
+    Rings,
 }
 
 impl TextureEffect {
-    /// Fragment-shader mode selecting this effect (1..=10). Mode 0 is
+    /// Fragment-shader mode selecting this effect (1..=11). Mode 0 is
     /// reserved: it samples the checkerboard texture (the UV-map view).
     pub fn shader_mode(self) -> u32 {
         match self {
@@ -128,6 +132,7 @@ impl TextureEffect {
             TextureEffect::Diffuse => 8,
             TextureEffect::Latitude => 9,
             TextureEffect::Fresnel => 10,
+            TextureEffect::Rings => 11,
         }
     }
 }
@@ -290,7 +295,7 @@ pub const ATTRIBUTES: [(Attribute, &str); 18] = [
 
 /// Texture-effect radio rows of the display-options panel, in display order
 /// (right below the attribute checkboxes). Exactly one is active at a time.
-pub const EFFECTS: [(TextureEffect, &str); 10] = [
+pub const EFFECTS: [(TextureEffect, &str); 11] = [
     (TextureEffect::Gradient, "fx gradient"),
     (TextureEffect::Checkerboard, "fx checkerboard"),
     (TextureEffect::StripesI, "fx stripes I"),
@@ -301,6 +306,7 @@ pub const EFFECTS: [(TextureEffect, &str); 10] = [
     (TextureEffect::Diffuse, "fx diffuse"),
     (TextureEffect::Latitude, "fx latitude"),
     (TextureEffect::Fresnel, "fx fresnel"),
+    (TextureEffect::Rings, "fx rings"),
 ];
 
 /// Clickable area of one panel row (pixel space, y-down).

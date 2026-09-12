@@ -1,5 +1,5 @@
 use glam::Vec3;
-use planet_crafter_engine::node::{Node, Parity, split_node, unfold_uvs};
+use planet_crafter_engine::node::{Node, Parity, assign_planar_ring_field, split_node, unfold_uvs};
 use planet_crafter_engine::render::Scenario;
 
 fn main() {
@@ -33,6 +33,8 @@ fn main() {
     // second triangle of each cell is seeded with the opposite parity:
     // manual seeding is the builder's degree of freedom on flat meshes, and
     // it demonstrates the alternating and edge-flipped effects at level 0.
+    // The ring field is seeded from the 9 grid corners, so the rings effect
+    // shows evenly spaced rings around each grid point.
     let mut patch_nodes = Vec::new();
     for j in 0..2 {
         for i in 0..2 {
@@ -52,6 +54,10 @@ fn main() {
         }
     }
     unfold_uvs(&patch_nodes);
+    let grid_corners: Vec<Vec3> = (0..=2)
+        .flat_map(|j| (0..=2).map(move |i| Vec3::new(150.0 * i as f32, 150.0 * j as f32, 0.0)))
+        .collect();
+    assign_planar_ring_field(&patch_nodes, &grid_corners, 150.0 / 8.0);
     let patch = Scenario::Static(patch_nodes);
 
     // Opens the Vulkan viewer window; number keys select the scene.

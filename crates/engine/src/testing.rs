@@ -13,7 +13,7 @@ pub use crate::render::{
     LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, PushMatrix, PushTex, PushTransform, STRIPE_BANDS,
     TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, checker, checkerboard_mips, compile_spirv,
     device_type_rank, diffuse, edge_mask, fresnel, gradient, latitude, mip_level_count,
-    panel_item_at, pixel_matrix, radial_rgb, required_capacity, scenario_index_of, stripes,
+    panel_item_at, pixel_matrix, radial_rgb, required_capacity, rings, scenario_index_of, stripes,
 };
 pub use crate::scene::{
     ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS, EFFECTS, LEVEL_COLORS, MAX_PITCH, MAX_ZOOM,

@@ -125,6 +125,10 @@ pub struct TexVertex {
     /// sits at its origin. The radial effects negate it for the outward
     /// surface normal.
     pub radial: Vec3,
+    /// Ring field of the corner: distance to the mesh's nearest seed vertex,
+    /// in band-width units (see `node::seed_distance`). Interpolated across
+    /// the triangle; continuous across the mesh.
+    pub ring: f32,
 }
 
 /// Edge length of the world-space square the [0, 1]² UV space is laid out on

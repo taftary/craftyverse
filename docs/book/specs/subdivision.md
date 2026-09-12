@@ -48,7 +48,10 @@ Child UVs follow the same barycentric pattern through `triangle_points`, but
 with flat linear midpoints of the parent's UVs (`midpoint(uA, uB)`, etc.) -
 the sphere projection applied to 3D edge midpoints never applies to texture
 space. UV interpolation is affine, so UV continuity across a shared edge is
-preserved by the split wherever the parent edge was UV-continuous.
+preserved by the split wherever the parent edge was UV-continuous. The ring
+field (`seed_distance`) follows the UV pattern: flat linear midpoints of the
+parent's corner values - on a sphere a chord-space approximation of the arc
+field whose error shrinks with every level.
 
 Child parities propagate topologically, not geometrically: the corner
 children `NodeI` / `NodeJ` / `NodeK` inherit `node.parity` and `NodeCenter`
@@ -118,7 +121,9 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
    (`uA = I.uv[0]`, `uB = J.uv[1]`, `uC = K.uv[2]`) - the exact original
    UVs, because the corner children inherit the parent's corner UVs
    verbatim. The parent parity is recovered from the same channel: corner
-   children inherit the parent parity, so `I.parity` holds it exactly.
+   children inherit the parent parity, so `I.parity` holds it exactly. The
+   parent ring field recovers exactly like the UVs
+   (`[I.seed_distance[0], J.seed_distance[1], K.seed_distance[2]]`).
 4. Re-link the parents across the old edges: a corner's external port
    number equals its parent edge's port number, so every link between
    corners of different groups maps verbatim to a parent link with the
@@ -143,6 +148,9 @@ nodes. Calling it on an unsplittable mesh returns the same nodes.
 - Parity propagates topologically: corner children inherit the parent
   parity, the center child flips it, and unsplit recovers the parent's from
   a corner child (`I.parity`).
+- The ring field is interpolated with flat linear midpoints through the
+  same `triangle_points` pattern as the UVs (a chord-space approximation of
+  the arc field) and recovered exactly on unsplit.
 - Welding resolves ports geometrically by exact vertex comparison and
   requires bit-identical shared vertices; open ports stay open.
 - A split group merges back only with exactly the four `.I` / `.J` / `.K` /

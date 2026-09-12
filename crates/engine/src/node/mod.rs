@@ -24,6 +24,7 @@
 
 mod geometry;
 mod icosphere;
+mod ring;
 mod subdivision;
 mod topology;
 mod uv;
@@ -36,6 +37,7 @@ use glam::{Vec2, Vec3};
 use geometry::{child_node, compute_directions};
 
 pub use icosphere::{IcosphereMesh, MAX_SUBDIVISIONS, build_icosphere};
+pub use ring::{DEFAULT_RING, RING_BANDS, assign_geodesic_ring_field, assign_planar_ring_field};
 pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::{collect_nodes, destroy_mesh};
 pub use uv::{DEFAULT_UV, unfold_uvs};
@@ -128,6 +130,19 @@ pub struct Node {
     /// base faces with the icosahedral net layout, and [`unfold_uvs`] gives
     /// any other triangle assembly a continuous layout (see the `uv` module).
     pub uv: [Vec2; 3],
+    /// Ring-field coordinates, one per corner vertex, in A/B/C order: the
+    /// distance to the nearest seed vertex of the mesh, in band-width units
+    /// (a value of `1.0` is one ring band of the procedural `rings`
+    /// effect). A mesh-global scalar field — unlike `uv`, it is continuous
+    /// across the whole mesh by construction (shared corners hold identical
+    /// values). Seeded by [`assign_geodesic_ring_field`] /
+    /// [`assign_planar_ring_field`] (and automatically by
+    /// [`build_icosphere`]), interpolated linearly by [`split_node`] (flat
+    /// midpoints — an approximation of the true distance field, documented
+    /// in the `ring` module) and recovered exactly by [`unsplit_nodes`].
+    /// `Node::new` seeds `DEFAULT_RING` (all zero: unseeded meshes show a
+    /// single ring band).
+    pub seed_distance: [f32; 3],
 
     // --- Topology ---
     /// Bidirectional links to adjacent nodes, indexed `[node_i, node_j, node_k]`.
@@ -213,7 +228,15 @@ impl Node {
     /// }
     /// ```
     pub fn new(name: impl Into<String>, vertices: [Vec3; 3], origin: Vec3) -> NodeRef {
-        child_node(vertices, DEFAULT_UV, origin, 0, name.into(), Parity::Abc)
+        child_node(
+            vertices,
+            DEFAULT_UV,
+            ring::DEFAULT_RING,
+            origin,
+            0,
+            name.into(),
+            Parity::Abc,
+        )
     }
 
     /// Builds a node from an explicit vertices triplet.
@@ -221,9 +244,11 @@ impl Node {
     /// The center is the centroid of the triplet, `direction_to_origin` and the
     /// `[i, j, k]` directions are derived from the vertices. This constructor is
     /// used internally by [`Node::new`] and [`split_node`].
+    #[allow(clippy::too_many_arguments)]
     fn from_vertices(
         vertices: [Vec3; 3],
         uv: [Vec2; 3],
+        ring: [f32; 3],
         origin: Vec3,
         level: u32,
         name: String,
@@ -241,6 +266,7 @@ impl Node {
             directions: compute_directions(&vertices, center),
             direction_of_node: height_vector.normalize(),
             uv,
+            seed_distance: ring,
             children: [None, None, None],
             back_ports: [None, None, None],
             name,

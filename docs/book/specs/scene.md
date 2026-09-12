@@ -46,17 +46,19 @@ through `project_labels`, when the camera changes.
   - `ViewMode { Mesh, Textured, UvMap }` - which visualization
     `build_scene` emits (`Mesh` is the `Default`); `next()` cycles
     Mesh -> Textured -> UvMap -> Mesh.
-  - `TexVertex { pos: Vec3, uv: Vec2, bary: Vec3, parity: f32, radial: Vec3 }` -
+  - `TexVertex { pos: Vec3, uv: Vec2, bary: Vec3, parity: f32, radial: Vec3, ring: f32 }` -
     textured
     vertex: world-space position plus the attributes the textured pipelines
     interpolate: the texture coordinate (only the UV-map view samples it),
     the corner's barycentric coordinate (`(1, 0, 0)` at `A`, `(0, 1, 0)` at
     `B`, `(0, 0, 1)` at `C` - interpolated across the triangle it becomes
     the per-pixel procedural space `(uA, uB, uC)`), the node's topology
-    parity as its sign (`+1.0` / `-1.0`, constant across the triangle), and
+    parity as its sign (`+1.0` / `-1.0`, constant across the triangle),
     the node's normalized `direction_to_origin` (the inward radial on a
     sphere, constant across the triangle, `Vec3::ZERO` when degenerate; the
-    radial effects negate it for the outward surface normal). In
+    radial effects negate it for the outward surface normal), and the
+    corner's ring-field value (distance to the mesh's nearest seed vertex
+    in band-width units, continuous across the mesh). In
     `ViewMode::UvMap` the position lies on the `z = 0` UV plane
     (`uv * UV_PLANE_SIZE` on x/y, where
     `UV_PLANE_SIZE = 2.0` is the edge length of the world-space square the
@@ -144,9 +146,11 @@ through `project_labels`, when the camera changes.
     one radio row each (`EFFECTS` lists them in display order):
     `Gradient`, `Checkerboard` (the default), `StripesI` / `StripesJ` /
     `StripesK` (edge-aligned bands parallel to `AB` / `BC` / `CA`),
-    `EdgeMask`, and the radial effects `RadialRgb`, `Diffuse`, `Latitude`,
-    `Fresnel`. `shader_mode()` maps each to
-    the fragment mode `1..=10` (mode 0 is reserved for sampling the
+    `EdgeMask`, the radial effects `RadialRgb`, `Diffuse`, `Latitude`,
+    `Fresnel`, and `Rings` (evenly spaced rings around the mesh's seed
+    vertices, continuous across triangles, no parity flip).
+    `shader_mode()` maps each to
+    the fragment mode `1..=11` (mode 0 is reserved for sampling the
     checkerboard texture in the UV-map view). See [`render`](render.md) for
     the effect contract.
   - `PanelItem { Attribute(Attribute), Effect(TextureEffect) }` - what a
@@ -219,8 +223,9 @@ checkbox panel):
 - **Textured triangles** (`tex_world`, Textured mode) - the node's three
   corners as `TexVertex`: world positions from `node.vertices`, texture
   coordinates from `node.uv`, the unit-basis barycentric coordinate of the
-  corner, `node.parity.sign()` as `parity`, and the normalized
-  `node.direction_to_origin` as `radial`.
+  corner, `node.parity.sign()` as `parity`, the normalized
+  `node.direction_to_origin` as `radial`, and `node.seed_distance` as
+  `ring`.
 - **UV plane triangles** (`tex_uv`, UvMap mode) - the same three corners with
   the position mapped onto the `z = 0` UV plane (`uv * UV_PLANE_SIZE` on
   x/y) and the same attributes, so the rendered plane shows exactly

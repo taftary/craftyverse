@@ -43,6 +43,7 @@ use glam::Vec3;
 use super::NodeRef;
 use super::Parity;
 use super::geometry::midpoint;
+use super::ring::{RING_BANDS, assign_geodesic_ring_field};
 use super::subdivision::split_node_with_midpoints;
 use super::topology::{corner_near, corner_nodes, link, port_on_edge};
 
@@ -308,6 +309,18 @@ pub fn build_icosphere(
         }
         std::mem::swap(&mut leaves, &mut next_leaves);
     }
+
+    // Step 5 — seed the ring field: each leaf corner gets its geodesic
+    // distance to the nearest base vertex, in bands of `1 / RING_BANDS` of
+    // the base-edge arc. Subdivision propagated the initial (zero) field by
+    // interpolation; the exact field is assigned here at the final level.
+    let base_edge_angle = {
+        let a = (vertices[ICOSAHEDRON_FACES[0][0]] - origin).normalize();
+        let b = (vertices[ICOSAHEDRON_FACES[0][1]] - origin).normalize();
+        a.dot(b).clamp(-1.0, 1.0).acos()
+    };
+    let band_width = base_edge_angle * radius / RING_BANDS as f32;
+    assign_geodesic_ring_field(&leaves, &vertices, origin, band_width);
 
     IcosphereMesh {
         faces: leaves,

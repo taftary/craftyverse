@@ -8,7 +8,7 @@ use glam::Vec3;
 use planet_crafter_engine::node::Node;
 use planet_crafter_engine::testing::{
     CHECKER_CELLS, LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, STRIPE_BANDS, checker, diffuse,
-    edge_mask, fresnel, gradient, latitude, radial_rgb, stripes,
+    edge_mask, fresnel, gradient, latitude, radial_rgb, rings, stripes,
 };
 
 /// Centroid (in barycentric coordinates) of the up-pointing sub-triangle at
@@ -224,4 +224,17 @@ fn fresnel_is_bright_at_the_silhouette() {
     assert_eq!(fresnel(Vec3::NEG_Z, Vec3::Z), 0.0);
     assert_eq!(fresnel(Vec3::X, Vec3::Z), 1.0);
     assert!((fresnel(Vec3::new(1.0, 0.0, 1.0).normalize(), Vec3::Z) - 0.2928932).abs() < 1e-6);
+}
+
+#[test]
+fn rings_alternate_per_band_without_parity() {
+    // floor(seed_distance) mod 2, no parity input: same value for both
+    // parities (the field itself is continuous, bands are even).
+    assert_eq!(rings(0.0), 0.0);
+    assert_eq!(rings(0.9), 0.0);
+    assert_eq!(rings(1.0), 1.0);
+    assert_eq!(rings(1.9), 1.0);
+    assert_eq!(rings(2.0), 0.0);
+    // Negative values (unreachable from seeded meshes) wrap safely.
+    assert_eq!(rings(-0.5), 1.0);
 }

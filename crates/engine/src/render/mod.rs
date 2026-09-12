@@ -63,7 +63,7 @@ pub use checkerboard::{
 #[cfg(feature = "test-internals")]
 pub use procedural::{
     CHECKER_CELLS, LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, STRIPE_BANDS, checker, diffuse,
-    edge_mask, fresnel, gradient, latitude, radial_rgb, stripes,
+    edge_mask, fresnel, gradient, latitude, radial_rgb, rings, stripes,
 };
 #[cfg(feature = "test-internals")]
 pub use renderer::panel_item_at;
