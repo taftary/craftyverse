@@ -11,7 +11,8 @@ pub use crate::node::link;
 pub use crate::render::{
     CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, GEOM_FRAG, GEOM_VERT, PushMatrix,
     PushTransform, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, checkbox_at, checkerboard_mips,
-    compile_spirv, device_type_rank, mip_level_count, pixel_matrix, scenario_index_of,
+    compile_spirv, device_type_rank, mip_level_count, pixel_matrix, required_capacity,
+    scenario_index_of,
 };
 pub use crate::scene::{
     ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS, LEVEL_COLORS, MAX_PITCH, MAX_ZOOM, MIN_ZOOM,

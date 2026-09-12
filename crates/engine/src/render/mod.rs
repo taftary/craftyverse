@@ -23,11 +23,13 @@
 //!
 //! GPU vertex and push-constant layouts live in `vertices`, the shaders and
 //! their runtime compilation in `shaders`, the checkerboard debug texture in
-//! `checkerboard`, Vulkan object setup in `setup`, the renderer in
-//! `renderer`, and the winit event handling in `viewer`.
+//! `checkerboard`, the reusable scene vertex buffers in `buffers`, Vulkan
+//! object setup in `setup`, the renderer in `renderer`, and the winit event
+//! handling in `viewer`.
 //!
 //! The full contract is specified in `docs/book/specs/render.md`.
 
+mod buffers;
 mod checkerboard;
 mod renderer;
 mod setup;
@@ -44,6 +46,8 @@ use crate::node::{
 };
 use viewer::Viewer;
 
+#[cfg(feature = "test-internals")]
+pub use buffers::required_capacity;
 #[cfg(feature = "test-internals")]
 pub use checkerboard::{
     CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, checkerboard_mips, mip_level_count,

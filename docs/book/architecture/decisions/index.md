@@ -46,6 +46,8 @@ related work.
 | [Vulkan crate and ownership model](vulkan-crate.md) | Accepted | Rendering |
 | [Platform window lifecycle](window-lifecycle.md) | Accepted | Platform integration |
 | [UV coordinates stored on the node](uv-coordinates-on-node.md) | Accepted | Geometry |
+| [Generalized UV unfold for arbitrary triangle assemblies](uv-unfold-for-arbitrary-assemblies.md) | Accepted | Geometry |
+| [Reusable vertex buffers for scene rebuilds](reusable-vertex-buffers.md) | Accepted | Rendering |
 
 Deprecated or superseded ADRs will be listed here with their supersession
 links.

@@ -114,7 +114,8 @@ cargo run --example viewer -p planet-crafter-examples --features gpu    # needs 
 - `unsafe` code: safe Rust is the default. New `unsafe` is permitted only at
   platform/GPU boundaries, with a small scope and a documented safety
   invariant. The only existing blocks are in `crates/engine/src/render/`
-  (the vulkano `draw` call and `ShaderModule::new`).
+  (the vulkano `draw` call, `ShaderModule::new`, and the `wait_idle` device
+  wait before in-place vertex-buffer rewrites).
 - Shared dependency versions are centralized in the root
   `[workspace.dependencies]` (e.g. `glam`); member crates reference them with
   `{ workspace = true }`.

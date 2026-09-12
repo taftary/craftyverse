@@ -151,8 +151,18 @@ The camera angles persist across scenario switches; the fit target
   dynamically, up to five draw batches depending on the view mode), submit
   joined with the previous frame's fence, present. Two frames in flight via
   the standard `GpuFuture` join/execute/present/signal-fence flow.
-- On resize, scene key or checkbox toggle: the scene mesh and the geometry
-  vertex buffers are regenerated.
+- On resize, scene key or checkbox toggle: the scene mesh is rebuilt and the
+  geometry vertex buffers are updated in place - a batch that fits its
+  existing allocation is rewritten through the host-visible mapping and only
+  growth reallocates (doubling policy, see `buffers.rs`). A single device
+  wait (`wait_idle`) plus a `cleanup_finished` of the previous frame's
+  fence future before the updates keeps the in-place rewrites from racing a
+  frame still in flight and releases vulkano's per-buffer read bookkeeping;
+  it runs only on these discrete events, never per frame. The small text
+  buffer is the exception: it keeps reallocating per camera change, where a
+  device wait would stall orbiting.
+- Draw batches use the stored live vertex count, not the buffer length:
+  reusable allocations may carry spare capacity.
 - On camera input (drag, wheel, WASD, R): only the view-projection push
   constant is recomputed and the text buffer is re-anchored - geometry
   buffers are untouched.
@@ -189,6 +199,9 @@ Folder module `crates/engine/src/render/`:
   target; exposes `set_scene()`, `set_camera()`, `draw_frame()`,
   `checkbox_at()` and swapchain recreation. All five draw batches go through
   one `record_draw()` helper.
+- **`buffers.rs`** - **`VertexBuffer`**, the reusable scene vertex buffers:
+  in-place mapped rewrites while the batch fits the allocation, doubling
+  growth otherwise (`required_capacity`, headless and unit-tested).
 - **`setup.rs`** - Vulkan object setup as free functions (instance, device
   pick, swapchain, render pass, depth image, framebuffers, pipelines, atlas
   upload, vertex-buffer upload) orchestrated by `Renderer::new()`.
@@ -216,6 +229,9 @@ Folder module `crates/engine/src/render/`:
   across the UV net's seams.
 - Camera changes never rebuild geometry buffers - only the push constant and
   the re-anchored text buffer change.
+- Geometry vertex buffers are reused across scene rebuilds: rewritten in
+  place while they fit (behind a device wait), reallocated with doubling
+  growth; draws use the stored live vertex count.
 - Depth testing is enabled for the world pipelines only; draw order layers
   the UI (panel → text) on top.
 - Shaders are compiled from inline GLSL to SPIR-V at runtime using `naga`.

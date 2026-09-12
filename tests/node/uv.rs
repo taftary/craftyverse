@@ -9,7 +9,7 @@ use glam::{Vec2, Vec3};
 
 use planet_crafter_engine::node::{
     DEFAULT_UV, Node, NodeRef, build_icosphere, destroy_mesh, icosphere_net_uv, split_node,
-    unsplit_nodes,
+    unfold_uvs, unsplit_nodes,
 };
 
 const EPSILON: f32 = 1e-4;
@@ -334,4 +334,181 @@ fn subdivision_keeps_net_continuity() {
     assert_eq!(seams, 22);
 
     destroy_mesh(&mesh.faces[0]);
+}
+
+/// Two right triangles forming a 300 x 200 rectangle, sharing the diagonal
+/// edge (300,0,0)-(0,200,0). The shared endpoints are exact f32 literals,
+/// so the geometric weld matches bit-exactly.
+fn right_triangle_pair() -> [NodeRef; 2] {
+    let a = Node::new(
+        "a",
+        [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(300.0, 0.0, 0.0),
+            Vec3::new(0.0, 200.0, 0.0),
+        ],
+        Vec3::ZERO,
+    );
+    let b = Node::new(
+        "b",
+        [
+            Vec3::new(300.0, 0.0, 0.0),
+            Vec3::new(300.0, 200.0, 0.0),
+            Vec3::new(0.0, 200.0, 0.0),
+        ],
+        Vec3::ZERO,
+    );
+    [a, b]
+}
+
+#[test]
+fn unfold_makes_shared_edges_continuous() {
+    let [a, b] = right_triangle_pair();
+    unfold_uvs(&[a.clone(), b.clone()]);
+
+    // Shared edge: a.B == b.A == (300, 0, 0), a.C == b.C == (0, 200, 0).
+    let (uv_a, uv_b) = (a.borrow().uv, b.borrow().uv);
+    assert_eq!(uv_a[1], uv_b[0]);
+    assert_eq!(uv_a[2], uv_b[2]);
+}
+
+#[test]
+fn unfold_uses_one_uniform_scale_per_component() {
+    // Zero-stretch unfold + one normalization scale: every edge of every
+    // triangle of the component has the same uv_length / 3d_length ratio.
+    let [a, b] = right_triangle_pair();
+    unfold_uvs(&[a.clone(), b.clone()]);
+
+    let mut scales = Vec::new();
+    for node in [&a, &b] {
+        let node = node.borrow();
+        let [pa, pb, pc] = node.vertices;
+        let [ua, ub, uc] = node.uv;
+        for ((p, q), (u, v)) in [
+            ((pa, pb), (ua, ub)),
+            ((pb, pc), (ub, uc)),
+            ((pc, pa), (uc, ua)),
+        ] {
+            scales.push((u - v).length() / (q - p).length());
+        }
+    }
+    let reference = scales[0];
+    for scale in scales {
+        assert!(
+            ((scale - reference) / reference).abs() < EPSILON,
+            "edge scale {scale} differs from the uniform scale {reference}"
+        );
+    }
+}
+
+#[test]
+fn lone_triangle_keeps_the_default_uv() {
+    let node = Node::new(
+        "lone",
+        [
+            Vec3::new(0.0, 0.0, 0.0),
+            Vec3::new(100.0, 0.0, 0.0),
+            Vec3::new(0.0, 100.0, 0.0),
+        ],
+        Vec3::ZERO,
+    );
+    // Dirty the UVs: the unfold of a lone triangle resets the default.
+    node.borrow_mut().uv = [Vec2::ZERO; 3];
+
+    unfold_uvs(std::slice::from_ref(&node));
+    assert_eq!(node.borrow().uv, DEFAULT_UV);
+}
+
+#[test]
+fn unfold_handles_mixed_connected_and_isolated_nodes() {
+    let [a, b] = right_triangle_pair();
+    // Far away from the pair: no shared corner, hence no adjacency.
+    let lone = Node::new(
+        "lone",
+        [
+            Vec3::new(0.0, 500.0, 0.0),
+            Vec3::new(300.0, 500.0, 0.0),
+            Vec3::new(0.0, 700.0, 0.0),
+        ],
+        Vec3::ZERO,
+    );
+    unfold_uvs(&[a.clone(), b.clone(), lone.clone()]);
+
+    let (uv_a, uv_b) = (a.borrow().uv, b.borrow().uv);
+    assert_eq!(uv_a[1], uv_b[0]);
+    assert_eq!(uv_a[2], uv_b[2]);
+    assert_eq!(lone.borrow().uv, DEFAULT_UV);
+}
+
+#[test]
+fn tetrahedron_unfold_keeps_a_spanning_tree_of_edges() {
+    // A closed tetrahedron: 4 faces, all 6 edges shared bit-exactly.
+    let p0 = Vec3::new(0.0, 0.0, 0.0);
+    let p1 = Vec3::new(300.0, 0.0, 0.0);
+    let p2 = Vec3::new(150.0, 200.0, 0.0);
+    let p3 = Vec3::new(150.0, 100.0, 150.0);
+    let nodes: Vec<NodeRef> = [
+        Node::new("t.0", [p0, p1, p2], Vec3::ZERO),
+        Node::new("t.1", [p0, p1, p3], Vec3::ZERO),
+        Node::new("t.2", [p1, p2, p3], Vec3::ZERO),
+        Node::new("t.3", [p2, p0, p3], Vec3::ZERO),
+    ]
+    .to_vec();
+    unfold_uvs(&nodes);
+
+    // Of the 6 adjacencies, exactly 3 (a spanning tree of the 4 faces) are
+    // UV-continuous; the other 3 are seams.
+    let mut continuous = 0;
+    let mut seams = 0;
+    for (i, face_a) in nodes.iter().enumerate() {
+        for face_b in nodes.iter().skip(i + 1) {
+            let shared = shared_positions(face_a, face_b);
+            if shared.len() != 2 {
+                continue;
+            }
+            let uv_a = face_a.borrow().uv;
+            let uv_b = face_b.borrow().uv;
+            let pos_a = position_set(face_a);
+            let pos_b = position_set(face_b);
+            let edge_continuous = shared.iter().all(|&corner| {
+                let key = pos_a[corner];
+                let other = pos_b.iter().position(|k| *k == key).unwrap();
+                uv_dist(uv_a[corner], uv_b[other]) < EPSILON
+            });
+            if edge_continuous {
+                continuous += 1;
+            } else {
+                seams += 1;
+            }
+        }
+    }
+    assert_eq!(continuous, 3, "a spanning tree of 4 faces crosses 3 edges");
+    assert_eq!(seams, 3, "the uncrossed adjacencies are seams");
+}
+
+#[test]
+fn unfold_normalizes_into_unit_range() {
+    let [a, b] = right_triangle_pair();
+    unfold_uvs(&[a.clone(), b.clone()]);
+
+    for node in [&a, &b] {
+        for (corner, p) in node.borrow().uv.iter().enumerate() {
+            assert!(
+                (0.0..=1.0).contains(&p.x) && (0.0..=1.0).contains(&p.y),
+                "corner {corner} UV {p:?} out of range"
+            );
+        }
+    }
+}
+
+#[test]
+fn unfold_is_deterministic() {
+    let first = right_triangle_pair();
+    let second = right_triangle_pair();
+    unfold_uvs(&first);
+    unfold_uvs(&second);
+
+    for (a, b) in first.iter().zip(second.iter()) {
+        assert_eq!(a.borrow().uv, b.borrow().uv);
+    }
 }

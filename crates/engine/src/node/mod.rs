@@ -38,7 +38,7 @@ use geometry::{child_node, compute_directions};
 pub use icosphere::{IcosphereMesh, MAX_SUBDIVISIONS, build_icosphere};
 pub use subdivision::{split_node, split_nodes, unsplit_nodes};
 pub use topology::{collect_nodes, destroy_mesh};
-pub use uv::DEFAULT_UV;
+pub use uv::{DEFAULT_UV, unfold_uvs};
 
 #[cfg(feature = "test-internals")]
 pub use topology::{link, reciprocal_index};
@@ -82,7 +82,8 @@ pub struct Node {
     /// seam, by design of the unwrapped layout). [`split_node`] interpolates
     /// UVs linearly (flat midpoints, never sphere-projected) and
     /// [`unsplit_nodes`] recovers them exactly; [`build_icosphere`] seeds the
-    /// base faces with the icosahedral net layout (see the `uv` module).
+    /// base faces with the icosahedral net layout, and [`unfold_uvs`] gives
+    /// any other triangle assembly a continuous layout (see the `uv` module).
     pub uv: [Vec2; 3],
 
     // --- Topology ---

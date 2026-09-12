@@ -41,6 +41,7 @@ use crate::node::NodeRef;
 use crate::scene::{self, Attribute, Checkbox, DisplayOptions, OrbitCamera, TextRun, WorldLabel};
 use crate::text::TextAtlas;
 
+use super::buffers::VertexBuffer;
 use super::setup;
 use super::shaders::{GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, load_shader};
 use super::vertices::{GeomVertex, PushMatrix, PushTransform, TextVertexGpu, UvVertexGpu};
@@ -67,14 +68,14 @@ pub(crate) struct Renderer {
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: Arc<StandardCommandBufferAllocator>,
     atlas: TextAtlas,
-    line_buffer: Option<Subbuffer<[GeomVertex]>>,
-    tri_buffer: Option<Subbuffer<[GeomVertex]>>,
-    ui_line_buffer: Option<Subbuffer<[GeomVertex]>>,
-    ui_tri_buffer: Option<Subbuffer<[GeomVertex]>>,
+    line_buffer: VertexBuffer<GeomVertex>,
+    tri_buffer: VertexBuffer<GeomVertex>,
+    ui_line_buffer: VertexBuffer<GeomVertex>,
+    ui_tri_buffer: VertexBuffer<GeomVertex>,
     text_buffer: Option<Subbuffer<[TextVertexGpu]>>,
-    tex_world_buffer: Option<Subbuffer<[UvVertexGpu]>>,
-    tex_uv_buffer: Option<Subbuffer<[UvVertexGpu]>>,
-    uv_line_buffer: Option<Subbuffer<[GeomVertex]>>,
+    tex_world_buffer: VertexBuffer<UvVertexGpu>,
+    tex_uv_buffer: VertexBuffer<UvVertexGpu>,
+    uv_line_buffer: VertexBuffer<GeomVertex>,
     /// View mode the scene was built with (drives the world batches drawn).
     view_mode: scene::ViewMode,
     /// Checkbox hit rectangles of the current scene (pixel space).
@@ -236,14 +237,14 @@ impl Renderer {
             memory_allocator,
             command_buffer_allocator,
             atlas,
-            line_buffer: None,
-            tri_buffer: None,
-            ui_line_buffer: None,
-            ui_tri_buffer: None,
+            line_buffer: VertexBuffer::new(),
+            tri_buffer: VertexBuffer::new(),
+            ui_line_buffer: VertexBuffer::new(),
+            ui_tri_buffer: VertexBuffer::new(),
             text_buffer: None,
-            tex_world_buffer: None,
-            tex_uv_buffer: None,
-            uv_line_buffer: None,
+            tex_world_buffer: VertexBuffer::new(),
+            tex_uv_buffer: VertexBuffer::new(),
+            uv_line_buffer: VertexBuffer::new(),
             view_mode: scene::ViewMode::Mesh,
             checkboxes: Vec::new(),
             labels: Vec::new(),
@@ -265,9 +266,11 @@ impl Renderer {
     }
 
     /// Rebuilds the current scene's mesh in `view_mode` and re-uploads the
-    /// geometry vertex buffers. Runs on scene switch, on view-mode switch,
-    /// on resize and on checkbox toggle — never on camera changes (see
-    /// `set_camera`).
+    /// geometry vertex buffers, reusing their allocations: batches that fit
+    /// the existing capacity are rewritten in place and only growth
+    /// reallocates (see `buffers`). Runs on scene switch, on view-mode
+    /// switch, on resize and on checkbox toggle — never on camera changes
+    /// (see `set_camera`).
     pub(crate) fn set_scene(
         &mut self,
         scenario: &[NodeRef],
@@ -277,6 +280,19 @@ impl Renderer {
         self.view_mode = view_mode;
         let mesh = scene::build_scene(scenario, options, view_mode);
 
+        // The in-place buffer rewrites below must not race a frame still in
+        // flight. SAFETY: the renderer is single-threaded — `set_scene` and
+        // the command submission in `draw_frame` both run on the winit event
+        // loop thread, so nothing submits to the device's queues while this
+        // waits. `set_scene` runs only on discrete events, never per frame.
+        unsafe { self.device.wait_idle() }.expect("failed to wait for the device");
+        // The wait only idles the GPU: vulkano's per-buffer bookkeeping
+        // still counts the previous frame's reads until its fence future is
+        // cleaned. The fence is known-signaled after the wait, so this
+        // deterministically propagates `signal_finished` and unlocks the
+        // buffers for host writes.
+        self.previous_frame_end.as_mut().unwrap().cleanup_finished();
+
         let to_geom = |v: &scene::Vertex| GeomVertex {
             pos: v.pos.to_array(),
             color: v.color,
@@ -285,33 +301,33 @@ impl Renderer {
             pos: v.pos.to_array(),
             uv: v.uv.to_array(),
         };
-        self.line_buffer = setup::vertex_buffer(
+        self.line_buffer.update(
             &self.memory_allocator,
-            mesh.lines.iter().map(to_geom).collect(),
+            &mesh.lines.iter().map(to_geom).collect::<Vec<_>>(),
         );
-        self.tri_buffer = setup::vertex_buffer(
+        self.tri_buffer.update(
             &self.memory_allocator,
-            mesh.triangles.iter().map(to_geom).collect(),
+            &mesh.triangles.iter().map(to_geom).collect::<Vec<_>>(),
         );
-        self.ui_line_buffer = setup::vertex_buffer(
+        self.ui_line_buffer.update(
             &self.memory_allocator,
-            mesh.ui_lines.iter().map(to_geom).collect(),
+            &mesh.ui_lines.iter().map(to_geom).collect::<Vec<_>>(),
         );
-        self.ui_tri_buffer = setup::vertex_buffer(
+        self.ui_tri_buffer.update(
             &self.memory_allocator,
-            mesh.ui_triangles.iter().map(to_geom).collect(),
+            &mesh.ui_triangles.iter().map(to_geom).collect::<Vec<_>>(),
         );
-        self.tex_world_buffer = setup::vertex_buffer(
+        self.tex_world_buffer.update(
             &self.memory_allocator,
-            mesh.tex_world.iter().map(to_uv).collect(),
+            &mesh.tex_world.iter().map(to_uv).collect::<Vec<_>>(),
         );
-        self.tex_uv_buffer = setup::vertex_buffer(
+        self.tex_uv_buffer.update(
             &self.memory_allocator,
-            mesh.tex_uv.iter().map(to_uv).collect(),
+            &mesh.tex_uv.iter().map(to_uv).collect::<Vec<_>>(),
         );
-        self.uv_line_buffer = setup::vertex_buffer(
+        self.uv_line_buffer.update(
             &self.memory_allocator,
-            mesh.uv_lines.iter().map(to_geom).collect(),
+            &mesh.uv_lines.iter().map(to_geom).collect::<Vec<_>>(),
         );
 
         self.checkboxes = mesh.checkboxes;
@@ -453,79 +469,86 @@ impl Renderer {
         match self.view_mode {
             scene::ViewMode::Mesh => {
                 // Child links, outlines, arrow shafts, dashes…
-                if let Some(lines) = &self.line_buffer {
+                if let Some((lines, count)) = self.line_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.line_pipeline,
                         self.world_mvp,
-                        lines,
+                        &lines,
+                        count,
                         None,
                     );
                 }
                 // …then filled triangles (arrowheads, dots) — depth-tested
                 // with the lines.
-                if let Some(triangles) = &self.tri_buffer {
+                if let Some((triangles, count)) = self.tri_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.tri_pipeline,
                         self.world_mvp,
-                        triangles,
+                        &triangles,
+                        count,
                         None,
                     );
                 }
             }
             scene::ViewMode::Textured => {
                 // Filled node triangles sampled from the checkerboard.
-                if let Some(tex_world) = &self.tex_world_buffer {
+                if let Some((tex_world, count)) = self.tex_world_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.tex_pipeline,
                         self.world_mvp,
-                        tex_world,
+                        &tex_world,
+                        count,
                         Some(&self.tex_descriptor_set),
                     );
                 }
             }
             scene::ViewMode::UvMap => {
                 // The textured UV net laid flat on the z = 0 world plane…
-                if let Some(tex_uv) = &self.tex_uv_buffer {
+                if let Some((tex_uv, count)) = self.tex_uv_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.tex_pipeline,
                         self.world_mvp,
-                        tex_uv,
+                        &tex_uv,
+                        count,
                         Some(&self.tex_descriptor_set),
                     );
                 }
                 // …then the net wireframe and vertex dots, drawn depthless so
                 // the overlay floats on top of the plane (no z-fighting).
-                if let Some(uv_lines) = &self.uv_line_buffer {
+                if let Some((uv_lines, count)) = self.uv_line_buffer.batch() {
                     record_draw(
                         &mut builder,
                         &self.ui_line_pipeline,
                         self.world_mvp,
-                        uv_lines,
+                        &uv_lines,
+                        count,
                         None,
                     );
                 }
             }
         }
         // Checkbox panel, in pixel space (no depth test: always on top).
-        if let Some(ui_lines) = &self.ui_line_buffer {
+        if let Some((ui_lines, count)) = self.ui_line_buffer.batch() {
             record_draw(
                 &mut builder,
                 &self.ui_line_pipeline,
                 self.pixel_mvp,
-                ui_lines,
+                &ui_lines,
+                count,
                 None,
             );
         }
-        if let Some(ui_triangles) = &self.ui_tri_buffer {
+        if let Some((ui_triangles, count)) = self.ui_tri_buffer.batch() {
             record_draw(
                 &mut builder,
                 &self.ui_tri_pipeline,
                 self.pixel_mvp,
-                ui_triangles,
+                &ui_triangles,
+                count,
                 None,
             );
         }
@@ -536,6 +559,7 @@ impl Renderer {
                 &self.text_pipeline,
                 PushTransform::for_viewport(self.viewport()),
                 text,
+                text.len() as u32,
                 Some(&self.text_descriptor_set),
             );
         }
@@ -607,13 +631,15 @@ pub fn checkbox_at(checkboxes: &[Checkbox], point: Vec2) -> Option<Attribute> {
 
 /// Records one draw batch: binds `pipeline`, `transform` as push constants
 /// and `buffer` as vertex buffer — plus `descriptor_set` for the textured
-/// batches (checkerboard) and the text batch (glyph atlas) — then draws the
-/// whole buffer.
+/// batches (checkerboard) and the text batch (glyph atlas) — then draws
+/// `vertex_count` vertices. The count comes from the batch, not the buffer
+/// length: reusable buffers may carry spare capacity (see `buffers`).
 fn record_draw<T, Pc: BufferContents + Copy>(
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     pipeline: &Arc<GraphicsPipeline>,
     transform: Pc,
     buffer: &Subbuffer<[T]>,
+    vertex_count: u32,
     descriptor_set: Option<&Arc<DescriptorSet>>,
 ) {
     builder.bind_pipeline_graphics(pipeline.clone()).unwrap();
@@ -634,6 +660,6 @@ fn record_draw<T, Pc: BufferContents + Copy>(
         .unwrap();
     // SAFETY: pipeline, vertex buffer, push constants and, for the batches
     // that sample a texture, the descriptor set bound above satisfy the
-    // draw's requirements.
-    unsafe { builder.draw(buffer.len() as u32, 1, 0, 0) }.unwrap();
+    // draw's requirements; `vertex_count` stays within the live batch range.
+    unsafe { builder.draw(vertex_count, 1, 0, 0) }.unwrap();
 }

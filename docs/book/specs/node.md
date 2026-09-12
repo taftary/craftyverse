@@ -27,7 +27,8 @@ keeps node names unique.
   [`build_icosphere()`](icosphere.md)). `Node::new` defaults to
   `DEFAULT_UV`, a canonical equilateral triangle (base 0.9, centered in
   `[0, 1]^2`, `A` at the apex) so a lone triangle shows an undistorted
-  texture.
+  texture. `unfold_uvs` gives any other triangle assembly a continuous
+  layout (see below).
 
 #### Topology
 
@@ -99,6 +100,34 @@ For every node, directions are computed from that node's own vertices:
   `split_nodes` or `build_icosphere`; dropping them without it leaks every
   node.
 - `collect_nodes(root)` breadth-first traverses reachable nodes once each.
+- `unfold_uvs(nodes)` lays out continuous UVs for an arbitrary triangle
+  assembly (see "unfold_uvs() Method Specification").
+
+### unfold_uvs() Method Specification
+
+`unfold_uvs(nodes: &[NodeRef])` computes a generalized net for any assembly
+of nodes, outside the icosphere path (base faces built by
+[`build_icosphere`](icosphere.md) already carry the curated net).
+
+- Adjacency is geometric: two nodes share an edge when two corner positions
+  are bit-identical `Vec3` values (the weld convention of the topology
+  module). Matching is by position, so any winding works.
+- Each connected component is unfolded breadth-first: a rigid placement
+  where every triangle's UV shape is congruent to its 3D shape (zero
+  stretch). Across every crossed edge the shared corners hold bit-identical
+  UVs on both nodes - the texture is continuous there.
+- Adjacencies the breadth-first traversal does not cross (closed meshes)
+  become natural seams: the two sides hold different UVs for the same 3D
+  vertex.
+- Each component is normalized into `[0, 1]^2` with the same margin
+  convention as the icosahedral net, one uniform scale per component.
+- Lone nodes (components of one) get exactly `DEFAULT_UV`.
+- Degenerate geometry never panics: a node that cannot be placed keeps
+  `DEFAULT_UV` and the unfold does not propagate through it.
+- The result is deterministic: only the input order drives the traversal.
+- Split compatibility holds in both directions: unfolding an already-split
+  welded mesh works, and splitting an unfolded mesh keeps the shared-edge
+  UVs identical (subdivision interpolates UVs linearly).
 
 There is no `Labeling` argument and no direction/center/dimension constructor.
 
@@ -166,8 +195,9 @@ or infinite traversal.
   port convention (`reciprocal_index`), graph traversal, mesh cleanup
   (`destroy_mesh`), and the corner-weld lookups shared by sphere construction
   and mesh-level splits.
-- `crates/engine/src/node/uv.rs` - `DEFAULT_UV` and the icosahedral net
-  layout that seeds the base faces of `build_icosphere`.
+- `crates/engine/src/node/uv.rs` - `DEFAULT_UV`, the icosahedral net
+  layout that seeds the base faces of `build_icosphere`, and the
+  generalized unfold of arbitrary assemblies (`unfold_uvs`).
 - `tests/node/` - geometry, topology, subdivision, lifecycle, traversal, UV,
   and origin-propagation tests, split one file per submodule.
 
@@ -177,7 +207,8 @@ or infinite traversal.
 - `uv` holds one texture coordinate per corner in A/B/C order and is
   duplicated per face like `vertices`: a shared 3D vertex may carry different
   UVs on adjacent faces (seams by design). `Node::new` assigns `DEFAULT_UV`;
-  only `build_icosphere` overrides it (with the net layout).
+  only `build_icosphere` (with the net layout) and `unfold_uvs` (with a
+  generalized unfold) override it.
 - Child links are bidirectional and carry an explicit `back_ports` record.
 - `destroy()` takes the local port and back-port record, then clears the
   neighbor's recorded back-port slot.

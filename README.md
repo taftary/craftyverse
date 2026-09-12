@@ -28,6 +28,8 @@ A window opens showing the node visualization in a 3D perspective view:
 - **1** - one node, no split
 - **2** - split node (center + 3 corner nodes)
 - **3** - icosphere (live)
+- **4** - quad patch (8 triangles) with one continuous UV layout across the
+  shared edges (best seen in the Textured and UV map views)
 - **Left drag** (outside the checkbox panel) or **W / A / S / D** - orbit the
   camera around the scene
 - **Mouse wheel** - zoom the camera
