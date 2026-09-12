@@ -366,6 +366,19 @@ This preserves the existing node and icosphere logic while leaving room for mobi
   keeps the mesh pool's per-slot vertex rewrite model (Decision 2)
   valid.
 
+### Decision 6: Separate runtime window (supersedes the key-5 view screen)
+
+- The planet runtime and its debug readouts live in a dedicated
+  application window (a second winit window), not in a new view mode of
+  the existing debug viewer.
+- The existing debug viewer stays unchanged: its three views (Mesh,
+  Textured, UV map), the T cycle, and the checkbox panel are untouched;
+  no number-key view selection is added to it.
+- The runtime window owns its scene, its camera/player controls, and its
+  debug overlay; each feature extends that overlay with its readouts.
+- Consequence: runtime work cannot regress the node-system viewer, and
+  the two windows can evolve independently.
+
 ## Open Questions in NOTION.md
 
 All four questions are resolved; see the Decisions section. The original

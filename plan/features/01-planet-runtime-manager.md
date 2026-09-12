@@ -14,7 +14,8 @@ authoritative flattening state.
 - `plan/NOTION.md`: Planet, Player, Planetary Layers, Planet Runtime
   Manager, Atmosphere Requirement.
 - `plan/RELATED.md`: Decision 1 (player position drives everything except
-  culling), Decision 3 (authoritative blend factor and floating origin).
+  culling), Decision 3 (authoritative blend factor and floating origin),
+  Decision 6 (separate runtime window).
 
 ## Scope
 
@@ -34,9 +35,9 @@ authoritative flattening state.
     work in local f32 coordinates from the start, before the full
     floating-origin rendering of feature 5 lands.
 - Player orientation never participates in any of the above.
-- Player proxy: a fly-mode player driven by the existing viewer camera
-  controls, so the runtime state can be exercised end to end (there is
-  no separate player system yet).
+- Player proxy: a fly-mode player with camera controls in the runtime
+  window, so the runtime state can be exercised end to end (there is no
+  separate player system yet).
 
 ## Constraints
 
@@ -49,12 +50,14 @@ authoritative flattening state.
 
 ## Debug screen
 
-This feature also creates the Runtime view screen in the debug viewer:
-a new view selectable directly with number keys (1 = Mesh, 2 = Textured,
-3 = UV map, 5 = Runtime; key 4 reserved), with the T cycle kept. Its
-initial readouts: player distance to planet center, altitude above
-surface, current layer, atmosphere factor, flatten factor, anchor
-position.
+This feature also creates the runtime window: a second application
+window (winit) dedicated to the planet runtime and its debug overlay
+(Decision 6). The existing debug viewer window stays completely
+unchanged - its three views (Mesh, Textured, UV map), the T cycle, and
+the checkbox panel are untouched, and no number-key view selection is
+added. The runtime window's initial readouts: player distance to planet
+center, altitude above surface, current layer, atmosphere factor,
+flatten factor, anchor position.
 
 ## Acceptance criteria
 
@@ -62,9 +65,10 @@ position.
 - Blend factors are continuous across layer boundaries (no jumps).
 - The anchor tracks the player's ground projection exactly, and the
   anchor-relative values are consistent with the world-space ones.
-- The player proxy can fly the full space-to-ground sweep in the viewer.
-- The Runtime view screen (key 5) shows the readouts above; README
-  viewer controls are updated for the number keys.
+- The player proxy can fly the full space-to-ground sweep in the runtime
+  window.
+- The runtime window shows the readouts above while the existing debug
+  viewer runs unchanged; README documents both windows' controls.
 - `cargo fmt --check`, `cargo clippy --workspace --all-targets
   --all-features -- -D warnings`, and `cargo test --workspace
   --all-targets` pass.

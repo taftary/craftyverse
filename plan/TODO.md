@@ -3,19 +3,19 @@
 Tracking file for the procedural planet runtime.
 
 - Specification: `plan/NOTION.md`
-- Reuse analysis and decisions: `plan/RELATED.md` (Decisions 1-4)
+- Reuse analysis and decisions: `plan/RELATED.md` (Decisions 1-6)
 - Feature specs: `plan/features/`
 
 Status values: `Not started` / `In progress` / `Done`.
 
 Debug screen convention: the runtime debug readouts live in a dedicated
-Runtime view screen in the Vulkan debug viewer, separate from the three
-existing views (Mesh, Textured, UV map). Views are selectable directly
-with number keys (1 = Mesh, 2 = Textured, 3 = UV map, 5 = Runtime; key 4
-is reserved for a future screen), and the T key still cycles. Every
-feature extends the Runtime screen with the live readouts listed in its
-checklist, so each phase ends with a verifiable on-screen state, not just
-headless tests.
+application window (the runtime window), separate from the existing
+debug viewer (Decision 6). The existing viewer keeps its three views
+(Mesh, Textured, UV map), its T cycle, and its checkbox panel unchanged;
+no number-key view selection is added to it. Every feature extends the
+runtime window's debug overlay with the live readouts listed in its
+checklist, so each phase ends with a verifiable on-screen state, not
+just headless tests.
 
 ## Status
 
@@ -37,14 +37,13 @@ headless tests.
 - [ ] Floating-origin anchor tracking the player's ground projection
 - [ ] Anchor-relative local frame published for LOD and culling (bounds
       f32 error before feature 5 lands)
-- [ ] Player proxy: fly-mode player driven by the existing viewer camera
-      controls
+- [ ] Player proxy: fly-mode player with camera controls in the runtime
+      window
 - [ ] Headless unit tests for thresholds and blend continuity
-- [ ] Debug screen: create the Runtime view screen (key 5, with direct
-      number-key view selection 1/2/3/5 alongside the T cycle) and its
-      text readout overlay - player distance to planet center, altitude
-      above surface, current layer, atmosphere factor, flatten factor,
-      anchor position
+- [ ] Debug screen: create the runtime window (a second application
+      window; the existing debug viewer stays untouched) and its debug
+      overlay - player distance to planet center, altitude above surface,
+      current layer, atmosphere factor, flatten factor, anchor position
 
 ## 2. LOD Scheduler
 
@@ -114,9 +113,9 @@ headless tests.
 4. If a module's behavior changed, its spec in `docs/book/specs/` is
    updated.
 5. If scene/viewer behavior changed, `README.md` viewer controls are
-   still accurate.
-6. The feature's debug screen readouts are live in the Runtime view
-   screen (key 5).
+   still accurate, including the runtime window's controls.
+6. The feature's debug readouts are live in the runtime window, and the
+   existing debug viewer is unchanged.
 7. If the change affects anything `AGENTS.md` documents (commands,
    workspace layout, conventions), `AGENTS.md` is updated to match.
 8. This file's status table is updated.

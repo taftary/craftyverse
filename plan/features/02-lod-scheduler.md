@@ -58,7 +58,7 @@ the active-zone chunks loaded.
 - After any sequence of transitions, the graph stays watertight, neighbor
   links stay retargeted, and the node test suite still passes.
 - No shared edge ever has a level difference greater than 1; skirts hide
-  the residual seams in the viewer.
+  the residual seams in the runtime window.
 - Headless unit tests drive a scripted player path and assert the
   resulting level assignments.
 

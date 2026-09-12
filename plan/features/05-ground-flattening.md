@@ -49,8 +49,8 @@ during descent is an intended effect.
   the rendered surface at every blend value (full physics and picking
   arrive with a future gameplay system).
 - No visible seam or popping across the whole descent sweep.
-- GPU-gated viewer scenario demonstrates the descent; headless tests
-  cover the math.
+- GPU-gated runtime-window scenario demonstrates the descent; headless
+  tests cover the math.
 
 ## Out of scope
 
