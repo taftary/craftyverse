@@ -1,6 +1,9 @@
 //! Winit event handling: owns the scenarios, the display options, the orbit
 //! camera and the cursor, creates the window and drives the renderer in
-//! response to window events.
+//! response to window events. Also owns the planet runtime window
+//! (`runtime_window`): both windows are created in `resumed` and window
+//! events are routed by window id — the runtime window handles everything
+//! addressed to it, this file everything addressed to the viewer window.
 
 use std::sync::Arc;
 
@@ -13,10 +16,12 @@ use winit::event_loop::ActiveEventLoop;
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+use crate::runtime::PlanetConfig;
 use crate::scene::{Attribute, DisplayOptions, OrbitCamera, PanelItem, ViewMode};
 
 use super::Scenario;
 use super::renderer::Renderer;
+use super::runtime_window::RuntimeWindow;
 
 /// Orbit speed of mouse drags, in radians per pixel.
 const RADIANS_PER_PIXEL: f32 = 0.01;
@@ -41,10 +46,17 @@ pub(crate) struct Viewer {
     /// outside the checkbox panel).
     dragging: bool,
     renderer: Option<Renderer>,
+    /// The planet runtime window (second window, Decision 6), with its own
+    /// scene, fly-camera player proxy and debug overlay.
+    runtime: RuntimeWindow,
 }
 
 impl Viewer {
-    pub(crate) fn new(instance: Arc<Instance>, scenarios: Vec<Scenario>) -> Self {
+    pub(crate) fn new(
+        instance: Arc<Instance>,
+        scenarios: Vec<Scenario>,
+        planet: PlanetConfig,
+    ) -> Self {
         Viewer {
             instance,
             scenarios,
@@ -55,6 +67,7 @@ impl Viewer {
             cursor: Vec2::ZERO,
             dragging: false,
             renderer: None,
+            runtime: RuntimeWindow::new(planet),
         }
     }
 
@@ -228,10 +241,17 @@ impl ApplicationHandler for Viewer {
             );
             self.renderer = Some(renderer);
         }
+        self.runtime.resumed(event_loop, self.instance.clone());
         self.renderer.as_ref().unwrap().request_redraw();
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        // Route by window id: the runtime window handles its own events, the
+        // viewer window keeps its existing behavior untouched.
+        if self.runtime.window_id() == Some(id) {
+            self.runtime.handle_event(event_loop, event);
+            return;
+        }
         if self.renderer.is_none() {
             return;
         }

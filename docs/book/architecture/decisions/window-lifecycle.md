@@ -19,9 +19,13 @@ related technology area.
 ## Decision
 
 Keep `winit` (0.30) with its `ApplicationHandler` model. The engine owns the
-event loop and the full window lifecycle: the window and Vulkan surface are
-created in `resumed()`, and the swapchain is recreated on resize. The game
-crate registers scenarios through `render::run(Vec<Scenario>)` and has no
+event loop and the full window lifecycle: the windows and Vulkan surfaces
+are created in `resumed()`, and each swapchain is recreated on resize. One
+`ApplicationHandler` can own several windows - the debug viewer and the
+planet runtime window (Decision 6 of `plan/RELATED.md`) - routing events by
+window id. The game
+crate registers scenarios and the planet configuration through
+`render::run(Vec<Scenario>, PlanetConfig)` and has no
 `winit` dependency. A platform split can still be introduced later behind the
 engine API if a platform requires it.
 

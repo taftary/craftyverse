@@ -20,8 +20,10 @@ bidirectional links) and a Vulkan debug viewer to visualize it.
 Cargo workspace (edition 2024, resolver 3) defined in the root `Cargo.toml`:
 
 - `crates/engine` - library `planet-crafter-engine`. Reusable geometry,
-  topology, scene data, text, and the Vulkan viewer. Source modules: `node`,
-  `scene`, `text`, `render`.
+  topology, scene data, text, the headless planet runtime manager, the
+  headless LOD scheduler, the headless visibility culling pass, and the
+  Vulkan viewer. Source modules: `node`, `scene`, `text`, `render`,
+  `runtime`, `lod`, `visibility`.
 - `crates/game` - binary `planet-crafter` (the default workspace member).
   Application entry point and content policy.
 - `crates/tools` - asset/developer tooling. Not a default workspace member.
@@ -46,7 +48,7 @@ Before changing a module, read its specification and the relevant book pages:
 
 - Module specs (current implementation): `docs/book/specs/` - one page per
   engine module area (`node`, `subdivision`, `icosphere`, `scene`, `text`,
-  `render`); a module may grow focused subpages when a submodule owns a
+  `render`, `lod`); a module may grow focused subpages when a submodule owns a
   self-contained contract.
 - Engineering practices: `docs/book/practices/` - project structure, error
   handling, testing, public APIs, dependencies, performance.
@@ -131,7 +133,7 @@ cargo run --example viewer -p planet-crafter-examples --features gpu    # needs 
 
 - All engine and game tests live in the workspace-root `tests/` package
   (`planet-crafter-tests`): one integration-test target per engine module
-  (`node`, `scene`, `text`, `render`) plus one `game` target. Modules with
+  (`node`, `scene`, `text`, `render`, `runtime`, `lod`, `visibility`) plus one `game` target. Modules with
   submodules are folders that split the tests one file per submodule (for
   example `tests/node/subdivision.rs`); each folder's `main.rs` declares the
   files as modules of its test target.

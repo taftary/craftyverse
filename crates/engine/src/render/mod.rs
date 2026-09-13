@@ -1,7 +1,9 @@
-//! Vulkan debug viewer.
+//! Vulkan debug viewer and planet runtime window.
 //!
-//! This module opens a window and renders the node scenes produced by the
-//! `scene` module. All Vulkan ([`vulkano`](https://crates.io/crates/vulkano))
+//! This module opens two windows: the debug viewer rendering the node scenes
+//! produced by the `scene` module, and the planet runtime window (the
+//! fly-mode player proxy and its debug overlay, see `runtime_window`). All
+//! Vulkan ([`vulkano`](https://crates.io/crates/vulkano))
 //! and windowing ([`winit`](https://crates.io/crates/winit)) code lives here;
 //! the rest of the crate stays GPU-independent.
 //!
@@ -29,17 +31,27 @@
 //! GPU vertex and push-constant layouts live in `vertices`, the shaders and
 //! their runtime compilation in `shaders`, the checkerboard debug texture in
 //! `checkerboard`, the CPU reference of the procedural texture effects in
-//! `procedural`, the reusable scene vertex buffers in `buffers`, Vulkan
-//! object setup in `setup`, the renderer in `renderer`, and the winit event
-//! handling in `viewer`.
+//! `procedural`, the curved atmosphere shell and the CPU reference of its
+//! appearance in `atmosphere`, the reusable scene vertex buffers in
+//! `buffers`, Vulkan
+//! object setup in `setup`, the renderer in `renderer`, the winit event
+//! handling in `viewer`, the mesh pool (fixed-capacity chunk render slots
+//! and the asynchronous vertex worker pipeline) in `pool`, and the planet
+//! runtime window (a second window with
+//! the fly-mode player proxy and the debug overlay) in `runtime_window`.
 //!
 //! The full contract is specified in `docs/book/specs/render.md`.
 
+mod atmosphere;
 mod buffers;
 mod checkerboard;
 #[cfg(feature = "test-internals")]
+mod flatten;
+mod pool;
+#[cfg(feature = "test-internals")]
 mod procedural;
 mod renderer;
+mod runtime_window;
 mod setup;
 mod shaders;
 mod vertices;
@@ -52,13 +64,27 @@ use glam::Vec3;
 use crate::node::{
     IcosphereMesh, NodeRef, build_icosphere, destroy_mesh, split_nodes, unsplit_nodes,
 };
+use crate::runtime::PlanetConfig;
 use viewer::Viewer;
 
+#[cfg(feature = "test-internals")]
+pub use atmosphere::{
+    AtmosphereSample, DOME_HAZE, DOME_RISE_END, DOME_RISE_START, HORIZON_COLOR, RIM_COLOR,
+    RIM_FADE_END, RIM_MAX_ALPHA, RIM_POWER, SCATTER_COLOR, SCATTER_FADE_END, SCATTER_FADE_START,
+    SCATTER_MAX_ALPHA, SCATTER_RISE_END, SKY_COLOR, ShellVertex, appearance, atmosphere_state_name,
+    dome_weight, rim_factor, rim_weight, scatter_weight, shell_vertices,
+};
 #[cfg(feature = "test-internals")]
 pub use buffers::required_capacity;
 #[cfg(feature = "test-internals")]
 pub use checkerboard::{
     CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, checkerboard_mips, mip_level_count,
+};
+#[cfg(feature = "test-internals")]
+pub use flatten::morph_vertex;
+#[cfg(feature = "test-internals")]
+pub use pool::{
+    ChunkGeometry, MAX_CHUNK_VERTICES, MeshPool, PoolConfig, PoolStats, compute_chunk_vertices,
 };
 #[cfg(feature = "test-internals")]
 pub use procedural::{
@@ -70,11 +96,22 @@ pub use renderer::panel_item_at;
 #[cfg(feature = "test-internals")]
 pub use renderer::pixel_matrix;
 #[cfg(feature = "test-internals")]
+pub use runtime_window::{
+    CameraMode, FlyCamera, LodReadout, VisibilityReadout, atmosphere_lines, chunk_bounds,
+    clip_planes, culling_camera, draw_camera, flattening_lines, fly_speed, lod_lines,
+    morphed_chunk_bounds, overlay_lines, player_marker_vertices, pool_lines, visibility_lines,
+};
+#[cfg(feature = "test-internals")]
 pub use setup::device_type_rank;
 #[cfg(feature = "test-internals")]
-pub use shaders::{GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv};
+pub use shaders::{
+    ATMO_FRAG, ATMO_VERT, GEOM_FRAG, GEOM_VERT, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT,
+    compile_spirv,
+};
 #[cfg(feature = "test-internals")]
-pub use vertices::{PushMatrix, PushTex, PushTransform};
+pub use vertices::{
+    AtmoVertexGpu, PushAtmosphere, PushMatrix, PushTex, PushTransform, TexVertexGpu,
+};
 #[cfg(feature = "test-internals")]
 pub use viewer::scenario_index_of;
 
@@ -300,9 +337,14 @@ impl Drop for IcosphereConfig {
     }
 }
 
-/// Opens the viewer window and runs the event loop.
+/// Opens the viewer window and the planet runtime window, and runs the
+/// event loop.
 ///
-/// # Interaction
+/// `planet` configures the planet runtime manager of the runtime window (the
+/// second window, Decision 6 of `plan/RELATED.md`): its radius and origin
+/// should match the displayed planet.
+///
+/// # Interaction — viewer window
 ///
 /// - **Number keys 1..N** — switch between scenarios.
 /// - **E / Q** — split the whole scene one generation deeper / merge it
@@ -321,22 +363,35 @@ impl Drop for IcosphereConfig {
 /// - **Mouse wheel** — zoom the camera.
 /// - **R** — reset the camera to the head-on view.
 /// - **Left click** — toggle the display attribute of the clicked checkbox.
-/// - **Close window** — exit the event loop.
+///
+/// # Interaction — runtime window
+///
+/// The fly camera IS the player proxy: its position feeds the planet runtime
+/// manager every frame, and the overlay shows the live runtime readouts.
+///
+/// - **Left drag** — mouse look.
+/// - **W / A / S / D** — move in the view plane; **Space / C** — rise / sink.
+/// - **Shift** (hold) — speed boost (×8).
+/// - **Mouse wheel** — scale the base speed (altitude-proportional).
+/// - **R** — respawn beyond the orbit threshold, facing the planet.
+///
+/// - **Close either window** — exit the event loop.
 ///
 /// # Panics
 ///
-/// Panics if the winit event loop or the Vulkan instance cannot be created.
+/// Panics if the winit event loop or the Vulkan instance cannot be created,
+/// or if `planet` fails validation.
 ///
 /// # Platform notes
 ///
-/// This function requires a Vulkan-capable GPU/driver and opens a window. It
-/// cannot be used in headless tests.
-pub fn run(scenarios: Vec<Scenario>) {
+/// This function requires a Vulkan-capable GPU/driver and opens two windows.
+/// It cannot be used in headless tests.
+pub fn run(scenarios: Vec<Scenario>, planet: PlanetConfig) {
     let event_loop = EventLoop::new().expect("failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Wait);
 
     let instance = setup::create_instance(&event_loop);
 
-    let mut viewer = Viewer::new(instance, scenarios);
+    let mut viewer = Viewer::new(instance, scenarios, planet);
     event_loop.run_app(&mut viewer).expect("event loop error");
 }

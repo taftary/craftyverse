@@ -4,7 +4,9 @@
 //! level-plus-one nodes and wire the new center node to its corners
 //! ([`split_node`]), split a whole connected mesh one generation deeper
 //! ([`split_nodes`]), and merge a split generation back into its parents
-//! ([`unsplit_nodes`]).
+//! ([`unsplit_nodes`]). The local runtime operations [`split_node_local`]
+//! and [`unsplit_node`] refine or coarsen exactly one chunk of a live mesh,
+//! retargeting the neighboring links that pointed at the replaced nodes.
 
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -167,6 +169,216 @@ pub(crate) fn split_node_with_midpoints(node: &Node, midpoints: [Vec3; 3]) -> No
     link(&node_center, 2, &node_k, reciprocal_index(2));
 
     node_center
+}
+
+/// Splits exactly one node of a live mesh and welds the new corner nodes
+/// across the shared edges — the runtime counterpart of [`split_nodes`].
+///
+/// Where `split_nodes` refines a whole connected component one generation,
+/// `split_node_local` refines the single `node` in place: it severs the
+/// node's links, splits it with [`split_node`], and retargets the links that
+/// pointed at the node to the new corner nodes. The old node is left fully
+/// unlinked; dropping the caller's last reference deallocates it.
+///
+/// For each old link `node.port p <-> neighbor.port q` the shared edge is
+/// resolved geometrically with exact vertex comparison, as in
+/// [`split_nodes`]:
+///
+/// - If the neighbor is a corner of an already split group (same generation
+///   as the new corners), both half-edges are welded corner-to-corner and
+///   the edge stays watertight.
+/// - If the neighbor is one level coarser (not split), only the corner near
+///   the edge's first endpoint (`node.vertices[p]`) links to the neighbor's
+///   recorded port; the second half-edge port stays open. This T-junction is
+///   the accepted level-difference-1 boundary of the restricted-subdivision
+///   rule (see `docs/book/specs/lod.md`); it is welded later when the
+///   neighbor itself splits.
+///
+/// Open ports stay open. Returns the new center node.
+///
+/// # Panics
+///
+/// Panics when a linked neighbor holds neither the shared edge's endpoints
+/// nor its midpoint (a mesh not produced by [`split_node`],
+/// [`split_nodes`], or [`build_icosphere`](crate::node::build_icosphere)).
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec3;
+/// use planet_crafter_engine::node::{build_icosphere, destroy_mesh, split_node_local};
+///
+/// let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
+/// let center = split_node_local(&mesh.faces[0]);
+/// assert_eq!(center.borrow().level, 1);
+/// // The old face node is retired: fully unlinked.
+/// assert!(mesh.faces[0].borrow().children.iter().all(|c| c.is_none()));
+/// destroy_mesh(&center);
+/// ```
+pub fn split_node_local(node: &NodeRef) -> NodeRef {
+    // Record the old links and sever them.
+    let old_vertices = node.borrow().vertices;
+    let mut old_links: [Option<(NodeRef, usize)>; 3] = [None, None, None];
+    for (port, slot) in old_links.iter_mut().enumerate() {
+        let node_ref = node.borrow();
+        if let (Some(neighbor), Some(back)) = (&node_ref.children[port], node_ref.back_ports[port])
+        {
+            *slot = Some((Rc::clone(neighbor), back));
+        }
+    }
+    node.borrow_mut().destroy();
+
+    let center = split_node(&node.borrow());
+    let corners = corner_nodes(&center);
+
+    // Retarget every old link across the shared edge.
+    for (port, old_link) in old_links.iter().enumerate() {
+        let Some((neighbor, back)) = old_link else {
+            continue;
+        };
+        let endpoints = [old_vertices[port], old_vertices[(port + 1) % 3]];
+        let edge_midpoint = midpoint(endpoints[0], endpoints[1]);
+        if neighbor.borrow().vertices.contains(&edge_midpoint) {
+            // The neighbor is a corner of an already split group at the new
+            // corners' generation: weld both half-edges corner-to-corner.
+            let neighbor_corners = corner_nodes(&group_center(neighbor));
+            for endpoint in endpoints {
+                let near = &corners[corner_near(&corners, endpoint)];
+                let other = &neighbor_corners[corner_near(&neighbor_corners, endpoint)];
+                link(
+                    near,
+                    port_on_edge(near, endpoint, edge_midpoint),
+                    other,
+                    port_on_edge(other, endpoint, edge_midpoint),
+                );
+            }
+        } else {
+            // The neighbor is one level coarser: link only the corner near
+            // the edge's first endpoint and leave the second half-edge port
+            // open (the restricted-subdivision T-junction).
+            let near = &corners[corner_near(&corners, endpoints[0])];
+            link(
+                near,
+                port_on_edge(near, endpoints[0], edge_midpoint),
+                neighbor,
+                *back,
+            );
+        }
+    }
+
+    center
+}
+
+/// Merges one complete split group back into its parent node — the runtime
+/// counterpart of [`unsplit_nodes`], scoped to a single group.
+///
+/// `center` is the group's center node (named `"{base}.C"`), as returned by
+/// [`split_node`] or [`split_node_local`]. The parent is rebuilt exactly as
+/// in [`unsplit_nodes`]: vertices, UVs, ring values, and parity recovered
+/// from the corner nodes, name and level from the group. Every link from a
+/// group member to a node outside the group is retargeted to the surviving
+/// parent: the outside node keeps its port, and the parent inherits the
+/// corner's external port, which equals the parent edge's port number. The
+/// four group members are destroyed (their links severed) before the
+/// retargeting links are wired.
+///
+/// The caller is responsible for merge eligibility under restricted
+/// subdivision: every node linked to the group must be at most at the group
+/// level, so the level difference across the shared edges stays at most 1
+/// after the merge. The [`lod`](crate::lod) scheduler enforces this.
+///
+/// Returns the new parent node.
+///
+/// # Panics
+///
+/// Panics when `center` is not the fully linked center of a split group
+/// (name not ending in `.C`, or a missing corner link).
+///
+/// # Example
+///
+/// ```
+/// use glam::Vec3;
+/// use planet_crafter_engine::node::{build_icosphere, destroy_mesh, split_node_local, unsplit_node};
+///
+/// let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
+/// let center = split_node_local(&mesh.faces[0]);
+/// let parent = unsplit_node(&center);
+/// assert_eq!(parent.borrow().name, "planet.0");
+/// assert_eq!(parent.borrow().level, 0);
+/// destroy_mesh(&parent);
+/// ```
+pub fn unsplit_node(center: &NodeRef) -> NodeRef {
+    let (base, slot) = split_suffix(&center.borrow().name).expect("group center name has a suffix");
+    assert_eq!(slot, 3, "group center name must end in .C");
+    let [node_i, node_j, node_k] = corner_nodes(center);
+
+    let (origin, level, parity) = {
+        let node = node_i.borrow();
+        (
+            node.center + node.direction_to_origin,
+            node.level - 1,
+            node.parity,
+        )
+    };
+    let vertices = [
+        node_i.borrow().vertices[0],
+        node_j.borrow().vertices[1],
+        node_k.borrow().vertices[2],
+    ];
+    let uv = [
+        node_i.borrow().uv[0],
+        node_j.borrow().uv[1],
+        node_k.borrow().uv[2],
+    ];
+    let ring = [
+        node_i.borrow().seed_distance[0],
+        node_j.borrow().seed_distance[1],
+        node_k.borrow().seed_distance[2],
+    ];
+    let parent = child_node(vertices, uv, ring, origin, level, base, parity);
+
+    // Collect the external links, then destroy the group, then retarget —
+    // the same ordering as `unsplit_nodes`, so the destroy pass cannot
+    // sever the new links.
+    let group: [&NodeRef; 4] = [&node_i, &node_j, &node_k, center];
+    let mut kept_links: Vec<(usize, NodeRef, usize)> = Vec::new();
+    for child in group {
+        let node = child.borrow();
+        for port in 0..3 {
+            let (Some(neighbor), Some(back)) = (&node.children[port], node.back_ports[port]) else {
+                continue;
+            };
+            if group.iter().any(|member| Rc::ptr_eq(member, neighbor)) {
+                continue;
+            }
+            kept_links.push((port, Rc::clone(neighbor), back));
+        }
+    }
+    for child in group {
+        child.borrow_mut().destroy();
+    }
+    for (port, neighbor, back) in kept_links {
+        if parent.borrow().children[port].is_none() {
+            link(&parent, port, &neighbor, back);
+        }
+    }
+    parent
+}
+
+/// Returns the center node of the split group `corner` belongs to, found
+/// through the corner's link to the `"{base}.C"` node.
+fn group_center(corner: &NodeRef) -> NodeRef {
+    let node = corner.borrow();
+    let (base, slot) = split_suffix(&node.name).expect("corner of a split group");
+    assert!(slot < 3, "expected a corner node, not the group center");
+    let center_name = format!("{base}.C");
+    Rc::clone(
+        node.children
+            .iter()
+            .flatten()
+            .find(|child| child.borrow().name == center_name)
+            .expect("split group center is not linked"),
+    )
 }
 
 /// Splits every node reachable from `first` into four new nodes, welds the

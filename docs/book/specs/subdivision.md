@@ -5,7 +5,10 @@
 Mesh refinement for the [`Node`](node.md) graph: `split_node()` refines one
 triangle into four, `split_nodes()` refines a whole connected mesh one
 generation deeper and re-welds it, and `unsplit_nodes()` merges a split
-generation back into its parents. Every node the subdivision functions create
+generation back into its parents. `split_node_local()` and `unsplit_node()`
+are the runtime counterparts: they refine or coarsen exactly one chunk of a
+live mesh and retarget the neighboring links that pointed at the replaced
+nodes. Every node the subdivision functions create
 satisfies the geometry, direction, and link invariants of the
 [Node specification](node.md).
 
@@ -16,6 +19,10 @@ satisfies the geometry, direction, and link invariants of the
   mesh one generation deeper and re-welds it.
 - `unsplit_nodes(first: &NodeRef) -> Vec<NodeRef>` merges a split generation
   back into its parents.
+- `split_node_local(node: &NodeRef) -> NodeRef` splits exactly one node of a
+  live mesh and retargets the neighboring links.
+- `unsplit_node(center: &NodeRef) -> NodeRef` merges one split group back
+  into its parent.
 
 ### split_node() Function Specification
 
@@ -138,6 +145,68 @@ The reverse of `split_nodes()`: merges split groups back into their parents.
 Returns the new parents in group discovery order, followed by the unchanged
 nodes. Calling it on an unsplittable mesh returns the same nodes.
 
+### split_node_local() Function Specification
+
+**Signature**
+
+```text
+split_node_local(node: &NodeRef) -> NodeRef
+```
+
+The runtime counterpart of `split_nodes()`, scoped to exactly one node: the
+local refinement operation the [LOD scheduler](lod.md) uses.
+
+1. Record the node's links, then `destroy()` the node (it stays alive as an
+   unlinked node; dropping the caller's last reference deallocates it).
+2. Split the node with `split_node()` and recover the three corner nodes.
+3. Retarget every recorded link across its shared edge, resolving the ports
+   geometrically with exact vertex comparison as in `split_nodes()`:
+   - If the old neighbor is a corner of an already split group (its
+     vertices hold the shared edge's midpoint), both half-edges are welded
+     corner-to-corner; the edge stays watertight.
+   - If the old neighbor is one level coarser (its vertices hold the
+     edge's endpoints but not its midpoint), only the corner near the
+     edge's first endpoint (`node.vertices[p]`) links to the neighbor's
+     recorded port. The second half-edge port stays open: this T-junction
+     is the accepted level-difference-1 boundary of restricted subdivision
+     and is welded later when the neighbor itself splits.
+4. Open ports stay open. Returns the new center node.
+
+Precondition: a linked neighbor holds either the shared edge's endpoints or
+its exact midpoint; meshes produced by `split_node`, `split_nodes`, and
+`build_icosphere` satisfy this by construction (the lookups panic
+otherwise). The operation itself does not enforce restricted subdivision -
+splitting a node whose neighbors are too coarse would create a level
+difference greater than 1; the LOD scheduler enforces the rule by splitting
+coarse neighbors first.
+
+### unsplit_node() Function Specification
+
+**Signature**
+
+```text
+unsplit_node(center: &NodeRef) -> NodeRef
+```
+
+The runtime counterpart of `unsplit_nodes()`, scoped to one split group:
+`center` is the group's center node (named `"{base}.C"`).
+
+1. Recover the corner nodes through the center's port layout and rebuild
+   the parent exactly as in `unsplit_nodes()` (vertices, UVs, ring values,
+   parity, origin, level, and base name all recovered from the corners).
+2. Collect every link from a group member to a node outside the group.
+3. `destroy()` the four group members, then retarget the collected links to
+   the surviving parent: the outside node keeps its port, and the parent
+   inherits the corner's external port, which equals the parent edge's port
+   number. The retargeting happens after the destroy pass so the cleanup
+   cannot sever the new links - the same ordering as `unsplit_nodes()`.
+
+Returns the new parent node. Panics when `center` is not the fully linked
+center of a split group. The caller is responsible for merge eligibility
+under restricted subdivision: every node linked to the group must be at
+most at the group level, so the level difference across the shared edges
+stays at most 1 after the merge; the LOD scheduler enforces this.
+
 ### Rules
 
 - Roots start at level `0`; each split generation increments the level by `1`.
@@ -158,8 +227,15 @@ nodes. Calling it on an unsplittable mesh returns the same nodes.
   the whole group.
 - On merge, links from kept (unmerged) nodes into a merged group are
   re-targeted to the surviving parent, preserving both port numbers.
+- The local operations retarget links instead of rebuilding a generation:
+  a local split retires exactly one node (left unlinked), and a local merge
+  destroys exactly the four group members, so no `Rc` cycle leaks.
+- A local split against a coarser neighbor links only one half-edge and
+  leaves the second half-edge port open (the restricted-subdivision
+  T-junction); both half-edges weld when the neighbor later splits.
 
 ### Files
 
 - `crates/engine/src/node/subdivision.rs` - triangle subdivision
-  (`split_node`, `split_nodes`, `unsplit_nodes`).
+  (`split_node`, `split_nodes`, `unsplit_nodes`) and the local runtime
+  operations (`split_node_local`, `unsplit_node`).

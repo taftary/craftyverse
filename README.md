@@ -23,7 +23,13 @@ bidirectional links) and a Vulkan debug viewer to visualize it.
 cargo run --bin planet-crafter
 ```
 
-A window opens showing the node visualization in a 3D perspective view:
+Two windows open: the **node viewer** (the debug viewer below) and the
+**planet runtime window** (the fly-mode player proxy with the planet runtime
+debug overlay). Closing either window exits.
+
+### Node viewer window
+
+A window showing the node visualization in a 3D perspective view:
 
 - **1** - one node, no split
 - **2** - split node (center + 3 corner nodes)
@@ -84,6 +90,75 @@ The **T** key cycles three views:
 
 The checkbox panel and its labels are drawn in every view.
 
+### Planet runtime window
+
+The second window is dedicated to the planet runtime. Its player camera
+is first-person, attached to the player: the player position feeds the
+planet
+runtime manager and
+the chunk LOD scheduler every frame. The terrain is the live LOD chain:
+chunks split, merge, load and unload as the player approaches or leaves,
+and every transition only rewrites vertex data inside the fixed slots of
+the mesh pool (no GPU mesh object is ever created at runtime); chunk
+vertices
+are computed asynchronously by the pool's worker threads. Every frame a
+visibility pass culls the active chunks against the player camera
+(frustum plus
+conservative horizon culling against the planet body, morph-aware while
+the terrain flattens) and only the
+surviving slots are drawn. A small world-space cross marks the player
+position. Rendering is anchor-relative (floating origin):
+the terrain vertex shader subtracts the per-frame anchor from every
+(spherical, unmodified) pooled vertex and morphs it toward the tangent
+plane at the anchor by the authoritative flatten factor, so the world
+smoothly flattens during the descent while f32 precision stays contained.
+After the opaque terrain, the curved atmosphere shell is drawn every frame
+(alpha-blended, depth-tested): a fixed sphere at the atmosphere shell
+radius (planet radius x the configured multiplier) that stays curved at
+all times and reads as a sky dome above the flattened ground. One
+atmosphere shader covers the whole descent, driven by the runtime
+manager's normalized factors only, so the appearance goes from invisible
+in space through the orbit limb rim, the curved scattering layer and the
+horizon fog to the full sky dome with no hard cuts.
+A text overlay
+(top-left) shows the live readouts:
+
+- runtime manager: player position, distance to planet center, altitude
+  above the surface, current planetary layer (space / orbit / atmosphere /
+  sky / terrain), atmosphere factor, flatten factor, floating-origin
+  anchor, current fly speed
+- ground flattening: gravity blend (percent flat), blended gravity
+  direction, world flatten factor (recovered from the headless
+  surface-height query at 0.25 planet radii from the anchor), f32
+  precision-error bound at the player's distance from the floating origin
+- atmosphere: active atmosphere state (none / rim / scattering / fog /
+  sky dome) and the shell radius multiplier
+- LOD scheduler: loaded chunk count, per-level chunk histogram, queued
+  operations, per-frame budget usage, cumulative split/merge counters
+- mesh pool: pool capacity, slots used/free, queued assignments, vertex
+  writes per frame, pending async jobs, worker activity
+- visibility: active camera (player / navigation), chunks visible vs
+  tested, frustum and horizon cull counts, terrain draw calls
+
+Controls:
+
+- **Left drag** - mouse look
+- **W / A / S / D** - fly in the view plane
+- **Space / C** - rise / sink (world up / down)
+- **Shift** (hold) - speed boost (x8)
+- **Mouse wheel** - scale the fly speed (x1.25 per notch, clamped)
+- **F** - toggle the navigation camera: a free-fly spectator for
+  navigating space. It changes only the viewpoint - the player stays put,
+  LOD/loading keep following the player, and culling keeps following the
+  player camera, so the navigation camera sees whatever is loaded around
+  the player, gaps included. Toggling back returns to the player camera
+- **R** - respawn the player beyond the orbit threshold, facing the
+  planet (back to the player camera)
+
+The base fly speed scales with altitude, so both orbit and ground level are
+reachable comfortably: the full space-to-ground sweep crosses every layer,
+and the overlay readouts update live along the way.
+
 ## Development
 
 ```
@@ -118,7 +193,8 @@ tests/    - consolidated application test suite (planet-crafter-tests)
 - [Style guide](docs/STYLEGUIDE.md) - status language, Rust conventions,
   page structure, and validation commands
 - [Module specifications](docs/book/specs/index.md) - current implementation
-  specs for `node`, `scene`, `text`, and `render`
+  specs for `node`, `scene`, `text`, `render`, `runtime`, `lod`, and the
+  mesh pool
 
 ## Main dependencies
 

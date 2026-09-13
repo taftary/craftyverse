@@ -34,6 +34,11 @@
 - [Scene](specs/scene.md)
 - [Text](specs/text.md)
 - [Render](specs/render.md)
+- [Runtime](specs/runtime.md)
+- [LOD](specs/lod.md)
+- [Mesh pool](specs/mesh-pool.md)
+- [Visibility](specs/visibility.md)
+- [Atmosphere](specs/atmosphere.md)
 
 # Principles
 

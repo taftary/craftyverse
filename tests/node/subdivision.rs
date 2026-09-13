@@ -3,8 +3,8 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use planet_crafter_engine::node::{
-    Node, NodeRef, build_icosphere, collect_nodes, destroy_mesh, split_node, split_nodes,
-    unsplit_nodes,
+    Node, NodeRef, build_icosphere, collect_nodes, destroy_mesh, split_node, split_node_local,
+    split_nodes, unsplit_node, unsplit_nodes,
 };
 use planet_crafter_engine::testing::link;
 use planet_crafter_tests::fixtures::{point, test_node};
@@ -388,4 +388,252 @@ fn unsplit_nodes_merges_an_icosphere_generation() {
     }
 
     destroy_mesh(&parents[0]);
+}
+
+// --- Local refinement (runtime) operations ---
+
+/// Asserts the reciprocal-link invariant over the whole component: every
+/// linked port points back through the recorded back-port.
+fn assert_links_reciprocal(root: &NodeRef) {
+    for node in collect_nodes(root) {
+        let node_ref = node.borrow();
+        for port in 0..3 {
+            let (Some(neighbor), Some(back)) =
+                (&node_ref.children[port], node_ref.back_ports[port])
+            else {
+                assert_eq!(node_ref.back_ports[port], None);
+                continue;
+            };
+            let neighbor_ref = neighbor.borrow();
+            assert!(
+                neighbor_ref.children[back]
+                    .as_ref()
+                    .is_some_and(|n| Rc::ptr_eq(n, &node)),
+                "link {}.{} is not reciprocal",
+                node_ref.name,
+                port
+            );
+            assert_eq!(neighbor_ref.back_ports[back], Some(port));
+        }
+    }
+}
+
+/// Endpoints of the edge opposite port `port`'s perpendicular direction:
+/// `[vertices[port], vertices[(port + 1) % 3]]`.
+fn edge_endpoints(node: &NodeRef, port: usize) -> [Vec3; 2] {
+    let vertices = node.borrow().vertices;
+    [vertices[port], vertices[(port + 1) % 3]]
+}
+
+/// The corner of the split group under `center` holding vertex `endpoint`.
+fn group_corner_near(center: &NodeRef, endpoint: Vec3) -> NodeRef {
+    let center_ref = center.borrow();
+    for port in 0..3 {
+        let corner = center_ref.children[port].as_ref().unwrap();
+        if corner.borrow().vertices.contains(&endpoint) {
+            return Rc::clone(corner);
+        }
+    }
+    panic!("no corner near {endpoint:?}");
+}
+
+/// The port of `node` whose edge endpoints are exactly `{u, v}`, if any.
+fn port_across(node: &NodeRef, u: Vec3, v: Vec3) -> Option<usize> {
+    (0..3).find(|port| {
+        let [a, b] = edge_endpoints(node, *port);
+        (a == u && b == v) || (a == v && b == u)
+    })
+}
+
+#[test]
+fn local_split_welds_shared_edge_against_split_neighbor() {
+    let (root, neighbor) = linked_pair();
+    // Shared edge: root port 1 (edge BC).
+    let [u, v] = edge_endpoints(&root, 1);
+    let edge_midpoint = (u + v) / 2.0;
+
+    let root_center = split_node_local(&root);
+    let neighbor_center = split_node_local(&neighbor);
+
+    // Both half-edges are welded corner-to-corner: for each endpoint, the
+    // two adjacent corners are linked across the exact half-edge.
+    for endpoint in [u, v] {
+        let near = group_corner_near(&root_center, endpoint);
+        let other = group_corner_near(&neighbor_center, endpoint);
+        let near_port = port_across(&near, endpoint, edge_midpoint).expect("near half-edge");
+        let other_port = port_across(&other, endpoint, edge_midpoint).expect("other half-edge");
+        assert!(Rc::ptr_eq(
+            near.borrow().children[near_port].as_ref().unwrap(),
+            &other
+        ));
+        assert!(Rc::ptr_eq(
+            other.borrow().children[other_port].as_ref().unwrap(),
+            &near
+        ));
+    }
+    // The old nodes are retired: fully unlinked, only the test's references
+    // keep them alive.
+    for old in [&root, &neighbor] {
+        assert!(old.borrow().children.iter().all(|slot| slot.is_none()));
+        assert_eq!(Rc::strong_count(old), 1);
+    }
+    assert_links_reciprocal(&root_center);
+    destroy_mesh(&root_center);
+}
+
+#[test]
+fn local_split_retargets_coarse_neighbor_link() {
+    let (root, neighbor) = linked_pair();
+    let [u, v] = edge_endpoints(&root, 1);
+    let edge_midpoint = (u + v) / 2.0;
+
+    let center = split_node_local(&root);
+
+    // The neighbor's port 1 now links into root's split group: a level-1
+    // corner holding the shared half-edge.
+    let linked = Rc::clone(neighbor.borrow().children[1].as_ref().unwrap());
+    assert_eq!(linked.borrow().level, 1);
+    assert!(linked.borrow().name.starts_with("root."));
+    assert!(port_across(&linked, u, edge_midpoint).is_some());
+    // The corner near the edge's first endpoint carries the link; the
+    // second half-edge port stays open (the T-junction).
+    let first = group_corner_near(&center, u);
+    let second = group_corner_near(&center, v);
+    assert!(Rc::ptr_eq(&first, &linked));
+    let second_port = port_across(&second, v, edge_midpoint).expect("second half-edge port");
+    assert!(second.borrow().children[second_port].is_none());
+    // The old root is retired.
+    assert!(root.borrow().children.iter().all(|slot| slot.is_none()));
+    assert_eq!(Rc::strong_count(&root), 1);
+    assert_links_reciprocal(&center);
+    destroy_mesh(&center);
+}
+
+#[test]
+fn local_split_then_neighbor_split_welds_both_half_edges() {
+    let (root, neighbor) = linked_pair();
+    let [u, v] = edge_endpoints(&root, 1);
+    let edge_midpoint = (u + v) / 2.0;
+
+    // Split root first (T-junction on the neighbor's side), then split the
+    // neighbor: both half-edges end up welded.
+    let root_center = split_node_local(&root);
+    let neighbor_center = split_node_local(&neighbor);
+
+    for endpoint in [u, v] {
+        for center in [&root_center, &neighbor_center] {
+            let corner = group_corner_near(center, endpoint);
+            let port = port_across(&corner, endpoint, edge_midpoint).expect("half-edge port");
+            assert!(corner.borrow().children[port].is_some());
+        }
+    }
+    assert_links_reciprocal(&root_center);
+    destroy_mesh(&root_center);
+}
+
+#[test]
+fn local_merge_recovers_original_vertices_and_attributes() {
+    let (root, neighbor) = linked_pair();
+    let (vertices, uv, ring, parity, direction_to_origin) = {
+        let root_ref = root.borrow();
+        (
+            root_ref.vertices,
+            root_ref.uv,
+            root_ref.seed_distance,
+            root_ref.parity,
+            root_ref.direction_to_origin,
+        )
+    };
+
+    let center = split_node_local(&root);
+    let parent = unsplit_node(&center);
+
+    let parent_ref = parent.borrow();
+    assert_eq!(parent_ref.name, "root");
+    assert_eq!(parent_ref.level, 0);
+    assert_eq!(parent_ref.vertices, vertices);
+    assert_eq!(parent_ref.uv, uv);
+    assert_eq!(parent_ref.seed_distance, ring);
+    assert_eq!(parent_ref.parity, parity);
+    assert_eq!(parent_ref.direction_to_origin, direction_to_origin);
+    // The neighbor link is restored on the same ports.
+    assert!(Rc::ptr_eq(
+        neighbor.borrow().children[1].as_ref().unwrap(),
+        &parent
+    ));
+    assert!(Rc::ptr_eq(
+        parent_ref.children[1].as_ref().unwrap(),
+        &neighbor
+    ));
+    drop(parent_ref);
+    assert_links_reciprocal(&parent);
+    destroy_mesh(&parent);
+}
+
+#[test]
+fn local_merge_retargets_finer_neighbor_links() {
+    let (root, neighbor) = linked_pair();
+    let root_center = split_node_local(&root);
+    let neighbor_center = split_node_local(&neighbor);
+
+    // Merge root's group while the neighbor group stays split: the parent
+    // (level 0) links to the neighbor's level-1 corners across the shared
+    // edge, keeping the level difference at 1.
+    let parent = unsplit_node(&root_center);
+    assert_eq!(parent.borrow().level, 0);
+    let linked = Rc::clone(parent.borrow().children[1].as_ref().unwrap());
+    assert_eq!(linked.borrow().level, 1);
+    assert!(linked.borrow().name.starts_with("neighbor."));
+    assert_links_reciprocal(&parent);
+
+    // Merging the neighbor group recovers the original pair.
+    let neighbor_parent = unsplit_node(&neighbor_center);
+    assert!(Rc::ptr_eq(
+        parent.borrow().children[1].as_ref().unwrap(),
+        &neighbor_parent
+    ));
+    assert!(Rc::ptr_eq(
+        neighbor_parent.borrow().children[1].as_ref().unwrap(),
+        &parent
+    ));
+    destroy_mesh(&parent);
+}
+
+#[test]
+fn local_merge_destroys_group_and_breaks_rc_cycles() {
+    let (root, _neighbor) = linked_pair();
+    let center = split_node_local(&root);
+    let members: Vec<NodeRef> = (0..3)
+        .map(|port| Rc::clone(center.borrow().children[port].as_ref().unwrap()))
+        .chain([Rc::clone(&center)])
+        .collect();
+
+    let parent = unsplit_node(&center);
+
+    // Every group member is destroyed: unlinked, with only the test's
+    // references left (the center is referenced twice here: `center` and
+    // its entry in `members`).
+    for member in &members {
+        assert!(member.borrow().children.iter().all(|slot| slot.is_none()));
+        let expected = if Rc::ptr_eq(member, &center) { 2 } else { 1 };
+        assert_eq!(Rc::strong_count(member), expected);
+    }
+    destroy_mesh(&parent);
+}
+
+#[test]
+fn local_merge_on_icosphere_keeps_mesh_closed() {
+    let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
+    let center = split_node_local(&mesh.faces[0]);
+    let parent = unsplit_node(&center);
+
+    // The mesh is whole again: 20 closed level-0 faces.
+    let nodes = collect_nodes(&parent);
+    assert_eq!(nodes.len(), 20);
+    for node in &nodes {
+        let node_ref = node.borrow();
+        assert_eq!(node_ref.level, 0);
+        assert!(node_ref.children.iter().all(|slot| slot.is_some()));
+    }
+    destroy_mesh(&parent);
 }

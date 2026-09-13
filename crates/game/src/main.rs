@@ -60,6 +60,14 @@ fn main() {
     assign_planar_ring_field(&patch_nodes, &grid_corners, 150.0 / 8.0);
     let patch = Scenario::Static(patch_nodes);
 
-    // Opens the Vulkan viewer window; number keys select the scene.
-    planet_crafter_engine::render::run(vec![no_split, split, icosphere, patch]);
+    // Opens the Vulkan viewer window and the planet runtime window; number
+    // keys select the scene in the viewer window.
+    let planet = planet_crafter_engine::runtime::PlanetConfig {
+        planet_radius: 300.0,
+        planet_origin: origin,
+        atmosphere_multiplier: 1.25,
+        orbit_multiplier: 2.0,
+        sky_altitude: 30.0,
+    };
+    planet_crafter_engine::render::run(vec![no_split, split, icosphere, patch], planet);
 }
