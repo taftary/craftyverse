@@ -128,11 +128,14 @@ fn default_workers() -> usize {
 /// The LOD configuration of the runtime window's planet, derived from the
 /// planet radius: splits begin at 1.5 planet radii (geometric x2 per level
 /// from there), the active zone is a sphere of 0.75 radii around the player.
+/// The level-1 floor keeps the whole planet refined one generation past the
+/// icosahedron, so it reads as a sphere from any distance.
 fn lod_config(config: &PlanetConfig) -> LodConfig {
     LodConfig {
         base_split_distance: 1.5 * config.planet_radius,
         hysteresis_ratio: 1.3,
         max_level: 4,
+        min_level: 1,
         operations_per_frame: 2,
         active_distance: 0.75 * config.planet_radius,
         min_active_meshes: 20,
@@ -374,8 +377,7 @@ pub fn overlay_lines(state: &RuntimeState, fly_speed: f32) -> Vec<String> {
 }
 
 /// Static controls hint shown below the readouts.
-const CONTROLS_HINT: &str =
-    "drag: look  WASD: move  Space/C: up/down  Shift: boost  wheel: speed  F: nav cam  R: respawn";
+const CONTROLS_HINT: &str = "drag: look  WASD: move  Space/C: up/down  Shift: boost  wheel: speed  Up/Down: LOD floor  F: nav cam  R: respawn";
 
 /// Lateral distance from the anchor (as a factor of the planet radius) at
 /// which [`flattening_lines`] samples the morphed surface for the
@@ -452,6 +454,8 @@ pub struct LodReadout {
     pub active_chunks: usize,
     /// Active chunk count per subdivision level, sorted by level.
     pub level_histogram: Vec<(u32, usize)>,
+    /// The current level floor (`LodConfig::min_level`).
+    pub min_level: u32,
     /// Split/merge operations queued for budget.
     pub queued_operations: usize,
     /// Per-frame operation budget.
@@ -480,6 +484,7 @@ pub fn lod_lines(readout: &LodReadout) -> Vec<String> {
     vec![
         format!("loaded chunks:      {}", readout.active_chunks),
         format!("chunk levels:       {histogram}"),
+        format!("level floor:        {}", readout.min_level),
         format!("queued operations:  {}", readout.queued_operations),
         format!(
             "budget used:        {}/{}",
@@ -802,7 +807,7 @@ impl RuntimeWindow {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("PlanetCrafter planet runtime — drag: look, WASD/Space/C: fly, Shift: boost, wheel: speed, F: nav cam, R: respawn"),
+                        .with_title("PlanetCrafter planet runtime — drag: look, WASD/Space/C: fly, Shift: boost, wheel: speed, Up/Down: LOD floor, F: nav cam, R: respawn"),
                 )
                 .expect("failed to create runtime window"),
         );
@@ -914,6 +919,20 @@ impl RuntimeWindow {
                 self.nav_camera = spawn;
                 self.mode = CameraMode::Player;
                 self.request_redraw();
+            }
+            KeyCode::ArrowUp if pressed && !event.repeat => {
+                // Raise the LOD level floor: the whole planet refines one
+                // more generation everywhere (see `lod_config`).
+                let floor = self.scheduler.config().min_level + 1;
+                if self.scheduler.set_min_level(floor).is_ok() {
+                    self.request_redraw();
+                }
+            }
+            KeyCode::ArrowDown if pressed && !event.repeat => {
+                let floor = self.scheduler.config().min_level.saturating_sub(1);
+                if self.scheduler.set_min_level(floor).is_ok() {
+                    self.request_redraw();
+                }
             }
             _ => {}
         }
@@ -1077,6 +1096,7 @@ impl RuntimeWindow {
         lines.extend(lod_lines(&LodReadout {
             active_chunks: chunks.len(),
             level_histogram: histogram.into_iter().collect(),
+            min_level: self.scheduler.config().min_level,
             queued_operations: self.scheduler.queued_operations(),
             operations_budget: self.scheduler.config().operations_per_frame,
             operations_used: self.operations_used,

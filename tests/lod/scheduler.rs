@@ -2,7 +2,9 @@ use std::rc::Rc;
 
 use glam::Vec3;
 
-use planet_crafter_engine::lod::{BorderState, LodConfig, LodScheduler, border_states};
+use planet_crafter_engine::lod::{
+    BorderState, LodConfig, LodConfigError, LodScheduler, border_states,
+};
 use planet_crafter_engine::node::{
     IcosphereMesh, NodeRef, build_icosphere, collect_nodes, destroy_mesh, split_node_local,
 };
@@ -17,6 +19,7 @@ pub fn test_config() -> LodConfig {
         base_split_distance: 400.0,
         hysteresis_ratio: 1.3,
         max_level: 3,
+        min_level: 0,
         operations_per_frame: 2,
         active_distance: 100_000.0,
         min_active_meshes: 0,
@@ -355,6 +358,76 @@ fn retreating_merges_back_to_the_base_mesh_without_leaks() {
     if let Some(weak) = weak {
         assert!(weak.upgrade().is_none());
     }
+    assert_graph_invariants(&scheduler);
+    destroy_mesh(&scheduler.active_chunks()[0]);
+}
+
+#[test]
+fn min_level_floor_refines_the_whole_mesh_from_any_distance() {
+    let (mesh, _) = planet();
+    let config = LodConfig {
+        min_level: 1,
+        ..test_config()
+    };
+    let mut scheduler = scheduler(&mesh, config);
+
+    // The player sits in deep space, beyond every split threshold: the
+    // floor alone drives the refinement.
+    stabilize(&mut scheduler, Vec3::new(100_000.0, 0.0, 0.0));
+
+    let live = live_nodes(&scheduler);
+    assert_eq!(live.len(), 80);
+    assert!(live.iter().all(|node| node.borrow().level == 1));
+    assert_graph_invariants(&scheduler);
+    destroy_mesh(&scheduler.active_chunks()[0]);
+}
+
+#[test]
+fn min_level_floor_blocks_merges_below_the_floor() {
+    let (mesh, anchor) = planet();
+    let config = LodConfig {
+        min_level: 1,
+        ..test_config()
+    };
+    let mut scheduler = scheduler(&mesh, config);
+    stabilize(&mut scheduler, anchor);
+
+    // Retreat to deep space: everything beyond the floor merges back, but
+    // the level-1 floor holds.
+    stabilize(&mut scheduler, Vec3::new(100_000.0, 0.0, 0.0));
+
+    let live = live_nodes(&scheduler);
+    assert_eq!(live.len(), 80);
+    assert!(live.iter().all(|node| node.borrow().level == 1));
+    assert_graph_invariants(&scheduler);
+    destroy_mesh(&scheduler.active_chunks()[0]);
+}
+
+#[test]
+fn set_min_level_adjusts_the_floor_live() {
+    let (mesh, _) = planet();
+    let mut scheduler = scheduler(&mesh, test_config());
+
+    // The floor cannot exceed the cap; the failed set leaves it unchanged.
+    let max_level = scheduler.config().max_level;
+    assert_eq!(
+        scheduler.set_min_level(max_level + 1),
+        Err(LodConfigError::InvalidMinLevel)
+    );
+    assert_eq!(scheduler.config().min_level, 0);
+
+    // Raising the floor live drives the refinement from the next update.
+    scheduler.set_min_level(1).unwrap();
+    stabilize(&mut scheduler, Vec3::new(100_000.0, 0.0, 0.0));
+    assert_eq!(live_nodes(&scheduler).len(), 80);
+
+    // Lowering it back re-enables merges below the old floor.
+    scheduler.set_min_level(0).unwrap();
+    stabilize(&mut scheduler, Vec3::new(100_000.0, 0.0, 0.0));
+    let live = live_nodes(&scheduler);
+    assert_eq!(live.len(), 20);
+    assert!(live.iter().all(|node| node.borrow().level == 0));
+
     assert_graph_invariants(&scheduler);
     destroy_mesh(&scheduler.active_chunks()[0]);
 }

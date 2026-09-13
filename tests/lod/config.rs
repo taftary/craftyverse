@@ -55,6 +55,13 @@ fn validate_rejects_invalid_fields() {
         ),
         (
             LodConfig {
+                min_level: 9,
+                ..valid
+            },
+            LodConfigError::InvalidMinLevel,
+        ),
+        (
+            LodConfig {
                 operations_per_frame: 0,
                 ..valid
             },

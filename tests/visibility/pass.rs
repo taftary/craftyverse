@@ -32,6 +32,7 @@ fn scheduler() -> (LodScheduler, Vec<NodeRef>) {
         base_split_distance: 1.0,
         hysteresis_ratio: 1.3,
         max_level: 2,
+        min_level: 0,
         operations_per_frame: 2,
         active_distance: 10.0 * RADIUS,
         min_active_meshes: 20,

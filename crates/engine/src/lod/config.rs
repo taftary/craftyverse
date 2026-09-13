@@ -41,6 +41,11 @@ pub struct LodConfig {
     /// Deepest subdivision level the scheduler produces. Level-0 chunks are
     /// the base mesh faces.
     pub max_level: u32,
+    /// Shallowest subdivision level the scheduler holds: every chunk is
+    /// refined to at least this level, anywhere on the planet and regardless
+    /// of player distance, and no group merges below it. Must be at most
+    /// `max_level`.
+    pub min_level: u32,
     /// Maximum number of split/merge operations executed per
     /// [`update`](crate::lod::LodScheduler::update) call. Forced neighbor
     /// splits count against the same budget. Must be at least 1.
@@ -80,6 +85,9 @@ impl LodConfig {
         if !self.hysteresis_ratio.is_finite() || self.hysteresis_ratio <= 1.0 {
             return Err(LodConfigError::InvalidHysteresisRatio);
         }
+        if self.min_level > self.max_level {
+            return Err(LodConfigError::InvalidMinLevel);
+        }
         if self.operations_per_frame == 0 {
             return Err(LodConfigError::InvalidOperationsPerFrame);
         }
@@ -96,6 +104,7 @@ impl Default for LodConfig {
             base_split_distance: 1000.0,
             hysteresis_ratio: 1.3,
             max_level: 8,
+            min_level: 0,
             operations_per_frame: 2,
             active_distance: 2000.0,
             min_active_meshes: 20,
@@ -110,6 +119,8 @@ pub enum LodConfigError {
     InvalidBaseSplitDistance,
     /// `hysteresis_ratio` was not finite and greater than 1.
     InvalidHysteresisRatio,
+    /// `min_level` was greater than `max_level`.
+    InvalidMinLevel,
     /// `operations_per_frame` was 0.
     InvalidOperationsPerFrame,
     /// `active_distance` was not positive and finite.
@@ -125,6 +136,7 @@ impl fmt::Display for LodConfigError {
             LodConfigError::InvalidHysteresisRatio => {
                 "hysteresis_ratio must be finite and greater than 1"
             }
+            LodConfigError::InvalidMinLevel => "min_level must be at most max_level",
             LodConfigError::InvalidOperationsPerFrame => "operations_per_frame must be at least 1",
             LodConfigError::InvalidActiveDistance => "active_distance must be positive and finite",
         };

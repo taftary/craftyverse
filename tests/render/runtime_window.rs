@@ -210,6 +210,7 @@ fn lod_lines_report_the_scheduler_state() {
     let lines = lod_lines(&LodReadout {
         active_chunks: 42,
         level_histogram: vec![(0, 18), (1, 12), (2, 12)],
+        min_level: 1,
         queued_operations: 3,
         operations_budget: 2,
         operations_used: 2,
@@ -223,6 +224,7 @@ fn lod_lines_report_the_scheduler_state() {
         joined.contains("chunk levels:       L0:18 L1:12 L2:12"),
         "{joined}"
     );
+    assert!(joined.contains("level floor:        1"), "{joined}");
     assert!(joined.contains("queued operations:  3"), "{joined}");
     assert!(joined.contains("budget used:        2/2"), "{joined}");
     assert!(joined.contains("splits/merges:      120/45"), "{joined}");

@@ -349,7 +349,9 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   **left drag** = mouse look; **W/A/S/D** = move in the view plane;
   **Space/C** = rise/sink along world Y; **Shift** (hold) = x8 speed boost;
   **mouse wheel** = user speed multiplier (x1.25 per notch, clamped to
-  1/32..=32); **F** = player/navigation camera toggle; **R** = respawn the
+  1/32..=32); **Up/Down arrows** = raise/lower the LOD level floor live
+  (`LodScheduler::set_min_level`, clamped to `0..=max_level`); **F** =
+  player/navigation camera toggle; **R** = respawn the
   player beyond the orbit threshold (`orbit_radius * 1.1` from the center,
   facing the planet) and return to player mode. The base fly
   speed is altitude-proportional (`fly_speed`, headless and unit-tested) -
@@ -375,7 +377,7 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   surface and the headless query agree), and the f32 precision-error bound
   (the unit roundoff scaled by the player's distance from the anchor - the
   error the floating origin keeps contained). LOD readouts (`lod_lines`): loaded chunk count, per-level chunk
-  histogram, queued operations, per-frame budget usage, cumulative
+  histogram, the current level floor, queued operations, per-frame budget usage, cumulative
   split/merge counters. Mesh-pool readouts (`pool_lines`): pool capacity,
   slots used/free, queued assignments, vertex writes per frame, pending
   async jobs, worker activity. Visibility readouts (`visibility_lines`):

@@ -122,6 +122,11 @@ pub fn border_states(node: &NodeRef) -> [BorderState; 3] {
 /// whose group touches a finer group is dropped and re-evaluated on later
 /// frames. The level difference across any shared edge therefore never
 /// exceeds 1.
+///
+/// The level floor ([`min_level`](LodConfig::min_level)) keeps every chunk
+/// refined to at least that level, anywhere on the planet and regardless of
+/// player distance: chunks below the floor are queued for splits without a
+/// threshold check, and groups at the floor never merge.
 pub struct LodScheduler {
     config: LodConfig,
     roots: Vec<NodeRef>,
@@ -152,6 +157,26 @@ impl LodScheduler {
     /// The scheduler's configuration.
     pub fn config(&self) -> &LodConfig {
         &self.config
+    }
+
+    /// Sets the level floor ([`min_level`](LodConfig::min_level)) live.
+    ///
+    /// The next [`update`](Self::update) picks the new floor up: raising it
+    /// queues the mandatory floor splits, lowering it re-enables merges
+    /// that the old floor blocked. Queued operations that no longer fit the
+    /// floor are dropped at execution time.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LodConfigError::InvalidMinLevel`](crate::lod::LodConfigError::InvalidMinLevel)
+    /// when `min_level` exceeds [`max_level`](LodConfig::max_level); the
+    /// floor is left unchanged.
+    pub fn set_min_level(&mut self, min_level: u32) -> Result<(), crate::lod::LodConfigError> {
+        if min_level > self.config.max_level {
+            return Err(crate::lod::LodConfigError::InvalidMinLevel);
+        }
+        self.config.min_level = min_level;
+        Ok(())
     }
 
     /// The current active chunk set: the loaded chunks inside the active
@@ -198,10 +223,12 @@ impl LodScheduler {
                     let level = node_ref.level;
                     let stale = !live_ptrs.contains(&(Rc::as_ptr(&node) as usize))
                         || level >= self.config.max_level
-                        // Re-validate the threshold: the player may have
-                        // moved away since the request was queued.
-                        || player_position.distance(node_ref.center)
-                            >= self.config.split_threshold(level);
+                        // Below the level floor the split is mandatory;
+                        // above it, re-validate the threshold: the player
+                        // may have moved away since the request was queued.
+                        || (level >= self.config.min_level
+                            && player_position.distance(node_ref.center)
+                                >= self.config.split_threshold(level));
                     drop(node_ref);
                     if stale {
                         continue;
@@ -237,8 +264,9 @@ impl LodScheduler {
                         continue;
                     };
                     let group_level = members[3].borrow().level;
-                    if player_position.distance(group_parent_center(&members))
-                        <= self.config.merge_threshold(group_level - 1)
+                    if group_level <= self.config.min_level
+                        || player_position.distance(group_parent_center(&members))
+                            <= self.config.merge_threshold(group_level - 1)
                     {
                         continue;
                     }
@@ -273,7 +301,9 @@ impl LodScheduler {
             let node_ref = node.borrow();
             let level = node_ref.level;
             let distance = player_position.distance(node_ref.center);
-            if level < self.config.max_level && distance < self.config.split_threshold(level) {
+            if level < self.config.max_level
+                && (level < self.config.min_level || distance < self.config.split_threshold(level))
+            {
                 let key = format!("S:{}", node_ref.name);
                 if !self.queued.contains(&key) {
                     drop(node_ref);
@@ -281,7 +311,7 @@ impl LodScheduler {
                     continue;
                 }
             }
-            if level >= 1
+            if level > self.config.min_level
                 && let Some(base) = group_base(&node_ref.name)
             {
                 // Only complete, atomic groups are merge candidates: a

@@ -23,9 +23,9 @@ participates in any decision.
 ### Structure
 
 - **Configuration** (`config.rs`)
-  - `LodConfig { base_split_distance, hysteresis_ratio, max_level, operations_per_frame, active_distance, min_active_meshes }` -
-    one planet's LOD thresholds, operation budget, and active zone, in
-    world units.
+  - `LodConfig { base_split_distance, hysteresis_ratio, max_level, min_level, operations_per_frame, active_distance, min_active_meshes }` -
+    one planet's LOD thresholds, level bounds, operation budget, and active
+    zone, in world units.
   - `LodConfig::split_threshold(level) = base_split_distance / 2^level` -
     the geometric progression (x2 per level), matching the subdivision
     hierarchy where each triangle refines into four children.
@@ -35,8 +35,8 @@ participates in any decision.
     field invariants; `LodConfigError` is a typed error implementing
     `std::error::Error`, one variant per violated invariant.
   - `LodConfig::default()` - base split distance 1000, hysteresis ratio
-    1.3, max level 8, 2 operations per frame, active distance 2000,
-    minimum 20 active meshes.
+    1.3, max level 8, level floor 0, 2 operations per frame, active distance
+    2000, minimum 20 active meshes.
 - **Scheduler** (`scheduler.rs`)
   - `LodScheduler::new(config, roots) -> Result<Self, LodConfigError>` -
     creates a scheduler over the mesh reachable from `roots` (typically the
@@ -47,6 +47,10 @@ participates in any decision.
     update; panics on a non-finite position (internal invariant).
   - `LodScheduler::active_chunks() -> &[NodeRef]` - the current active
     chunk set.
+  - `LodScheduler::set_min_level(min_level) -> Result<(), LodConfigError>` -
+    adjusts the level floor live (the runtime window's Up/Down arrow keys);
+    the next update queues the mandatory floor splits or re-enables the
+    blocked merges. Rejects a floor above `max_level`.
   - `LodScheduler::queued_operations() -> usize` - queued split/merge
     operations waiting for budget.
   - `FrameReport { splits, merges, loaded, unloaded }` - what one update
@@ -67,20 +71,22 @@ One frame, in order:
    operations execute; each executed split or merge - forced neighbor
    splits included - consumes exactly one operation. Popped operations are
    revalidated at execution time and dropped when stale: a split is dropped
-   when its node is no longer live, reached `max_level`, or is no longer
-   below its split threshold; a merge is dropped when its base name no
-   longer resolves to a live center, when the resolved group is not
-   complete and atomic (`split_group_members` - names repeat across
-   generations after a merge and re-split, so the name alone is never
-   enough), when the group is no longer beyond its merge threshold, or when
-   a finer group blocks it (re-evaluated on later frames).
+   when its node is no longer live, reached `max_level`, or - above the
+   `min_level` floor - is no longer below its split threshold; a merge is
+   dropped when its base name no longer resolves to a live center, when the
+   resolved group is not complete and atomic (`split_group_members` - names
+   repeat across generations after a merge and re-split, so the name alone
+   is never enough), when the group sits at or below the floor or is no
+   longer beyond its merge threshold, or when a finer group blocks it
+   (re-evaluated on later frames).
 2. **Queue newly threshold-crossing chunks.** A chunk at level `L` closer
-   than `split_threshold(L)` is queued for a split; a complete, atomic
-   split group whose parent center is farther than `merge_threshold(L)` is
-   queued for a merge. Queued work is never dropped on arrival: excess work
-   waits in the queue and drains over the following frames. Merge
-   candidates are queued deepest-level first so blocking finer groups merge
-   before the coarser groups they touch.
+   than `split_threshold(L)` is queued for a split, as is any chunk below
+   the `min_level` floor regardless of distance; a complete, atomic
+   split group above the floor whose parent center is farther than
+   `merge_threshold(L)` is queued for a merge. Queued work is never dropped
+   on arrival: excess work waits in the queue and drains over the following
+   frames. Merge candidates are queued deepest-level first so blocking
+   finer groups merge before the coarser groups they touch.
 3. **Recompute the active zone.** Chunks closer than `active_distance` to
    the player are loaded; the rest are unloaded. When fewer than
    `min_active_meshes` chunks are inside the zone, the nearest outside
@@ -95,6 +101,11 @@ One frame, in order:
   thresholds (`distance < split_threshold`, `distance > merge_threshold`).
   Between the two thresholds the state is stable: a player hovering at or
   near a threshold causes no split/merge oscillation.
+- **Level floor.** `min_level` keeps the whole mesh refined to at least
+  that level, anywhere on the planet and regardless of player distance:
+  chunks below the floor split without a threshold check, and groups at
+  the floor never merge. The runtime window uses a level-1 floor so the
+  planet always reads as a sphere, never as the raw icosahedron.
 - **Restricted subdivision.** The level difference across any shared edge
   is at most 1. A split whose neighbors are too coarse is redirected to the
   coarsest blocker: the scheduler splits that neighbor first (a forced

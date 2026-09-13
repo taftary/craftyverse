@@ -310,6 +310,7 @@ fn scripted_player_path_keeps_the_slot_count_constant() {
         base_split_distance: 1.5 * radius,
         hysteresis_ratio: 1.3,
         max_level: 3,
+        min_level: 0,
         operations_per_frame: 2,
         active_distance: 0.75 * radius,
         min_active_meshes: 20,

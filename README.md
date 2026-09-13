@@ -133,8 +133,9 @@ A text overlay
   precision-error bound at the player's distance from the floating origin
 - atmosphere: active atmosphere state (none / rim / scattering / fog /
   sky dome) and the shell radius multiplier
-- LOD scheduler: loaded chunk count, per-level chunk histogram, queued
-  operations, per-frame budget usage, cumulative split/merge counters
+- LOD scheduler: loaded chunk count, per-level chunk histogram, the current
+  level floor, queued operations, per-frame budget usage, cumulative
+  split/merge counters
 - mesh pool: pool capacity, slots used/free, queued assignments, vertex
   writes per frame, pending async jobs, worker activity
 - visibility: active camera (player / navigation), chunks visible vs
@@ -147,6 +148,9 @@ Controls:
 - **Space / C** - rise / sink (world up / down)
 - **Shift** (hold) - speed boost (x8)
 - **Mouse wheel** - scale the fly speed (x1.25 per notch, clamped)
+- **Up / Down arrows** - raise / lower the LOD level floor live (clamped to
+  the configured level range): the whole planet refines or coarsens to the
+  new minimum subdivision level
 - **F** - toggle the navigation camera: a free-fly spectator for
   navigating space. It changes only the viewpoint - the player stays put,
   LOD/loading keep following the player, and culling keeps following the
