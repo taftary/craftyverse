@@ -9,15 +9,17 @@
 //! ever created at runtime. Each chunk is one node triangle plus a short
 //! skirt quad per non-welded border (the T-junction crack mask), drawn with
 //! the textured pipeline (diffuse effect), plus the text overlay. The
-//! free-fly camera is the player proxy while attached: the player position
-//! is fed each frame into [`PlanetRuntimeManager::update`] and
+//! free-fly player camera doubles as the player proxy: its position is fed
+//! each frame into [`PlanetRuntimeManager::update`] and
 //! [`LodScheduler::update`], and the resulting readouts are shown as a text
-//! overlay (same glyph-atlas pattern as the viewer's labels). **F**
-//! detaches the camera: the player freezes in place (LOD and loading keep
-//! following it) while the camera keeps flying; culling always follows the
-//! camera, so a detached camera sees whatever is loaded around the player,
-//! gaps included (Decision 1 of `plan/RELATED.md`). Only the chunks that
-//! survive the camera-driven visibility pass
+//! overlay (same glyph-atlas pattern as the viewer's labels). **F** toggles
+//! the navigation camera: a free-fly spectator camera for navigating space
+//! that changes nothing but the viewpoint - LOD/loading keep following the
+//! player and culling keeps following the PLAYER camera (Decision 1 of
+//! `plan/RELATED.md`), so the navigation camera sees whatever the player
+//! camera would, gaps included. A small world-space cross marks the player
+//! position in both camera modes. Only the chunks that
+//! survive the visibility pass
 //! ([`cull_chunks`](crate::visibility::cull_chunks): frustum plus
 //! conservative horizon culling over the active chunk bounding spheres)
 //! are drawn - one draw batch per visible live slot. World rendering is
@@ -26,7 +28,12 @@
 //! (spherical, unmodified) pooled vertex and morphs it toward the tangent
 //! plane at the anchor by the authoritative flatten factor, and the draw
 //! view-projection is built from the anchor-relative camera, so f32
-//! precision error far from the planet center stays contained. After the
+//! precision error far from the planet center stays contained. The culling
+//! pass tests the same morphed geometry: while the flatten factor is
+//! nonzero the chunk bounds are built from the morphed corners and the
+//! horizon occlusion body shrinks to the sphere inscribed in the morphed
+//! ellipsoid ([`PlanetHorizon::morphed`]), so chunks are never culled by
+//! their unmorphed spherical volumes. After the
 //! opaque terrain, the curved atmosphere shell (feature 6) is drawn every
 //! frame through its own alpha-blended, depth-tested (no depth writes)
 //! pipeline: the shell is a fixed lat-long sphere at the atmosphere shell
@@ -42,8 +49,8 @@
 //!
 //! Controls: left drag = mouse look, W/A/S/D = move in the view plane,
 //! Space/C = rise/sink, Shift = speed boost, mouse wheel = speed multiplier,
-//! F = detach/attach the camera (player proxy), R = respawn beyond the
-//! orbit threshold (re-attaches). The base fly speed scales with
+//! F = player/navigation camera toggle, R = respawn beyond the
+//! orbit threshold (player camera). The base fly speed scales with
 //! altitude so the full space-to-ground sweep stays comfortable
 //! ([`fly_speed`]).
 
@@ -169,10 +176,10 @@ pub fn clip_planes(distance_to_center: f32, planet_radius: f32) -> (f32, f32) {
     (near, far)
 }
 
-/// Free-fly camera of the runtime window. While attached it doubles as the
-/// player proxy: its position is the player position published to the
-/// runtime manager. Detached (the F key), the player proxy freezes in
-/// place and the camera flies alone: culling still follows this camera.
+/// Free-fly camera of the runtime window. Two instances exist: the player
+/// camera, which doubles as the player proxy (its position is published to
+/// the runtime manager and drives culling), and the navigation camera, a
+/// spectator that only changes the viewpoint.
 ///
 /// Yaw rotates around the world Y axis, pitch is the elevation above the
 /// horizon (clamped just short of the poles). At identity angles the camera
@@ -286,6 +293,53 @@ impl FlyCamera {
 /// (beyond the space/orbit threshold, so the sweep starts in space).
 const SPAWN_DISTANCE_FACTOR: f32 = 1.1;
 
+/// The active camera of the runtime window (feature 4 camera model,
+/// Decision 1 of `plan/RELATED.md`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CameraMode {
+    /// The player camera: first-person, attached to the player. Flying
+    /// moves the player; LOD/loading follow the player and culling follows
+    /// this camera.
+    Player,
+    /// The navigation camera: a free-fly spectator for navigating space.
+    /// Only the viewpoint changes - LOD/loading still follow the player
+    /// and culling still follows the player camera.
+    Navigation,
+}
+
+impl CameraMode {
+    /// The overlay readout name.
+    pub fn name(self) -> &'static str {
+        match self {
+            CameraMode::Player => "player",
+            CameraMode::Navigation => "navigation",
+        }
+    }
+}
+
+/// The camera the visibility pass culls against: always the player camera,
+/// in every mode (the navigation camera never re-culls). Headless policy,
+/// unit-tested.
+pub fn culling_camera<'a>(
+    player_camera: &'a FlyCamera,
+    _nav_camera: &'a FlyCamera,
+    _mode: CameraMode,
+) -> &'a FlyCamera {
+    player_camera
+}
+
+/// The camera whose viewpoint is rendered in `mode`.
+pub fn draw_camera<'a>(
+    player_camera: &'a FlyCamera,
+    nav_camera: &'a FlyCamera,
+    mode: CameraMode,
+) -> &'a FlyCamera {
+    match mode {
+        CameraMode::Player => player_camera,
+        CameraMode::Navigation => nav_camera,
+    }
+}
+
 /// The live readout lines of the debug overlay, formatted from one frame's
 /// [`RuntimeState`] plus the current fly speed. Pure formatting, unit-tested
 /// headless; the controls hint is appended by the window (static).
@@ -311,7 +365,7 @@ pub fn overlay_lines(state: &RuntimeState, fly_speed: f32) -> Vec<String> {
 
 /// Static controls hint shown below the readouts.
 const CONTROLS_HINT: &str =
-    "drag: look  WASD: move  Space/C: up/down  Shift: boost  wheel: speed  F: detach  R: respawn";
+    "drag: look  WASD: move  Space/C: up/down  Shift: boost  wheel: speed  F: nav cam  R: respawn";
 
 /// Lateral distance from the anchor (as a factor of the planet radius) at
 /// which [`flattening_lines`] samples the morphed surface for the
@@ -440,11 +494,90 @@ pub fn chunk_bounds(node: &NodeRef) -> ChunkBounds {
     ChunkBounds::from_node(node, SKIRT_DEPTH_FACTOR * shortest_edge)
 }
 
+/// The morph-aware bounding volume of one chunk (feature 5 fix): the
+/// corners displaced by the authoritative morph
+/// ([`morph_point`](crate::runtime::morph_point)) at the state's flatten
+/// factor, with the same skirt margin as [`chunk_bounds`]. The vertex
+/// shader displaces the rendered vertices by up to `flatten_factor x
+/// height above the anchor plane` - far beyond the spherical bounding
+/// radius near the active-zone edge - so culling against the unmorphed
+/// volume drops chunks that are visibly rendered (the disappearing-mesh
+/// bug). The morph is affine: the morphed chunk is exactly the triangle
+/// through the morphed corners, the skirt displacement only contracts
+/// under it, and the morphed center is the morph of the center, so this
+/// volume conservatively covers the rendered chunk at every factor.
+/// Headless and unit-tested.
+pub fn morphed_chunk_bounds(node: &NodeRef, state: &RuntimeState) -> ChunkBounds {
+    let node_ref = node.borrow();
+    let [a, b, c] = node_ref.vertices;
+    let shortest_edge = (b - a).length().min((c - b).length()).min((a - c).length());
+    let center = crate::runtime::morph_point(node_ref.center, state);
+    let vertices = node_ref
+        .vertices
+        .map(|vertex| crate::runtime::morph_point(vertex, state));
+    drop(node_ref);
+    ChunkBounds::from_triangle(center, vertices, SKIRT_DEPTH_FACTOR * shortest_edge)
+}
+
+/// Half-length of the player marker arms as a factor of the draw camera's
+/// distance to the player (keeps the marker at a roughly constant screen
+/// size), with a floor so it never degenerates.
+const MARKER_SIZE_FACTOR: f32 = 0.02;
+const MARKER_MIN_SIZE: f32 = 0.5;
+
+/// Arm width of the player marker, as a factor of the arm half-length.
+const MARKER_WIDTH_FACTOR: f32 = 0.12;
+
+/// The vertex data of the player position marker: a 3-bar cross (one bar
+/// along `up`, two along the tangent directions) centered on the player,
+/// drawn through the textured pipeline with the same anchor-relative morph
+/// constants as the terrain, so it stays glued to the rendered world at
+/// every flatten factor. `half_size` is the arm half-length in world
+/// units. Headless and unit-tested.
+pub fn player_marker_vertices(player: Vec3, half_size: f32, up: Vec3) -> Vec<TexVertexGpu> {
+    let half_size = half_size.max(MARKER_MIN_SIZE * MARKER_WIDTH_FACTOR);
+    let width = half_size * MARKER_WIDTH_FACTOR;
+    let up = up.normalize_or(Vec3::Y);
+    // Any tangent direction works; pick the axis least aligned with `up`
+    // for a stable cross product.
+    let axis = if up.y.abs() < 0.9 { Vec3::Y } else { Vec3::X };
+    let tangent_u = up.cross(axis).normalize_or(Vec3::Z);
+    let tangent_v = up.cross(tangent_u).normalize_or(Vec3::X);
+    let mut out = Vec::with_capacity(18);
+    for (bar, across) in [(up, tangent_u), (tangent_u, up), (tangent_v, up)] {
+        let a = bar * half_size;
+        let w = across * width;
+        let corners = [
+            player - a - w,
+            player + a - w,
+            player + a + w,
+            player - a + w,
+        ];
+        let vertex = |pos: Vec3| TexVertexGpu {
+            pos: pos.to_array(),
+            uv: [0.0, 0.0],
+            bary: [1.0, 0.0, 0.0],
+            parity: 1.0,
+            radial: up.to_array(),
+            ring: 0.0,
+        };
+        out.extend_from_slice(&[
+            vertex(corners[0]),
+            vertex(corners[1]),
+            vertex(corners[2]),
+            vertex(corners[0]),
+            vertex(corners[2]),
+            vertex(corners[3]),
+        ]);
+    }
+    out
+}
+
 /// The visibility readout lines of the debug overlay (feature 4).
 /// Pure formatting, unit-tested headless.
 pub struct VisibilityReadout {
-    /// Whether the camera is detached from the player proxy.
-    pub camera_detached: bool,
+    /// The active camera (player or navigation spectator).
+    pub camera: CameraMode,
     /// Chunks tested by the culling pass (the active set).
     pub tested: usize,
     /// Chunks surviving both culling tests.
@@ -461,14 +594,7 @@ pub struct VisibilityReadout {
 /// unit-tested headless.
 pub fn visibility_lines(readout: &VisibilityReadout) -> Vec<String> {
     vec![
-        format!(
-            "camera:             {}",
-            if readout.camera_detached {
-                "detached"
-            } else {
-                "attached"
-            }
-        ),
+        format!("camera:             {}", readout.camera.name()),
         format!("chunks visible:     {}/{}", readout.visible, readout.tested),
         format!("frustum culled:     {}", readout.frustum_culled),
         format!("horizon culled:     {}", readout.horizon_culled),
@@ -498,9 +624,9 @@ pub fn pool_lines(stats: &PoolStats, vertex_writes: usize) -> Vec<String> {
 }
 
 /// The runtime window: owns the planet mesh graph, the LOD scheduler, the
-/// mesh pool, the fly camera (player proxy), the pressed-key state and its
-/// renderer; fed window events by the viewer's `ApplicationHandler` (routed
-/// by window id).
+/// mesh pool, the player and navigation cameras, the pressed-key state and
+/// its renderer; fed window events by the viewer's `ApplicationHandler`
+/// (routed by window id).
 pub(crate) struct RuntimeWindow {
     manager: PlanetRuntimeManager,
     /// The chunk LOD scheduler; owns the traversal roots of the planet
@@ -508,13 +634,15 @@ pub(crate) struct RuntimeWindow {
     scheduler: LodScheduler,
     /// The fixed-capacity mesh pool; slot GPU buffers live in the renderer.
     pool: MeshPool,
-    camera: FlyCamera,
-    /// The player proxy position. While the camera is attached it tracks
-    /// the camera every frame; while detached it is frozen (LOD and
-    /// loading keep following it) and re-attach snaps it to the camera.
-    player: Vec3,
-    /// Whether the camera is detached from the player proxy (F toggles).
-    detached: bool,
+    /// The player camera: the player proxy. Its position feeds the runtime
+    /// manager and the LOD scheduler every frame, and the visibility pass
+    /// always culls against it.
+    player_camera: FlyCamera,
+    /// The navigation camera: a free-fly spectator that only changes the
+    /// rendered viewpoint (active in `CameraMode::Navigation`).
+    nav_camera: FlyCamera,
+    /// Which camera is active (F toggles).
+    mode: CameraMode,
     spawn_config: PlanetConfig,
     /// Total splits/merges executed since spawn, and the operations used by
     /// the last scheduler update (overlay readouts).
@@ -575,9 +703,9 @@ impl RuntimeWindow {
             manager,
             scheduler,
             pool,
-            player: camera.position(),
-            detached: false,
-            camera,
+            player_camera: camera,
+            nav_camera: camera,
+            mode: CameraMode::Player,
             spawn_config: config,
             total_splits: 0,
             total_merges: 0,
@@ -599,7 +727,7 @@ impl RuntimeWindow {
         // Prime the scheduler and the pool from the spawn position so the
         // initial active set (and its slot assignments) exists before the
         // first frame.
-        let report = window.scheduler.update(window.camera.position());
+        let report = window.scheduler.update(window.player_camera.position());
         window.pool.apply_report(&report);
         window
     }
@@ -614,7 +742,7 @@ impl RuntimeWindow {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("PlanetCrafter planet runtime — drag: look, WASD/Space/C: fly, Shift: boost, wheel: speed, F: detach, R: respawn"),
+                        .with_title("PlanetCrafter planet runtime — drag: look, WASD/Space/C: fly, Shift: boost, wheel: speed, F: nav cam, R: respawn"),
                 )
                 .expect("failed to create runtime window"),
         );
@@ -652,13 +780,22 @@ impl RuntimeWindow {
         }
     }
 
-    /// Tracks the cursor; while dragging, rotates the fly camera.
+    /// The camera the fly controls currently drive (player camera in
+    /// player mode, navigation camera in navigation mode).
+    fn active_camera_mut(&mut self) -> &mut FlyCamera {
+        match self.mode {
+            CameraMode::Player => &mut self.player_camera,
+            CameraMode::Navigation => &mut self.nav_camera,
+        }
+    }
+
+    /// Tracks the cursor; while dragging, rotates the active fly camera.
     fn on_cursor_moved(&mut self, position: PhysicalPosition<f64>) {
         let cursor = Vec2::new(position.x as f32, position.y as f32);
         let delta = cursor - self.cursor;
         self.cursor = cursor;
         if self.dragging {
-            self.camera.look(
+            self.active_camera_mut().look(
                 -delta.x * LOOK_RADIANS_PER_PIXEL,
                 -delta.y * LOOK_RADIANS_PER_PIXEL,
             );
@@ -675,7 +812,7 @@ impl RuntimeWindow {
         if steps == 0.0 {
             return;
         }
-        self.camera
+        self.active_camera_mut()
             .adjust_speed_factor(WHEEL_SPEED_STEP.powf(steps));
         self.request_redraw();
     }
@@ -697,20 +834,25 @@ impl RuntimeWindow {
             KeyCode::KeyC => self.down = pressed,
             KeyCode::ShiftLeft | KeyCode::ShiftRight => self.boost = pressed,
             KeyCode::KeyF if pressed && !event.repeat => {
-                // Detach: the player proxy freezes in place while the
-                // camera keeps flying. Re-attach: the player snaps back to
-                // the camera. LOD/loading always follow the player; culling
-                // always follows the camera (Decision 1).
-                self.detached = !self.detached;
-                if !self.detached {
-                    self.player = self.camera.position();
-                }
+                // Toggle the navigation camera: entering spectator mode
+                // continues from the current view; the player camera (and
+                // the player) stays put while the navigation camera flies.
+                // LOD/loading follow the player and culling follows the
+                // player camera in every mode (Decision 1).
+                self.mode = match self.mode {
+                    CameraMode::Player => {
+                        self.nav_camera = self.player_camera;
+                        CameraMode::Navigation
+                    }
+                    CameraMode::Navigation => CameraMode::Player,
+                };
                 self.request_redraw();
             }
             KeyCode::KeyR if pressed && !event.repeat => {
-                self.camera = FlyCamera::spawn(&self.spawn_config);
-                self.player = self.camera.position();
-                self.detached = false;
+                let spawn = FlyCamera::spawn(&self.spawn_config);
+                self.player_camera = spawn;
+                self.nav_camera = spawn;
+                self.mode = CameraMode::Player;
                 self.request_redraw();
             }
             _ => {}
@@ -732,10 +874,13 @@ impl RuntimeWindow {
         }
     }
 
-    /// One frame: applies the held movement keys over the frame delta, feeds
-    /// the player (= camera) position to the runtime manager and the LOD
-    /// scheduler, applies the scheduler's report to the mesh pool, and draws
-    /// the active chunks plus the overlay readouts. Redraws continue while
+    /// One frame: applies the held movement keys over the frame delta to
+    /// the active camera (the player camera moves the player; the
+    /// navigation camera is a spectator), feeds the player position to the
+    /// runtime manager and the LOD scheduler, applies the scheduler's
+    /// report to the mesh pool, culls the active chunks against the player
+    /// camera, and draws the surviving chunks plus the player marker, the
+    /// atmosphere shell and the overlay readouts. Redraws continue while
     /// a movement key is held, worker jobs are in flight, or the scheduler
     /// queue holds operations (smooth flight and prompt async completion
     /// under `ControlFlow::Wait`).
@@ -749,8 +894,17 @@ impl RuntimeWindow {
         self.last_frame = now;
 
         let config = self.manager.config();
-        let mut state = self.manager.update(self.player);
+        let mut state = self.manager.update(self.player_camera.position());
         if moving {
+            // The navigation camera flies with its own altitude-based
+            // speed (it can be far from the player); the player camera
+            // flies with the player's altitude and moves the player.
+            let nav_altitude =
+                self.nav_camera.position().distance(config.planet_origin) - config.planet_radius;
+            let (altitude, camera) = match self.mode {
+                CameraMode::Player => (state.altitude, &mut self.player_camera),
+                CameraMode::Navigation => (nav_altitude, &mut self.nav_camera),
+            };
             let intent = Vec3::new(
                 (self.right as i8 - self.left as i8) as f32,
                 (self.up as i8 - self.down as i8) as f32,
@@ -758,20 +912,17 @@ impl RuntimeWindow {
             )
             .normalize_or_zero();
             let boost = if self.boost { BOOST_FACTOR } else { 1.0 };
-            let speed = fly_speed(state.altitude) * boost * self.camera.speed_factor();
-            self.camera.move_local(intent * speed * dt);
-            if !self.detached {
-                self.player = self.camera.position();
-            }
-            state = self.manager.update(self.player);
+            let speed = fly_speed(altitude) * boost * camera.speed_factor();
+            camera.move_local(intent * speed * dt);
+            state = self.manager.update(self.player_camera.position());
         }
 
         // LOD + mesh pool: drain completed worker results, run the
         // scheduler for this frame, and dispatch the new vertex jobs. LOD
-        // and loading follow the player, never the camera (Decision 1).
+        // and loading follow the player, never a camera (Decision 1).
         let outcome = self.pool.poll();
         self.vertex_writes = outcome.vertex_writes;
-        let report = self.scheduler.update(self.player);
+        let report = self.scheduler.update(self.player_camera.position());
         self.operations_used = report.splits.len() + report.merges.len();
         self.total_splits += report.splits.len() as u64;
         self.total_merges += report.merges.len() as u64;
@@ -779,23 +930,42 @@ impl RuntimeWindow {
         let stats = self.pool.stats();
 
         let viewport = renderer.viewport();
-        let (near, far) = clip_planes(state.distance_to_center, config.planet_radius);
-        let mvp = self.camera.view_projection(viewport, near, far);
+        let draw_camera = *draw_camera(&self.player_camera, &self.nav_camera, self.mode);
+        let draw_distance = draw_camera.position().distance(config.planet_origin);
+        let (near, far) = clip_planes(draw_distance, config.planet_radius);
         // Floating-origin rendering (feature 5): the draw transform and the
         // camera eye are anchor-relative; the vertex shader subtracts the
         // same anchor from every (spherical, unmodified) pooled vertex.
-        let render_mvp = self
-            .camera
-            .view_projection_relative(viewport, near, far, state.anchor);
+        let render_mvp = draw_camera.view_projection_relative(viewport, near, far, state.anchor);
 
         // Visibility pass (feature 4): frustum plus conservative horizon
-        // culling over the active chunk set, driven by the camera only.
+        // culling over the active chunk set. Culling always follows the
+        // PLAYER camera, in every mode (the navigation camera never
+        // re-culls). While the flatten factor is nonzero the chunk bounds
+        // are built from the morphed corners and the horizon occluder is
+        // the sphere inscribed in the morphed ellipsoid, so the pass tests
+        // the rendered (morphed) geometry, never the unmorphed sphere.
         // Only the surviving slots are drawn.
+        let cull_camera = *culling_camera(&self.player_camera, &self.nav_camera, self.mode);
         let chunks = self.scheduler.active_chunks();
-        let bounds: Vec<ChunkBounds> = chunks.iter().map(chunk_bounds).collect();
-        let frustum = Frustum::from_view_projection(mvp);
-        let horizon = PlanetHorizon::new(config.planet_origin, config.planet_radius);
-        let visibility = cull_chunks(&bounds, self.camera.position(), &frustum, &horizon);
+        let bounds: Vec<ChunkBounds> = if state.flatten_factor > 0.0 {
+            chunks
+                .iter()
+                .map(|node| morphed_chunk_bounds(node, &state))
+                .collect()
+        } else {
+            chunks.iter().map(chunk_bounds).collect()
+        };
+        let (cull_near, cull_far) = clip_planes(state.distance_to_center, config.planet_radius);
+        let cull_mvp = cull_camera.view_projection(viewport, cull_near, cull_far);
+        let frustum = Frustum::from_view_projection(cull_mvp);
+        let horizon = PlanetHorizon::morphed(
+            config.planet_origin,
+            config.planet_radius,
+            crate::runtime::anchor_up(&state),
+            state.flatten_factor,
+        );
+        let visibility = cull_chunks(&bounds, cull_camera.position(), &frustum, &horizon);
         let mut visible_slots = vec![false; POOL_SLOTS];
         let mut draw_calls = 0usize;
         for &index in &visibility.visible {
@@ -808,9 +978,21 @@ impl RuntimeWindow {
             }
         }
 
+        // The player position marker: a small world-space cross, drawn in
+        // both camera modes, sized by the draw camera's distance so it
+        // stays visible from far away.
+        let player = self.player_camera.position();
+        let marker_size =
+            (draw_camera.position().distance(player) * MARKER_SIZE_FACTOR).max(MARKER_MIN_SIZE);
+        let marker = player_marker_vertices(player, marker_size, crate::runtime::anchor_up(&state));
+
+        let active_speed_factor = match self.mode {
+            CameraMode::Player => self.player_camera.speed_factor(),
+            CameraMode::Navigation => self.nav_camera.speed_factor(),
+        };
         let speed = fly_speed(state.altitude)
             * if self.boost { BOOST_FACTOR } else { 1.0 }
-            * self.camera.speed_factor();
+            * active_speed_factor;
         let mut lines = overlay_lines(&state, speed);
         lines.extend(flattening_lines(&state, config.planet_radius));
         lines.extend(atmosphere_lines(&state, config.atmosphere_multiplier));
@@ -829,7 +1011,7 @@ impl RuntimeWindow {
         }));
         lines.extend(pool_lines(&stats, self.vertex_writes));
         lines.extend(visibility_lines(&VisibilityReadout {
-            camera_detached: self.detached,
+            camera: self.mode,
             tested: visibility.tested,
             visible: visibility.visible.len(),
             frustum_culled: visibility.frustum_culled,
@@ -839,13 +1021,14 @@ impl RuntimeWindow {
         lines.push(CONTROLS_HINT.to_string());
         renderer.draw_frame(
             render_mvp,
-            self.camera.position(),
+            draw_camera.position(),
             &state,
             atmosphere::rim_factor(
                 state.distance_to_center,
                 config.orbit_radius(),
                 config.atmosphere_radius(),
             ),
+            &marker,
             &lines,
             &mut self.pool,
             &visible_slots,
@@ -1056,7 +1239,9 @@ impl RuntimeRenderer {
     /// Draws one frame: uploads the pool's dirty slots (behind a device
     /// wait, the same in-place rewrite discipline as the viewer), draws
     /// every live chunk slot marked in `visible_slots` through the textured
-    /// pipeline (diffuse effect), then the atmosphere shell (blended,
+    /// pipeline (diffuse effect), then the player marker (a small
+    /// world-space cross through the same pipeline), then the atmosphere
+    /// shell (blended,
     /// depth-tested, no depth writes), then the overlay text laid out in
     /// pixel space. `render_mvp` is the anchor-relative view-projection: the
     /// vertex shaders subtract `state.anchor` from every (spherical,
@@ -1070,6 +1255,7 @@ impl RuntimeRenderer {
         eye: Vec3,
         state: &RuntimeState,
         rim_factor: f32,
+        marker: &[TexVertexGpu],
         overlay: &[String],
         pool: &mut MeshPool,
         visible_slots: &[bool],
@@ -1193,6 +1379,30 @@ impl RuntimeRenderer {
                     ),
                     &chunk,
                     count,
+                    Some(&self.tex_descriptor_set),
+                );
+            }
+        }
+        // The player position marker: a tiny world-space cross, drawn
+        // through the same textured pipeline with the same morph constants
+        // (depth-tested like the terrain), rebuilt every frame like the
+        // text buffer.
+        if !marker.is_empty() {
+            let marker_buffer = setup::vertex_buffer(&self.memory_allocator, marker.to_vec());
+            if let Some(marker_buffer) = marker_buffer {
+                record_draw(
+                    &mut builder,
+                    &self.tex_pipeline,
+                    PushTex::morph(
+                        render_mvp.to_cols_array_2d(),
+                        (eye - state.anchor).to_array(),
+                        TextureEffect::Diffuse.shader_mode(),
+                        state.anchor.to_array(),
+                        crate::runtime::anchor_up(state).to_array(),
+                        state.flatten_factor,
+                    ),
+                    &marker_buffer,
+                    marker.len() as u32,
                     Some(&self.tex_descriptor_set),
                 );
             }

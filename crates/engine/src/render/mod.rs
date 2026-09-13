@@ -97,8 +97,9 @@ pub use renderer::panel_item_at;
 pub use renderer::pixel_matrix;
 #[cfg(feature = "test-internals")]
 pub use runtime_window::{
-    FlyCamera, LodReadout, VisibilityReadout, atmosphere_lines, chunk_bounds, clip_planes,
-    flattening_lines, fly_speed, lod_lines, overlay_lines, pool_lines, visibility_lines,
+    CameraMode, FlyCamera, LodReadout, VisibilityReadout, atmosphere_lines, chunk_bounds,
+    clip_planes, culling_camera, draw_camera, flattening_lines, fly_speed, lod_lines,
+    morphed_chunk_bounds, overlay_lines, player_marker_vertices, pool_lines, visibility_lines,
 };
 #[cfg(feature = "test-internals")]
 pub use setup::device_type_rank;

@@ -17,7 +17,12 @@
 //!   tangent distance is occluded by the planet body. The test only ever
 //!   culls certainly-hidden chunks (it errs toward visible), so nothing
 //!   pops at the limb, and a camera at or below the surface radius culls
-//!   nothing at all.
+//!   nothing at all. While the ground-flattening morph is active
+//!   (feature 5), [`PlanetHorizon::morphed`] shrinks the occlusion body
+//!   to the sphere inscribed in the morphed ellipsoid, and the chunk
+//!   bounds are built from the morphed corners
+//!   ([`ChunkBounds::from_triangle`]) - culling always tests the rendered
+//!   geometry, never the unmorphed sphere.
 //!
 //! [`cull_chunks`] runs both over a slice of [`ChunkBounds`] and reports
 //! the visible indices plus the per-test cull counts for the debug

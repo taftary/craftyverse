@@ -5,8 +5,9 @@ use glam::{Vec2, Vec3};
 use planet_crafter_engine::node::{build_icosphere, destroy_mesh};
 use planet_crafter_engine::runtime::{PlanetConfig, PlanetRuntimeManager, PlanetaryLayer};
 use planet_crafter_engine::testing::{
-    FlyCamera, LodReadout, PoolStats, VisibilityReadout, chunk_bounds, clip_planes,
-    flattening_lines, fly_speed, lod_lines, overlay_lines, pool_lines, visibility_lines,
+    CameraMode, FlyCamera, LodReadout, PoolStats, VisibilityReadout, chunk_bounds, clip_planes,
+    culling_camera, draw_camera, flattening_lines, fly_speed, lod_lines, morphed_chunk_bounds,
+    overlay_lines, player_marker_vertices, pool_lines, visibility_lines,
 };
 
 fn config() -> PlanetConfig {
@@ -275,7 +276,7 @@ fn chunk_bounds_cover_the_corners_plus_the_skirt_margin() {
 #[test]
 fn visibility_lines_report_the_culling_state() {
     let lines = visibility_lines(&VisibilityReadout {
-        camera_detached: true,
+        camera: CameraMode::Navigation,
         tested: 80,
         visible: 23,
         frustum_culled: 40,
@@ -284,19 +285,113 @@ fn visibility_lines_report_the_culling_state() {
     });
     let joined = lines.join("\n");
 
-    assert!(joined.contains("camera:             detached"), "{joined}");
+    assert!(
+        joined.contains("camera:             navigation"),
+        "{joined}"
+    );
     assert!(joined.contains("chunks visible:     23/80"), "{joined}");
     assert!(joined.contains("frustum culled:     40"), "{joined}");
     assert!(joined.contains("horizon culled:     17"), "{joined}");
     assert!(joined.contains("draw calls:         21"), "{joined}");
 
-    let attached = visibility_lines(&VisibilityReadout {
-        camera_detached: false,
+    let player = visibility_lines(&VisibilityReadout {
+        camera: CameraMode::Player,
         tested: 1,
         visible: 1,
         frustum_culled: 0,
         horizon_culled: 0,
         draw_calls: 1,
     });
-    assert!(attached.join("\n").contains("camera:             attached"));
+    assert!(player.join("\n").contains("camera:             player"));
+}
+
+#[test]
+fn culling_always_follows_the_player_camera() {
+    let config = config();
+    let player_camera = FlyCamera::spawn(&config);
+    let mut nav_camera = FlyCamera::spawn(&config);
+    nav_camera.move_local(Vec3::new(500.0, 0.0, 0.0));
+
+    for mode in [CameraMode::Player, CameraMode::Navigation] {
+        // Culling always consumes the player camera, in every mode.
+        let cull = culling_camera(&player_camera, &nav_camera, mode);
+        assert_eq!(cull, &player_camera);
+    }
+    // Rendering switches viewpoint only in navigation mode.
+    assert_eq!(
+        draw_camera(&player_camera, &nav_camera, CameraMode::Player),
+        &player_camera
+    );
+    assert_eq!(
+        draw_camera(&player_camera, &nav_camera, CameraMode::Navigation),
+        &nav_camera
+    );
+}
+
+#[test]
+fn morphed_chunk_bounds_cover_the_morphed_corners() {
+    // A player standing on the surface: full flatten. The morphed bounds
+    // must cover the morphed (rendered) corners of every chunk.
+    let config = config();
+    let manager = PlanetRuntimeManager::new(config).unwrap();
+    let ground = config.planet_origin + Vec3::Y * config.planet_radius;
+    let state = manager.update(ground + Vec3::Y * 5.0);
+    assert!(state.flatten_factor > 0.0);
+
+    let mesh = build_icosphere("planet", config.planet_radius, 1, config.planet_origin);
+    for face in &mesh.faces {
+        let sphere = morphed_chunk_bounds(face, &state).sphere;
+        for vertex in face.borrow().vertices {
+            let morphed = planet_crafter_engine::runtime::morph_point(vertex, &state);
+            assert!(
+                sphere.center.distance(morphed) <= sphere.radius + 1e-3,
+                "morphed corner outside the bounds of {}",
+                face.borrow().name
+            );
+        }
+    }
+    destroy_mesh(&mesh.faces[0]);
+}
+
+#[test]
+fn player_marker_is_a_centered_three_bar_cross() {
+    let player = Vec3::new(10.0, 305.0, -20.0);
+    let up = Vec3::Y;
+    let half_size = 4.0;
+    let vertices = player_marker_vertices(player, half_size, up);
+    // Three bars, one quad each, two triangles per quad.
+    assert_eq!(vertices.len(), 18);
+    for vertex in &vertices {
+        let pos = Vec3::from_array(vertex.pos);
+        // Every vertex sits within one arm's extent of the player, and the
+        // cross is centered: all positions are player +/- bar +/- width.
+        assert!(
+            (pos - player).length() <= 2.0 * half_size,
+            "marker vertex too far from the player: {pos:?}"
+        );
+    }
+    // The marker spans the full arm length along some direction.
+    let max_distance = vertices
+        .iter()
+        .map(|v| (Vec3::from_array(v.pos) - player).length())
+        .fold(0.0_f32, f32::max);
+    assert!(max_distance >= half_size);
+    // The marker morphs with the terrain: its center stays the morphed
+    // player position at full flatten (the morph is affine).
+    let config = config();
+    let manager = PlanetRuntimeManager::new(config).unwrap();
+    let ground = config.planet_origin + Vec3::Y * config.planet_radius;
+    let state = manager.update(ground + Vec3::Y);
+    let up = planet_crafter_engine::runtime::anchor_up(&state);
+    let vertices = player_marker_vertices(ground, half_size, up);
+    let center = vertices
+        .iter()
+        .map(|v| planet_crafter_engine::runtime::morph_point(Vec3::from_array(v.pos), &state))
+        .sum::<Vec3>()
+        / vertices.len() as f32;
+    let morphed_player = planet_crafter_engine::runtime::morph_point(ground, &state);
+    assert!(
+        center.distance(morphed_player) < 0.1,
+        "morphed marker drifted from the player: {center:?} vs {morphed_player:?}"
+    );
 }

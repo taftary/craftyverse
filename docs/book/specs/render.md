@@ -273,9 +273,10 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   one node triangle plus a short skirt quad per non-welded border (the
   T-junction crack mask, displaced toward the planet center in the vertex
   data), shaded with the diffuse procedural effect (fragment mode 8).
-  Every frame the camera-driven visibility pass (feature 4, see the
-  [visibility specification](visibility.md)) culls the active chunks with
-  the frustum and the conservative horizon test, and only the surviving
+  Every frame the visibility pass (feature 4, see the
+  [visibility specification](visibility.md)) culls the active chunks
+  against the player camera with the frustum and the conservative horizon
+  test, and only the surviving
   pool slots are drawn - one draw batch per visible live slot.
   The ground-flattening morph (feature 5, Decision 3 of `plan/RELATED.md`)
   is **Current baseline** and lives in the terrain vertex shader
@@ -289,6 +290,12 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   keeps using the world-space matrix. Skirt vertices morph with the same
   formula, so the crack masks hold at every blend value. The debug viewer
   pushes a zero anchor and factor 0, making the morph the identity.
+  While the flatten factor is nonzero the visibility pass tests the
+  RENDERED geometry: chunk bounds are built from the morphed corners
+  (`morphed_chunk_bounds`) and the horizon occluder is the sphere
+  inscribed in the morphed ellipsoid (`PlanetHorizon::morphed`) - culling
+  against the unmorphed spherical volumes dropped visibly rendered chunks
+  in the sky/terrain layers (the disappearing-mesh bug).
   `render/flatten.rs` is the CPU mirror of the shader formula
   (test-internals, drift-guarded by tests); the authoritative math lives
   in [`runtime`](runtime.md) `flatten.rs`.
@@ -311,20 +318,32 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   > 0` iff the camera is under the shell). See the [atmosphere
   specification](atmosphere.md); `render/atmosphere.rs` also holds the
   test-only CPU mirror of the shader (drift-guarded like `procedural.rs`).
-- **Player proxy.** The free-fly camera (`FlyCamera`) is the player while
-  attached: its position is fed to `PlanetRuntimeManager::update` and
-  `LodScheduler::update` every frame. **F** detaches the camera: the
-  player proxy freezes in place (LOD and loading keep following it) while
-  the camera keeps flying, and culling keeps following the camera
-  (Decision 1 of `plan/RELATED.md`); re-attaching snaps the player back
-  to the camera. Controls:
+- **Cameras and player proxy.** Two fly cameras exist. The player camera
+  (default, `CameraMode::Player`) is first-person, attached to the player:
+  its position is fed to `PlanetRuntimeManager::update` and
+  `LodScheduler::update` every frame, flying moves the player, and the
+  visibility pass always culls against this camera. **F** toggles the
+  navigation camera (`CameraMode::Navigation`): a free-fly spectator for
+  navigating space that changes only the rendered viewpoint - no
+  re-culling (it sees whatever the player camera would show, gaps
+  included, the Decision 1 detached-camera contract), no LOD/loading
+  influence, no overlay changes beyond the mode readout. Entering
+  navigation mode continues from the current view; switching back returns
+  to the player camera view (the player stayed put). A small 3-bar cross
+  (`player_marker_vertices`) marks the player position in both modes: it
+  is drawn through the textured pipeline with the same anchor-relative
+  morph constants as the terrain (depth-tested, rebuilt per frame like
+  the text buffer), sized by the draw camera's distance so it stays
+  visible from far away. Controls:
   **left drag** = mouse look; **W/A/S/D** = move in the view plane;
   **Space/C** = rise/sink along world Y; **Shift** (hold) = x8 speed boost;
   **mouse wheel** = user speed multiplier (x1.25 per notch, clamped to
-  1/32..=32); **F** = detach/attach the camera; **R** = respawn beyond the
-  orbit threshold (`orbit_radius * 1.1` from the center, facing the
-  planet, re-attached). The base fly
-  speed is altitude-proportional (`fly_speed`, headless and unit-tested), so
+  1/32..=32); **F** = player/navigation camera toggle; **R** = respawn the
+  player beyond the orbit threshold (`orbit_radius * 1.1` from the center,
+  facing the planet) and return to player mode. The base fly
+  speed is altitude-proportional (`fly_speed`, headless and unit-tested) -
+  the player camera uses the player's altitude, the navigation camera its
+  own - so
   the full space-to-ground sweep stays comfortable. While a movement key is
   held, each redraw requests the next one (smooth flight under
   `ControlFlow::Wait`); the frame delta is clamped so a stalled event loop
@@ -349,8 +368,8 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   split/merge counters. Mesh-pool readouts (`pool_lines`): pool capacity,
   slots used/free, queued assignments, vertex writes per frame, pending
   async jobs, worker activity. Visibility readouts (`visibility_lines`):
-  camera attached/detached state, chunks visible vs tested, frustum and
-  horizon cull counts, terrain draw calls. Atmosphere readouts
+  active camera (player / navigation), chunks visible vs tested, frustum
+  and horizon cull counts, terrain draw calls. Atmosphere readouts
   (`atmosphere_lines`): the active atmosphere state (none / rim /
   scattering / fog / sky dome, derived from the layer) and the configured
   shell radius multiplier (the normalized distance factor itself is part
@@ -383,14 +402,17 @@ Folder module `crates/engine/src/render/`:
   `resumed()`; routes resize, mouse, wheel, keyboard and redraw events by
   window id (the runtime window handles its own).
 - **`runtime_window.rs`** - the planet runtime window: **`RuntimeWindow`**
-  (planet graph, LOD scheduler, mesh pool, fly camera, pressed-key state,
+  (planet graph, LOD scheduler, mesh pool, player and navigation cameras,
+  pressed-key state,
   per-frame manager/scheduler updates, the per-frame visibility pass with
   visible-slot draw filtering, and overlay), its three-pipeline
   renderer (one stable slot `VertexBuffer` per pool slot, uploaded from the
   pool's dirty slots behind a device wait, plus the fixed atmosphere shell
   buffer), and the headless pieces
-  **`FlyCamera`** (the player proxy while attached), `fly_speed`,
-  `clip_planes`, `chunk_bounds`, `overlay_lines`, `flattening_lines`,
+  **`FlyCamera`**, **`CameraMode`** (player / navigation), `culling_camera`
+  and `draw_camera` (the camera-model policy), `fly_speed`,
+  `clip_planes`, `chunk_bounds`, `morphed_chunk_bounds`,
+  `player_marker_vertices`, `overlay_lines`, `flattening_lines`,
   `atmosphere_lines`, `lod_lines`,
   `pool_lines` and `visibility_lines` (unit-tested).
 - **`atmosphere.rs`** - the curved atmosphere shell (feature 6): the shell
@@ -474,6 +496,8 @@ Folder module `crates/engine/src/render/`:
   data is computed by the pool's worker threads from plain extracted
   geometry - never from the node graph.
 - The runtime window culls the active chunks every frame with the
-  camera-driven visibility pass (frustum plus conservative horizon test,
-  see the [visibility specification](visibility.md)); only the surviving
+  visibility pass against the player camera (frustum plus conservative
+  horizon test, morph-aware while the flatten factor is nonzero - see the
+  [visibility specification](visibility.md)); only the surviving
   pool slots are drawn, and culling never feeds back into LOD or loading.
+  The navigation spectator camera changes only the rendered viewpoint.

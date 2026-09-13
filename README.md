@@ -92,8 +92,9 @@ The checkbox panel and its labels are drawn in every view.
 
 ### Planet runtime window
 
-The second window is dedicated to the planet runtime. Its free-fly camera
-is the player proxy while attached: the player position feeds the planet
+The second window is dedicated to the planet runtime. Its player camera
+is first-person, attached to the player: the player position feeds the
+planet
 runtime manager and
 the chunk LOD scheduler every frame. The terrain is the live LOD chain:
 chunks split, merge, load and unload as the player approaches or leaves,
@@ -101,9 +102,12 @@ and every transition only rewrites vertex data inside the fixed slots of
 the mesh pool (no GPU mesh object is ever created at runtime); chunk
 vertices
 are computed asynchronously by the pool's worker threads. Every frame a
-camera-driven visibility pass culls the active chunks (frustum plus
-conservative horizon culling against the planet body) and only the
-surviving slots are drawn. Rendering is anchor-relative (floating origin):
+visibility pass culls the active chunks against the player camera
+(frustum plus
+conservative horizon culling against the planet body, morph-aware while
+the terrain flattens) and only the
+surviving slots are drawn. A small world-space cross marks the player
+position. Rendering is anchor-relative (floating origin):
 the terrain vertex shader subtracts the per-frame anchor from every
 (spherical, unmodified) pooled vertex and morphs it toward the tangent
 plane at the anchor by the authoritative flatten factor, so the world
@@ -133,8 +137,8 @@ A text overlay
   operations, per-frame budget usage, cumulative split/merge counters
 - mesh pool: pool capacity, slots used/free, queued assignments, vertex
   writes per frame, pending async jobs, worker activity
-- visibility: camera attached/detached state, chunks visible vs tested,
-  frustum and horizon cull counts, terrain draw calls
+- visibility: active camera (player / navigation), chunks visible vs
+  tested, frustum and horizon cull counts, terrain draw calls
 
 Controls:
 
@@ -143,12 +147,13 @@ Controls:
 - **Space / C** - rise / sink (world up / down)
 - **Shift** (hold) - speed boost (x8)
 - **Mouse wheel** - scale the fly speed (x1.25 per notch, clamped)
-- **F** - detach/attach the camera: while detached the player proxy
-  freezes in place (LOD and loading keep following it) and the camera
-  flies alone - culling follows the camera, so a detached camera sees
-  whatever is loaded around the player, gaps included
-- **R** - respawn beyond the orbit threshold, facing the planet
-  (re-attaches)
+- **F** - toggle the navigation camera: a free-fly spectator for
+  navigating space. It changes only the viewpoint - the player stays put,
+  LOD/loading keep following the player, and culling keeps following the
+  player camera, so the navigation camera sees whatever is loaded around
+  the player, gaps included. Toggling back returns to the player camera
+- **R** - respawn the player beyond the orbit threshold, facing the
+  planet (back to the player camera)
 
 The base fly speed scales with altitude, so both orbit and ground level are
 reachable comfortably: the full space-to-ground sweep crosses every layer,

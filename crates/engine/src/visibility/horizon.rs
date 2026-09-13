@@ -32,6 +32,31 @@ impl PlanetHorizon {
         PlanetHorizon { origin, radius }
     }
 
+    /// The conservative occlusion body of the ground-flattened terrain
+    /// (feature 5, Decision 3 of `plan/RELATED.md`). The vertex-shader
+    /// morph displaces every surface point `p` toward the tangent plane at
+    /// the anchor by `flatten * height_of(p)`. The morph is affine: with
+    /// `up` the anchor radial, a sphere point `O + q_perp + t * up`
+    /// (`|q| = radius`) maps to `(O + flatten * radius * up) + q_perp +
+    /// t * (1 - flatten) * up` - the surface sphere morphs into an
+    /// ellipsoid of center `O + flatten * radius * up` with lateral
+    /// semi-axis `radius` and vertical semi-axis `radius * (1 - flatten)`.
+    ///
+    /// This returns the sphere inscribed in that ellipsoid. Occlusion is
+    /// monotone in the occluder (a segment hitting the inscribed sphere
+    /// crosses the rendered shell), so testing the morphed chunk bounds
+    /// against this sphere only ever culls certainly-hidden chunks. At
+    /// `flatten == 0` this is exactly [`Self::new`]; at `flatten == 1`
+    /// the radius is 0 and nothing is culled - the fully flattened terrain
+    /// is a plane and hides nothing behind a limb.
+    pub fn morphed(origin: Vec3, radius: f32, anchor_up: Vec3, flatten: f32) -> Self {
+        let flatten = flatten.clamp(0.0, 1.0);
+        PlanetHorizon {
+            origin: origin + anchor_up * (flatten * radius),
+            radius: radius * (1.0 - flatten),
+        }
+    }
+
     /// Whether `sphere` is certainly hidden behind the planet limb from
     /// `camera`. Only fully-occluded spheres are culled; see the type
     /// docs for the conservativeness guarantees.

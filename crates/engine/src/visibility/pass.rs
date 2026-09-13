@@ -31,9 +31,22 @@ impl ChunkBounds {
     /// `skirt_margin` (the border-skirt depth, so the downward
     /// crack-masking flanges stay inside the culled volume).
     pub fn from_node(node: &NodeRef, skirt_margin: f32) -> Self {
-        let node_ref = node.borrow();
+        Self::from_triangle(node.borrow().center, node.borrow().vertices, skirt_margin)
+    }
+
+    /// The bounding volume of a triangle with explicit corners: centered
+    /// on `center`, covering every corner plus `margin`. This is the
+    /// morph-aware path (feature 5): the caller passes the already-morphed
+    /// corners ([`morph_point`](crate::runtime::morph_point)) when the
+    /// flatten factor is nonzero, because the vertex shader displaces the
+    /// rendered vertices away from their spherical positions and culling
+    /// must test the rendered geometry. The morph is affine, so the
+    /// morphed triangle is exactly the triangle through the morphed
+    /// corners, and the skirt displacement only contracts under it - the
+    /// unmorphed `margin` stays conservative.
+    pub fn from_triangle(center: Vec3, vertices: [Vec3; 3], margin: f32) -> Self {
         ChunkBounds {
-            sphere: BoundingSphere::from_triangle(node_ref.center, node_ref.vertices, skirt_margin),
+            sphere: BoundingSphere::from_triangle(center, vertices, margin),
         }
     }
 }
