@@ -47,6 +47,34 @@ impl<T: BufferContents + Copy> VertexBuffer<T> {
         }
     }
 
+    /// An empty buffer with a pre-allocated capacity of `capacity` elements:
+    /// the allocation is stable from creation (pool slots never reallocate),
+    /// and the live batch stays empty until the first non-empty `update`.
+    pub(crate) fn with_capacity(allocator: &Arc<StandardMemoryAllocator>, capacity: usize) -> Self {
+        if capacity == 0 {
+            return VertexBuffer::new();
+        }
+        let buffer = Buffer::new_slice::<T>(
+            allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            capacity as u64,
+        )
+        .expect("failed to create vertex buffer");
+        VertexBuffer {
+            buffer: Some(buffer),
+            len: 0,
+            capacity,
+        }
+    }
+
     /// Replaces the live range with `data`. Rewrites through the mapping
     /// when the allocation suffices and reallocates otherwise. An empty
     /// `data` empties the batch but keeps the allocation for reuse.

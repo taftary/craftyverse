@@ -1,6 +1,9 @@
 use planet_crafter_engine::testing::{
-    CHECKER_CELLS, GEOM_FRAG, GEOM_VERT, LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, STRIPE_BANDS,
-    TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, compile_spirv,
+    ATMO_FRAG, ATMO_VERT, CHECKER_CELLS, DOME_HAZE, DOME_RISE_END, DOME_RISE_START, GEOM_FRAG,
+    GEOM_VERT, HORIZON_COLOR, LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, RIM_COLOR, RIM_FADE_END,
+    RIM_MAX_ALPHA, RIM_POWER, SCATTER_COLOR, SCATTER_FADE_END, SCATTER_FADE_START,
+    SCATTER_MAX_ALPHA, SCATTER_RISE_END, SKY_COLOR, STRIPE_BANDS, TEX_FRAG, TEX_VERT, TEXT_FRAG,
+    TEXT_VERT, compile_spirv,
 };
 
 #[test]
@@ -12,6 +15,8 @@ fn all_shaders_compile_to_spirv() {
         (TEXT_FRAG, naga::ShaderStage::Fragment),
         (TEX_VERT, naga::ShaderStage::Vertex),
         (TEX_FRAG, naga::ShaderStage::Fragment),
+        (ATMO_VERT, naga::ShaderStage::Vertex),
+        (ATMO_FRAG, naga::ShaderStage::Fragment),
     ] {
         let words = compile_spirv(source, stage).expect("shader should compile");
         // SPIR-V magic number.
@@ -64,4 +69,41 @@ fn tex_frag_constants_match_procedural_reference() {
         )),
         "LIGHT_DIR drifted"
     );
+}
+
+/// Drift guard: the GLSL appearance constants in `ATMO_FRAG` must match the
+/// Rust reference in `render::atmosphere`.
+#[test]
+fn atmo_frag_constants_match_atmosphere_reference() {
+    for (name, value) in [
+        ("RIM_POWER", RIM_POWER),
+        ("RIM_MAX_ALPHA", RIM_MAX_ALPHA),
+        ("RIM_FADE_END", RIM_FADE_END),
+        ("SCATTER_RISE_END", SCATTER_RISE_END),
+        ("SCATTER_FADE_START", SCATTER_FADE_START),
+        ("SCATTER_FADE_END", SCATTER_FADE_END),
+        ("SCATTER_MAX_ALPHA", SCATTER_MAX_ALPHA),
+        ("DOME_RISE_START", DOME_RISE_START),
+        ("DOME_RISE_END", DOME_RISE_END),
+        ("DOME_HAZE", DOME_HAZE),
+    ] {
+        assert!(
+            ATMO_FRAG.contains(&format!("const float {name} = {value:.2};")),
+            "{name} drifted"
+        );
+    }
+    for (name, value) in [
+        ("RIM_COLOR", RIM_COLOR),
+        ("SCATTER_COLOR", SCATTER_COLOR),
+        ("SKY_COLOR", SKY_COLOR),
+        ("HORIZON_COLOR", HORIZON_COLOR),
+    ] {
+        assert!(
+            ATMO_FRAG.contains(&format!(
+                "const vec3 {name} = vec3({:.2}, {:.2}, {:.2});",
+                value[0], value[1], value[2]
+            )),
+            "{name} drifted"
+        );
+    }
 }

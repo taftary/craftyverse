@@ -244,10 +244,13 @@ pub(crate) fn create_framebuffers(
 }
 
 /// A graphics pipeline drawing `vertex_input` as `topology` with the given
-/// shaders; `blend` enables alpha blending (text quads) when `Some`, and
-/// `depth` enables depth testing and writes (world geometry) — UI and text
-/// pipelines leave depth off so they always draw on top. The viewport is
-/// dynamic, set per frame.
+/// shaders; `blend` enables alpha blending (text quads, atmosphere shell)
+/// when `Some`, and `depth` enables depth testing (world geometry) — UI and
+/// text pipelines leave depth off so they always draw on top. `depth_write`
+/// controls depth writes when `depth` is on: opaque world geometry writes
+/// depth, blended world geometry (the atmosphere shell) tests against the
+/// opaque depth but does not write it. The viewport is dynamic, set per
+/// frame.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn graphics_pipeline(
     device: &Arc<Device>,
@@ -257,6 +260,7 @@ pub(crate) fn graphics_pipeline(
     topology: PrimitiveTopology,
     blend: Option<AttachmentBlend>,
     depth: bool,
+    depth_write: bool,
     subpass: &Subpass,
 ) -> Arc<GraphicsPipeline> {
     let stages = [
@@ -271,8 +275,10 @@ pub(crate) fn graphics_pipeline(
     )
     .unwrap();
     let depth_stencil_state = if depth {
+        let mut depth_state = DepthState::simple();
+        depth_state.write_enable = depth_write;
         DepthStencilState {
-            depth: Some(DepthState::simple()),
+            depth: Some(depth_state),
             ..Default::default()
         }
     } else {

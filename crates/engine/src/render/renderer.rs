@@ -151,6 +151,7 @@ impl Renderer {
             PrimitiveTopology::LineList,
             None,
             true,
+            true,
             &subpass,
         );
         let tri_pipeline = setup::graphics_pipeline(
@@ -160,6 +161,7 @@ impl Renderer {
             GeomVertex::per_vertex(),
             PrimitiveTopology::TriangleList,
             None,
+            true,
             true,
             &subpass,
         );
@@ -171,6 +173,7 @@ impl Renderer {
             PrimitiveTopology::LineList,
             None,
             false,
+            false,
             &subpass,
         );
         let ui_tri_pipeline = setup::graphics_pipeline(
@@ -181,6 +184,7 @@ impl Renderer {
             PrimitiveTopology::TriangleList,
             None,
             false,
+            false,
             &subpass,
         );
         let text_pipeline = setup::graphics_pipeline(
@@ -190,6 +194,7 @@ impl Renderer {
             TextVertexGpu::per_vertex(),
             PrimitiveTopology::TriangleList,
             Some(AttachmentBlend::alpha()),
+            false,
             false,
             &subpass,
         );
@@ -202,6 +207,7 @@ impl Renderer {
             TexVertexGpu::per_vertex(),
             PrimitiveTopology::TriangleList,
             None,
+            true,
             true,
             &subpass,
         );
@@ -657,7 +663,8 @@ pub fn panel_item_at(panel_rows: &[PanelRow], point: Vec2) -> Option<PanelItem> 
 /// batches (checkerboard) and the text batch (glyph atlas) — then draws
 /// `vertex_count` vertices. The count comes from the batch, not the buffer
 /// length: reusable buffers may carry spare capacity (see `buffers`).
-fn record_draw<T, Pc: BufferContents + Copy>(
+/// Shared with the runtime window's renderer (`runtime_window`).
+pub(crate) fn record_draw<T, Pc: BufferContents + Copy>(
     builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     pipeline: &Arc<GraphicsPipeline>,
     transform: Pc,

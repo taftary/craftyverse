@@ -9,11 +9,19 @@ use crate::text::TextAtlas;
 
 pub use crate::node::link;
 pub use crate::render::{
-    CHECKER_CELLS, CHECKER_HEIGHT, CHECKER_WIDTH, CHECKS_U, CHECKS_V, GEOM_FRAG, GEOM_VERT,
-    LATITUDE_BANDS, LIGHT_DIR, MASK_EDGE_WIDTH, PushMatrix, PushTex, PushTransform, STRIPE_BANDS,
-    TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, checker, checkerboard_mips, compile_spirv,
-    device_type_rank, diffuse, edge_mask, fresnel, gradient, latitude, mip_level_count,
-    panel_item_at, pixel_matrix, radial_rgb, required_capacity, rings, scenario_index_of, stripes,
+    ATMO_FRAG, ATMO_VERT, AtmoVertexGpu, AtmosphereSample, CHECKER_CELLS, CHECKER_HEIGHT,
+    CHECKER_WIDTH, CHECKS_U, CHECKS_V, ChunkGeometry, DOME_HAZE, DOME_RISE_END, DOME_RISE_START,
+    FlyCamera, GEOM_FRAG, GEOM_VERT, HORIZON_COLOR, LATITUDE_BANDS, LIGHT_DIR, LodReadout,
+    MASK_EDGE_WIDTH, MAX_CHUNK_VERTICES, MeshPool, PoolConfig, PoolStats, PushAtmosphere,
+    PushMatrix, PushTex, PushTransform, RIM_COLOR, RIM_FADE_END, RIM_MAX_ALPHA, RIM_POWER,
+    SCATTER_COLOR, SCATTER_FADE_END, SCATTER_FADE_START, SCATTER_MAX_ALPHA, SCATTER_RISE_END,
+    SKY_COLOR, STRIPE_BANDS, ShellVertex, TEX_FRAG, TEX_VERT, TEXT_FRAG, TEXT_VERT, TexVertexGpu,
+    VisibilityReadout, appearance, atmosphere_lines, atmosphere_state_name, checker,
+    checkerboard_mips, chunk_bounds, clip_planes, compile_spirv, compute_chunk_vertices,
+    device_type_rank, diffuse, dome_weight, edge_mask, flattening_lines, fly_speed, fresnel,
+    gradient, latitude, lod_lines, mip_level_count, morph_vertex, overlay_lines, panel_item_at,
+    pixel_matrix, pool_lines, radial_rgb, required_capacity, rim_factor, rim_weight, rings,
+    scatter_weight, scenario_index_of, shell_vertices, stripes, visibility_lines,
 };
 pub use crate::scene::{
     ATTRIBUTES, DIRECTION_COLORS, DOT_SEGMENTS, EFFECTS, LEVEL_COLORS, MAX_PITCH, MAX_ZOOM,

@@ -63,11 +63,25 @@ void main() {
 }
 "#;
 
-/// Textured vertex shader: same `mvp` push-constant transform as the
-/// geometry shader (the shared `PushTex` block also carries the camera
-/// position and the fragment mode, unused here), passes the texture
-/// coordinate, the barycentric coordinate, the parity sign, the world
-/// position, the radial direction and the ring-field value through.
+/// Textured vertex shader: `mvp` push-constant view-projection transform,
+/// with the ground-flattening morph (feature 5, Decision 3 of
+/// `plan/RELATED.md`) and the floating-origin compensation built in. The
+/// shared `PushTex` block carries the anchor (the floating origin), the
+/// outward radial at the anchor and the authoritative flatten factor next
+/// to the camera position and the fragment mode. The vertex position is
+/// first shifted into the anchor-relative frame (`pos - pc.anchor`, exact
+/// for nearby f32 values - pooled vertex data stays spherical and
+/// unmodified), projected onto the tangent plane at the anchor (the plane
+/// through the anchor with normal `anchor_up`), and blended by `flatten`;
+/// the `mvp` is built from the anchor-relative camera, so the whole
+/// transform stays in small local coordinates. At `flatten == 0` with a
+/// zero anchor (the debug viewer) the morph is the identity. Skirt vertices
+/// morph with the same formula, so chunks and their crack-masking skirts
+/// stay consistent at every blend value. The CPU mirror is
+/// `render::flatten::morph_vertex` (test-internals). Passes the texture
+/// coordinate, the barycentric coordinate, the parity sign, the morphed
+/// (anchor-relative) position, the radial direction and the ring-field
+/// value through.
 pub const TEX_VERT: &str = r#"
 #version 450
 layout(location = 0) in vec3 pos;
@@ -82,13 +96,26 @@ layout(location = 2) out float out_parity;
 layout(location = 3) out vec3 out_world_pos;
 layout(location = 4) out vec3 out_radial;
 layout(location = 5) out float out_ring;
-layout(push_constant) uniform PushTex { mat4 mvp; vec3 camera_pos; uint mode; } pc;
+layout(push_constant) uniform PushTex {
+    mat4 mvp;
+    vec3 camera_pos;
+    uint mode;
+    vec3 anchor;
+    vec3 anchor_up;
+    float flatten;
+} pc;
 void main() {
-    gl_Position = pc.mvp * vec4(pos, 1.0);
+    // Floating origin + ground-flattening morph: shift into the
+    // anchor-relative frame, project onto the tangent plane at the anchor
+    // (normal anchor_up), blend by the authoritative flatten factor.
+    vec3 local = pos - pc.anchor;
+    vec3 flattened = local - pc.anchor_up * dot(local, pc.anchor_up);
+    vec3 morphed = mix(local, flattened, pc.flatten);
+    gl_Position = pc.mvp * vec4(morphed, 1.0);
     out_uv = uv;
     out_bary = bary;
     out_parity = parity;
-    out_world_pos = pos;
+    out_world_pos = morphed;
     out_radial = radial;
     out_ring = ring;
 }
@@ -114,7 +141,14 @@ layout(location = 0) out vec4 out_color;
 // bound as a separate texture and sampler.
 layout(binding = 0) uniform texture2D checkerboard_texture;
 layout(binding = 1) uniform sampler checkerboard_sampler;
-layout(push_constant) uniform PushTex { mat4 mvp; vec3 camera_pos; uint mode; } pc;
+layout(push_constant) uniform PushTex {
+    mat4 mvp;
+    vec3 camera_pos;
+    uint mode;
+    vec3 anchor;
+    vec3 anchor_up;
+    float flatten;
+} pc;
 
 // Procedural effect constants: keep in sync with render::procedural (the
 // render tests assert it). LIGHT_DIR is normalize(vec3(1, 1, 1)) written
@@ -178,6 +212,103 @@ void main() {
         color = vec3(mod(floor(ring), 2.0));
     }
     out_color = vec4(color, 1.0);
+}
+"#;
+
+/// Atmosphere vertex shader (feature 6): transforms the curved shell into
+/// the anchor-relative frame (`pos - anchor`, the floating-origin
+/// compensation - the shell vertex data is built once and never rewritten)
+/// and projects it. Unlike `TEX_VERT` there is no ground-flattening morph:
+/// the shell stays curved at all times, reading as a sky dome above the
+/// flattened ground at full flattening (Decision 3 of `plan/RELATED.md`).
+/// Passes the outward radial and the anchor-relative position through.
+pub const ATMO_VERT: &str = r#"
+#version 450
+layout(location = 0) in vec3 pos;
+layout(location = 1) in vec3 dir;
+layout(location = 0) out vec3 out_dir;
+layout(location = 1) out vec3 out_world_pos;
+layout(push_constant) uniform PushAtmosphere {
+    mat4 mvp;
+    vec3 camera_pos;
+    vec3 anchor;
+    float atmosphere_factor;
+    float rim_factor;
+} pc;
+void main() {
+    vec3 local = pos - pc.anchor;
+    gl_Position = pc.mvp * vec4(local, 1.0);
+    out_dir = dir;
+    out_world_pos = local;
+}
+"#;
+
+/// Atmosphere fragment shader (feature 6): the single curved-atmosphere
+/// shader, covering both the outside view (space/orbit rim, curved
+/// scattering layer) and the inside view (sky dome with horizon haze over
+/// the flattened ground). The appearance is driven only by the two
+/// push-constant factors - the shader does no independent distance math:
+/// `pc.atmosphere_factor` (0 at/beyond the shell edge, 1 at the surface)
+/// parameterizes every layer transition, so there are no hard cuts, and
+/// flags the inside view (`> 0` iff the camera is under the shell);
+/// `pc.rim_factor` fades the limb glow in across the orbit layer. The
+/// weight functions mirror `render::atmosphere` formula-for-formula; the
+/// render tests assert the constants match.
+pub const ATMO_FRAG: &str = r#"
+#version 450
+layout(location = 0) in vec3 dir;
+layout(location = 1) in vec3 world_pos;
+layout(location = 0) out vec4 out_color;
+layout(push_constant) uniform PushAtmosphere {
+    mat4 mvp;
+    vec3 camera_pos;
+    vec3 anchor;
+    float atmosphere_factor;
+    float rim_factor;
+} pc;
+
+// Atmosphere appearance constants: keep in sync with render::atmosphere
+// (the render tests assert it).
+const float RIM_POWER = 2.00;
+const float RIM_MAX_ALPHA = 0.90;
+const float RIM_FADE_END = 0.35;
+const float SCATTER_RISE_END = 0.30;
+const float SCATTER_FADE_START = 0.60;
+const float SCATTER_FADE_END = 0.95;
+const float SCATTER_MAX_ALPHA = 0.60;
+const float DOME_RISE_START = 0.55;
+const float DOME_RISE_END = 0.95;
+const float DOME_HAZE = 0.85;
+const vec3 RIM_COLOR = vec3(0.60, 0.78, 1.00);
+const vec3 SCATTER_COLOR = vec3(0.35, 0.60, 1.00);
+const vec3 SKY_COLOR = vec3(0.30, 0.55, 0.95);
+const vec3 HORIZON_COLOR = vec3(0.75, 0.85, 0.95);
+
+void main() {
+    float f = pc.atmosphere_factor;
+    vec3 view_dir = normalize(pc.camera_pos - world_pos);
+    float cos_view = dot(normalize(dir), view_dir);
+    float rim = max(1.0 - abs(cos_view), 0.0);
+    float a_rim = pc.rim_factor * (1.0 - smoothstep(0.0, RIM_FADE_END, f))
+        * pow(rim, RIM_POWER) * RIM_MAX_ALPHA;
+    float w_scatter = smoothstep(0.0, SCATTER_RISE_END, f)
+        * (1.0 - smoothstep(SCATTER_FADE_START, SCATTER_FADE_END, f));
+    float a_scatter = w_scatter * (0.3 + 0.7 * pow(rim, 1.5)) * SCATTER_MAX_ALPHA;
+    float a_dome = 0.0;
+    vec3 dome_color = SKY_COLOR;
+    if (f > 0.0) {
+        // Inside the shell (the camera crossed it during the descent): the
+        // curved shell reads as a sky dome, hazy near the horizon.
+        float w_dome = smoothstep(DOME_RISE_START, DOME_RISE_END, f);
+        float haze = (1.0 - max(cos_view, 0.0)) * DOME_HAZE;
+        dome_color = mix(SKY_COLOR, HORIZON_COLOR, haze * (0.4 + 0.6 * w_dome));
+        a_dome = w_dome;
+    }
+    float total = a_rim + a_scatter + a_dome;
+    vec3 color = total > 1e-6
+        ? (RIM_COLOR * a_rim + SCATTER_COLOR * a_scatter + dome_color * a_dome) / total
+        : RIM_COLOR;
+    out_color = vec4(color, min(total, 1.0));
 }
 "#;
 

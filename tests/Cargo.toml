@@ -31,5 +31,17 @@ name = "render"
 path = "render/main.rs"
 
 [[test]]
+name = "runtime"
+path = "runtime/main.rs"
+
+[[test]]
+name = "lod"
+path = "lod/main.rs"
+
+[[test]]
+name = "visibility"
+path = "visibility/main.rs"
+
+[[test]]
 name = "game"
 path = "game.rs"
