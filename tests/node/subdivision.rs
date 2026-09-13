@@ -3,8 +3,8 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use planet_crafter_engine::node::{
-    Node, NodeRef, build_icosphere, collect_nodes, destroy_mesh, split_node, split_node_local,
-    split_nodes, unsplit_node, unsplit_nodes,
+    Node, NodeRef, build_icosphere, collect_nodes, destroy_mesh, split_group_members, split_node,
+    split_node_local, split_nodes, unsplit_node, unsplit_nodes,
 };
 use planet_crafter_engine::testing::link;
 use planet_crafter_tests::fixtures::{point, test_node};
@@ -546,7 +546,7 @@ fn local_merge_recovers_original_vertices_and_attributes() {
     };
 
     let center = split_node_local(&root);
-    let parent = unsplit_node(&center);
+    let parent = unsplit_node(&center).unwrap();
 
     let parent_ref = parent.borrow();
     assert_eq!(parent_ref.name, "root");
@@ -579,7 +579,7 @@ fn local_merge_retargets_finer_neighbor_links() {
     // Merge root's group while the neighbor group stays split: the parent
     // (level 0) links to the neighbor's level-1 corners across the shared
     // edge, keeping the level difference at 1.
-    let parent = unsplit_node(&root_center);
+    let parent = unsplit_node(&root_center).unwrap();
     assert_eq!(parent.borrow().level, 0);
     let linked = Rc::clone(parent.borrow().children[1].as_ref().unwrap());
     assert_eq!(linked.borrow().level, 1);
@@ -587,7 +587,7 @@ fn local_merge_retargets_finer_neighbor_links() {
     assert_links_reciprocal(&parent);
 
     // Merging the neighbor group recovers the original pair.
-    let neighbor_parent = unsplit_node(&neighbor_center);
+    let neighbor_parent = unsplit_node(&neighbor_center).unwrap();
     assert!(Rc::ptr_eq(
         parent.borrow().children[1].as_ref().unwrap(),
         &neighbor_parent
@@ -608,7 +608,7 @@ fn local_merge_destroys_group_and_breaks_rc_cycles() {
         .chain([Rc::clone(&center)])
         .collect();
 
-    let parent = unsplit_node(&center);
+    let parent = unsplit_node(&center).unwrap();
 
     // Every group member is destroyed: unlinked, with only the test's
     // references left (the center is referenced twice here: `center` and
@@ -625,7 +625,7 @@ fn local_merge_destroys_group_and_breaks_rc_cycles() {
 fn local_merge_on_icosphere_keeps_mesh_closed() {
     let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
     let center = split_node_local(&mesh.faces[0]);
-    let parent = unsplit_node(&center);
+    let parent = unsplit_node(&center).unwrap();
 
     // The mesh is whole again: 20 closed level-0 faces.
     let nodes = collect_nodes(&parent);
@@ -636,4 +636,147 @@ fn local_merge_on_icosphere_keeps_mesh_closed() {
         assert!(node_ref.children.iter().all(|slot| slot.is_some()));
     }
     destroy_mesh(&parent);
+}
+
+// --- Non-atomic groups: regression tests for the `group_center` panic ---
+
+#[test]
+fn local_split_welds_after_group_center_was_split_further() {
+    let (root, neighbor) = linked_pair();
+    let [u, v] = edge_endpoints(&root, 1);
+    let edge_midpoint = (u + v) / 2.0;
+
+    let center = split_node_local(&root);
+    // Split the group's center further: the corners' link to `root.C` is
+    // retargeted to grandchildren, so the group is no longer atomic. The
+    // corners themselves are still the right weld targets.
+    let grand_center = split_node_local(&center);
+    // Regression: this split used to panic ("split group center is not
+    // linked") because the weld looked up `root.C` through the corner.
+    let neighbor_center = split_node_local(&neighbor);
+
+    // Both half-edges weld corner-to-corner to root's level-1 corners.
+    for (endpoint, name) in [(u, "root.J"), (v, "root.K")] {
+        let near = group_corner_near(&neighbor_center, endpoint);
+        let port = port_across(&near, endpoint, edge_midpoint).expect("half-edge port");
+        let other = Rc::clone(near.borrow().children[port].as_ref().expect("welded"));
+        assert_eq!(other.borrow().name, name);
+        assert_eq!(other.borrow().level, 1);
+    }
+    assert_links_reciprocal(&neighbor_center);
+    assert_links_reciprocal(&grand_center);
+    destroy_mesh(&neighbor_center);
+}
+
+#[test]
+fn local_merge_rejects_non_atomic_groups() {
+    let (root, _neighbor) = linked_pair();
+    let center = split_node_local(&root);
+
+    // Split a corner further: the center's port is retargeted to a
+    // grandchild and the group is no longer atomic.
+    let root_i = Rc::clone(center.borrow().children[1].as_ref().unwrap());
+    let corner_center = split_node_local(&root_i);
+    assert!(unsplit_node(&center).is_none());
+
+    // The rejected merge left the graph untouched: every node is still
+    // reachable and the links stay reciprocal.
+    assert_links_reciprocal(&center);
+    assert_eq!(collect_nodes(&center).len(), 8);
+
+    // The grandchild group is atomic and merges; afterwards the original
+    // group is atomic again and merges too.
+    let corner_parent = unsplit_node(&corner_center).unwrap();
+    assert_eq!(corner_parent.borrow().name, "root.I");
+    let parent = unsplit_node(&center).unwrap();
+    assert_eq!(parent.borrow().name, "root");
+    assert_links_reciprocal(&parent);
+    destroy_mesh(&parent);
+}
+
+#[test]
+fn local_merge_rejects_incomplete_inputs() {
+    let (root, _neighbor) = linked_pair();
+    // No split suffix, a corner instead of the center, and a retired center
+    // all return `None` instead of panicking.
+    assert!(unsplit_node(&root).is_none());
+    let center = split_node_local(&root);
+    let root_i = Rc::clone(center.borrow().children[1].as_ref().unwrap());
+    assert!(unsplit_node(&root_i).is_none());
+
+    let parent = unsplit_node(&center).unwrap();
+    assert!(unsplit_node(&center).is_none());
+    destroy_mesh(&parent);
+}
+
+#[test]
+fn split_group_members_checks_atomicity() {
+    let (root, _neighbor) = linked_pair();
+    assert!(split_group_members(&root).is_none());
+
+    let center = split_node_local(&root);
+    let members = split_group_members(&center).expect("atomic group");
+    let names: Vec<String> = members.iter().map(|m| m.borrow().name.clone()).collect();
+    assert_eq!(names, ["root.I", "root.J", "root.K", "root.C"]);
+    assert!(members.iter().all(|m| m.borrow().level == 1));
+
+    // Splitting the center further breaks atomicity without panicking.
+    let grand_center = split_node_local(&center);
+    assert!(split_group_members(&center).is_none());
+    destroy_mesh(&grand_center);
+}
+
+#[test]
+fn local_operations_fuzz_never_panics_and_keeps_links_reciprocal() {
+    let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
+    let mut entry = Rc::clone(&mesh.faces[0]);
+    // Deterministic pseudo-random walk (LCG) over local splits and merges,
+    // without the scheduler's level-difference discipline.
+    let mut state: u64 = 0xD1B5_4A32_D192_ED03;
+    let mut rand = move || {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 33) as usize
+    };
+
+    for _ in 0..300 {
+        let live = collect_nodes(&entry);
+        let pick = Rc::clone(&live[rand() % live.len()]);
+        if rand() % 3 == 0 && pick.borrow().name.ends_with(".C") {
+            if let Some(members) = split_group_members(&pick) {
+                let entry_inside = members.iter().any(|m| Rc::ptr_eq(m, &entry));
+                let parent = unsplit_node(&pick).expect("members were validated");
+                if entry_inside {
+                    entry = parent;
+                }
+            }
+        } else if pick.borrow().level < 5 {
+            let center = split_node_local(&pick);
+            if Rc::ptr_eq(&pick, &entry) {
+                entry = center;
+            }
+        }
+        // The reciprocal-link invariant holds after every operation, on
+        // every reachable graph shape.
+        for node in collect_nodes(&entry) {
+            let node_ref = node.borrow();
+            for port in 0..3 {
+                let (Some(neighbor), Some(back)) =
+                    (&node_ref.children[port], node_ref.back_ports[port])
+                else {
+                    assert_eq!(node_ref.back_ports[port], None);
+                    continue;
+                };
+                let neighbor_ref = neighbor.borrow();
+                assert!(
+                    neighbor_ref.children[back]
+                        .as_ref()
+                        .is_some_and(|n| Rc::ptr_eq(n, &node))
+                );
+                assert_eq!(neighbor_ref.back_ports[back], Some(port));
+            }
+        }
+    }
+    destroy_mesh(&entry);
 }

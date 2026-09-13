@@ -52,7 +52,11 @@
 //! F = player/navigation camera toggle, R = respawn beyond the
 //! orbit threshold (player camera). The base fly speed scales with
 //! altitude so the full space-to-ground sweep stays comfortable
-//! ([`fly_speed`]).
+//! ([`fly_speed`]). The player camera collides with the terrain: it can
+//! never pass through the rendered surface
+//! ([`clamp_above_surface`], pushing out along the local vertical so the
+//! player slides along the ground); the navigation camera is exempt and
+//! flies through anything.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -213,6 +217,12 @@ impl FlyCamera {
     /// Current camera (= player) position in world units.
     pub fn position(&self) -> Vec3 {
         self.position
+    }
+
+    /// Teleports the camera to `position` (used by the terrain collision
+    /// clamp of the player camera; the look direction is unchanged).
+    pub fn set_position(&mut self, position: Vec3) {
+        self.position = position;
     }
 
     /// Current user speed multiplier.
@@ -517,6 +527,56 @@ pub fn morphed_chunk_bounds(node: &NodeRef, state: &RuntimeState) -> ChunkBounds
         .map(|vertex| crate::runtime::morph_point(vertex, state));
     drop(node_ref);
     ChunkBounds::from_triangle(center, vertices, SKIRT_DEPTH_FACTOR * shortest_edge)
+}
+
+/// Minimum height of the player above the rendered terrain surface, in
+/// world units (a small eye height). Chosen relative to the planet scale
+/// (radius 300): large enough to comfortably cover the chord sag of the
+/// finest rendered triangles (at the maximum LOD level the triangle edge
+/// is ~20 world units, so the faceted mesh sits at most ~0.2 below the
+/// smooth morphed surface the collision query measures) and small enough
+/// to feel like standing on the ground.
+pub const MIN_EYE_HEIGHT: f32 = 0.5;
+
+/// Whether the terrain collision clamp applies in `mode`: only the player
+/// camera collides with the terrain; the navigation camera is a spectator
+/// and flies freely through anything. Headless policy, unit-tested.
+pub fn terrain_collision_applies(mode: CameraMode) -> bool {
+    mode == CameraMode::Player
+}
+
+/// Player-terrain collision: clamps `position` so it stays at least
+/// `min_height` above the RENDERED terrain surface, pushing out along the
+/// local vertical only (the anchor radial [`anchor_up`](crate::runtime::anchor_up)),
+/// so tangential movement is preserved and the player slides along the
+/// surface instead of sticking.
+///
+/// The surface is measured with the authoritative
+/// [`surface_height`](crate::runtime::surface_height) query - the exact
+/// height of the morphed surface the terrain vertex shader renders at the
+/// state's flatten factor, along the local vertical through `position` -
+/// so the clamp is consistent with the rendered terrain at every blend
+/// value (the sphere at flatten 0, the tangent plane at flatten 1). The
+/// player's own height above the plane along the same vertical is
+/// `(position - anchor) . up`, and the query is invariant under vertical
+/// moves (it depends only on the lateral coordinates), so pushing along
+/// `up` by the deficit restores exactly `min_height` of clearance in one
+/// step. Returns `position` unchanged when the vertical through it misses
+/// the surface sphere entirely (beyond the planet silhouette - the anchor
+/// tracks the player's ground projection, so this does not occur in
+/// practice) or when the clearance already suffices. Pure and headless,
+/// unit-tested.
+pub fn clamp_above_surface(position: Vec3, state: &RuntimeState, min_height: f32) -> Vec3 {
+    let Some(surface) = crate::runtime::surface_height(state, position) else {
+        return position;
+    };
+    let up = crate::runtime::anchor_up(state);
+    let clearance = (position - state.anchor).dot(up) - surface;
+    if clearance >= min_height {
+        position
+    } else {
+        position + up * (min_height - clearance)
+    }
 }
 
 /// Half-length of the player marker arms as a factor of the draw camera's
@@ -915,6 +975,20 @@ impl RuntimeWindow {
             let speed = fly_speed(altitude) * boost * camera.speed_factor();
             camera.move_local(intent * speed * dt);
             state = self.manager.update(self.player_camera.position());
+        }
+
+        // Player-terrain collision: the player never passes through the
+        // rendered terrain. The clamp pushes out along the local vertical
+        // only (sliding, not sticking) and runs every frame in player
+        // mode - after moves and after the anchor/flatten factor changed
+        // under the player. The navigation camera is exempt.
+        if terrain_collision_applies(self.mode) {
+            let clamped =
+                clamp_above_surface(self.player_camera.position(), &state, MIN_EYE_HEIGHT);
+            if clamped != self.player_camera.position() {
+                self.player_camera.set_position(clamped);
+                state = self.manager.update(self.player_camera.position());
+            }
         }
 
         // LOD + mesh pool: drain completed worker results, run the

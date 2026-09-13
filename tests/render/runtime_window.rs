@@ -395,3 +395,130 @@ fn player_marker_is_a_centered_three_bar_cross() {
         "morphed marker drifted from the player: {center:?} vs {morphed_player:?}"
     );
 }
+
+// --- Player-terrain collision -------------------------------------------
+
+use planet_crafter_engine::runtime::{anchor_up, surface_height};
+use planet_crafter_engine::testing::{
+    MIN_EYE_HEIGHT, clamp_above_surface, terrain_collision_applies,
+};
+
+/// The signed clearance of `position` above the rendered surface, along
+/// the local vertical (the collision invariant).
+fn clearance(state: &planet_crafter_engine::runtime::RuntimeState, position: Vec3) -> f32 {
+    (position - state.anchor).dot(anchor_up(state))
+        - surface_height(state, position).expect("position above the planet")
+}
+
+/// A manager/state pair for a player at `altitude` above the +Y pole.
+fn state_at(altitude: f32) -> planet_crafter_engine::runtime::RuntimeState {
+    let manager = PlanetRuntimeManager::new(config()).unwrap();
+    manager.update(config().planet_origin + Vec3::Y * (config().planet_radius + altitude))
+}
+
+#[test]
+fn collision_clamp_holds_at_flatten_zero() {
+    // Atmosphere/orbit layers: the surface is the unmorphed sphere.
+    let state = state_at(100.0);
+    assert_eq!(state.flatten_factor, 0.0);
+    let up = anchor_up(&state);
+    let ground = config().planet_origin + up * config().planet_radius;
+
+    // Below the surface: pushed out to the surface + minimum height.
+    let below = ground - up * 10.0;
+    let clamped = clamp_above_surface(below, &state, MIN_EYE_HEIGHT);
+    assert!((clearance(&state, clamped) - MIN_EYE_HEIGHT).abs() < 1e-3);
+
+    // Already above: unchanged.
+    let above = ground + up * 10.0;
+    assert_eq!(clamp_above_surface(above, &state, MIN_EYE_HEIGHT), above);
+
+    // Deep inside the planet body: pushed out in one step.
+    let inside = config().planet_origin + up * (config().planet_radius * 0.5);
+    let clamped = clamp_above_surface(inside, &state, MIN_EYE_HEIGHT);
+    assert!((clearance(&state, clamped) - MIN_EYE_HEIGHT).abs() < 1e-3);
+}
+
+#[test]
+fn collision_clamp_holds_at_partial_and_full_flatten() {
+    for altitude in [15.0, 0.0] {
+        let state = state_at(altitude);
+        assert!(state.flatten_factor > 0.0, "altitude {altitude}");
+        let up = anchor_up(&state);
+        let ground = config().planet_origin + up * config().planet_radius;
+
+        // Below the rendered (morphed) surface: pushed out along the
+        // local vertical to exactly the minimum clearance.
+        let below = ground - up * 5.0;
+        let clamped = clamp_above_surface(below, &state, MIN_EYE_HEIGHT);
+        let correction = clamped - below;
+        assert!(
+            correction.cross(up).length() < 1e-4,
+            "correction not purely vertical at altitude {altitude}: {correction:?}"
+        );
+        assert!(
+            (clearance(&state, clamped) - MIN_EYE_HEIGHT).abs() < 1e-3,
+            "altitude {altitude}: clearance {}",
+            clearance(&state, clamped)
+        );
+
+        // Exactly at the anchor: pushed up to the minimum height.
+        let clamped = clamp_above_surface(state.anchor, &state, MIN_EYE_HEIGHT);
+        assert!(clearance(&state, clamped) >= MIN_EYE_HEIGHT - 1e-3);
+    }
+}
+
+#[test]
+fn collision_slides_instead_of_sticking() {
+    // A move with a tangential and a downward component that ends below
+    // the surface: the clamp restores the clearance WITHOUT touching the
+    // tangential displacement (the correction is purely vertical).
+    let state = state_at(0.0);
+    let up = anchor_up(&state);
+    let tangent = Vec3::X;
+    let start = state.anchor + up * (MIN_EYE_HEIGHT + 2.0);
+    let moved = start + tangent * 30.0 - up * 10.0;
+    let clamped = clamp_above_surface(moved, &state, MIN_EYE_HEIGHT);
+
+    let correction = clamped - moved;
+    assert!(correction.dot(up) > 0.0, "must push out, not pull");
+    assert!(
+        correction.cross(up).length() < 1e-4,
+        "tangential motion changed: {correction:?}"
+    );
+    // The full tangential travel survived the clamp.
+    let tangential_travel = (clamped - start).dot(tangent);
+    assert!((tangential_travel - 30.0).abs() < 1e-3);
+    assert!(clearance(&state, clamped) >= MIN_EYE_HEIGHT - 1e-3);
+}
+
+#[test]
+fn collision_holds_across_the_descent() {
+    // Descending from above the sky top to the ground (flatten 0 -> 1):
+    // at every step a player pushed below the rendered surface is clamped
+    // back out, and the clearance still holds under the RECOMPUTED state
+    // (the anchor tracks the clamped position).
+    let manager = PlanetRuntimeManager::new(config()).unwrap();
+    let up = Vec3::Y;
+    for step in 0..20 {
+        let t = step as f32 / 19.0;
+        let altitude = 60.0 - 59.8 * t;
+        let ground = config().planet_origin + up * (config().planet_radius + altitude);
+        let state = manager.update(ground);
+        let below = ground - up * 3.0;
+        let clamped = clamp_above_surface(below, &state, MIN_EYE_HEIGHT);
+        let new_state = manager.update(clamped);
+        let new_clearance = surface_height(&new_state, clamped)
+            .map(|surface| (clamped - new_state.anchor).dot(anchor_up(&new_state)) - surface);
+        assert!(
+            new_clearance.is_none_or(|c| c >= MIN_EYE_HEIGHT - 0.05),
+            "altitude {altitude}: clearance {new_clearance:?} after re-anchor"
+        );
+    }
+}
+
+#[test]
+fn navigation_camera_is_exempt_from_collision() {
+    assert!(terrain_collision_applies(CameraMode::Player));
+    assert!(!terrain_collision_applies(CameraMode::Navigation));
+}

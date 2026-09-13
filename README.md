@@ -155,6 +155,14 @@ Controls:
 - **R** - respawn the player beyond the orbit threshold, facing the
   planet (back to the player camera)
 
+The player camera collides with the terrain: it can never pass through
+the rendered surface. After every move the player is clamped to a small
+eye height above the morphed surface (the authoritative surface-height
+query, consistent with what the terrain shader renders at every flatten
+factor), pushed out along the local vertical only - so the player slides
+along the ground instead of sticking. The navigation camera is exempt:
+it flies freely through anything.
+
 The base fly speed scales with altitude, so both orbit and ground level are
 reachable comfortably: the full space-to-ground sweep crosses every layer,
 and the overlay readouts update live along the way.

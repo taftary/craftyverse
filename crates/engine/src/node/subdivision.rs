@@ -8,7 +8,7 @@
 //! and [`unsplit_node`] refine or coarsen exactly one chunk of a live mesh,
 //! retargeting the neighboring links that pointed at the replaced nodes.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use glam::Vec3;
@@ -239,17 +239,32 @@ pub fn split_node_local(node: &NodeRef) -> NodeRef {
         let endpoints = [old_vertices[port], old_vertices[(port + 1) % 3]];
         let edge_midpoint = midpoint(endpoints[0], endpoints[1]);
         if neighbor.borrow().vertices.contains(&edge_midpoint) {
-            // The neighbor is a corner of an already split group at the new
-            // corners' generation: weld both half-edges corner-to-corner.
-            let neighbor_corners = corner_nodes(&group_center(neighbor));
+            // The neighbor is a corner at the new corners' generation: weld
+            // each half-edge to the corner that holds it. The counterpart
+            // is searched outward from the old neighbor instead of through
+            // its group center: after further local splits the group may
+            // not be atomic anymore (the center's links can point at
+            // grandchildren), while the corner nodes themselves are still
+            // the right weld targets. A counterpart that no longer exists
+            // (a group torn down past the bounded search) leaves the port
+            // open rather than panicking.
+            let target_level = center.borrow().level;
             for endpoint in endpoints {
                 let near = &corners[corner_near(&corners, endpoint)];
-                let other = &neighbor_corners[corner_near(&neighbor_corners, endpoint)];
+                let Some(other) = half_edge_counterpart(
+                    neighbor,
+                    endpoint,
+                    edge_midpoint,
+                    target_level,
+                    &corners,
+                ) else {
+                    continue;
+                };
                 link(
                     near,
                     port_on_edge(near, endpoint, edge_midpoint),
-                    other,
-                    port_on_edge(other, endpoint, edge_midpoint),
+                    &other,
+                    port_on_edge(&other, endpoint, edge_midpoint),
                 );
             }
         } else {
@@ -282,17 +297,19 @@ pub fn split_node_local(node: &NodeRef) -> NodeRef {
 /// four group members are destroyed (their links severed) before the
 /// retargeting links are wired.
 ///
+/// Returns `Some(parent)` when the group is complete and atomic (see
+/// [`split_group_members`]). Returns `None` — without touching the graph —
+/// when `center` is not the center of a complete group: a wrong name, a
+/// level-0 node, or a non-atomic group whose center or corner was split
+/// further and had its links retargeted to grandchildren. The non-atomic
+/// states are reachable through local operations (the [`lod`](crate::lod)
+/// scheduler splits group centers and corners as ordinary chunks), so they
+/// are reported, not panicked on.
+///
 /// The caller is responsible for merge eligibility under restricted
 /// subdivision: every node linked to the group must be at most at the group
 /// level, so the level difference across the shared edges stays at most 1
 /// after the merge. The [`lod`](crate::lod) scheduler enforces this.
-///
-/// Returns the new parent node.
-///
-/// # Panics
-///
-/// Panics when `center` is not the fully linked center of a split group
-/// (name not ending in `.C`, or a missing corner link).
 ///
 /// # Example
 ///
@@ -302,15 +319,14 @@ pub fn split_node_local(node: &NodeRef) -> NodeRef {
 ///
 /// let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
 /// let center = split_node_local(&mesh.faces[0]);
-/// let parent = unsplit_node(&center);
+/// let parent = unsplit_node(&center).unwrap();
 /// assert_eq!(parent.borrow().name, "planet.0");
 /// assert_eq!(parent.borrow().level, 0);
 /// destroy_mesh(&parent);
 /// ```
-pub fn unsplit_node(center: &NodeRef) -> NodeRef {
-    let (base, slot) = split_suffix(&center.borrow().name).expect("group center name has a suffix");
-    assert_eq!(slot, 3, "group center name must end in .C");
-    let [node_i, node_j, node_k] = corner_nodes(center);
+pub fn unsplit_node(center: &NodeRef) -> Option<NodeRef> {
+    let [node_i, node_j, node_k, center] = split_group_members(center)?;
+    let (base, _) = split_suffix(&center.borrow().name)?;
 
     let (origin, level, parity) = {
         let node = node_i.borrow();
@@ -340,7 +356,7 @@ pub fn unsplit_node(center: &NodeRef) -> NodeRef {
     // Collect the external links, then destroy the group, then retarget —
     // the same ordering as `unsplit_nodes`, so the destroy pass cannot
     // sever the new links.
-    let group: [&NodeRef; 4] = [&node_i, &node_j, &node_k, center];
+    let group: [&NodeRef; 4] = [&node_i, &node_j, &node_k, &center];
     let mut kept_links: Vec<(usize, NodeRef, usize)> = Vec::new();
     for child in group {
         let node = child.borrow();
@@ -362,23 +378,82 @@ pub fn unsplit_node(center: &NodeRef) -> NodeRef {
             link(&parent, port, &neighbor, back);
         }
     }
-    parent
+    Some(parent)
 }
 
-/// Returns the center node of the split group `corner` belongs to, found
-/// through the corner's link to the `"{base}.C"` node.
-fn group_center(corner: &NodeRef) -> NodeRef {
-    let node = corner.borrow();
-    let (base, slot) = split_suffix(&node.name).expect("corner of a split group");
-    assert!(slot < 3, "expected a corner node, not the group center");
-    let center_name = format!("{base}.C");
-    Rc::clone(
-        node.children
-            .iter()
-            .flatten()
-            .find(|child| child.borrow().name == center_name)
-            .expect("split group center is not linked"),
-    )
+/// The four members `[I, J, K, C]` of the split group `center` belongs to,
+/// when the group is complete and atomic.
+///
+/// `center` must be named `"{base}.C"`, be linked to exactly its three
+/// corner nodes named `"{base}.I"`, `"{base}.J"`, `"{base}.K"` through the
+/// split port layout, and all four members must share the same level
+/// `>= 1`. After further local operations the group may no longer be
+/// atomic - a corner that was split leaves the center's port retargeted to
+/// a grandchild - in which case this returns `None` instead of panicking.
+pub fn split_group_members(center: &NodeRef) -> Option<[NodeRef; 4]> {
+    let node = center.borrow();
+    let (base, slot) = split_suffix(&node.name)?;
+    if slot != 3 || node.level == 0 {
+        return None;
+    }
+    let level = node.level;
+    let corner = |port: usize, suffix: &str| {
+        let child = node.children[port].as_ref()?;
+        let child_ref = child.borrow();
+        (child_ref.name == format!("{base}.{suffix}") && child_ref.level == level)
+            .then(|| Rc::clone(child))
+    };
+    // The split port layout: center port 0 -> J, port 1 -> I, port 2 -> K.
+    let node_j = corner(0, "J")?;
+    let node_i = corner(1, "I")?;
+    let node_k = corner(2, "K")?;
+    Some([node_i, node_j, node_k, Rc::clone(center)])
+}
+
+/// Finds the node across the half-edge from `endpoint` to `midpoint` at
+/// `level`, searching outward from `start` (the recorded old neighbor) with
+/// a bounded breadth-first search.
+///
+/// The counterpart holds both vertices and has an open port on that edge;
+/// nodes in `exclude` (the new corners on the near side) never match. A
+/// small hop bound is enough: the counterparts of a well-formed split are
+/// at most a few links away, even when the neighbor's split group is no
+/// longer atomic (its center split further). A group torn down past the
+/// bound - only reachable by splitting nodes without the level-difference
+/// discipline of the [`lod`](crate::lod) scheduler - yields `None`.
+fn half_edge_counterpart(
+    start: &NodeRef,
+    endpoint: Vec3,
+    midpoint: Vec3,
+    level: u32,
+    exclude: &[NodeRef; 3],
+) -> Option<NodeRef> {
+    const MAX_HOPS: usize = 8;
+    let mut visited = HashSet::new();
+    let mut queue = VecDeque::from([(Rc::clone(start), 0usize)]);
+    while let Some((node, hops)) = queue.pop_front() {
+        if !visited.insert(Rc::as_ptr(&node)) {
+            continue;
+        }
+        {
+            let node_ref = node.borrow();
+            if node_ref.level == level
+                && node_ref.vertices.contains(&endpoint)
+                && node_ref.vertices.contains(&midpoint)
+                && !exclude.iter().any(|n| Rc::ptr_eq(n, &node))
+                && node_ref.children[port_on_edge(&node, endpoint, midpoint)].is_none()
+            {
+                return Some(Rc::clone(&node));
+            }
+        }
+        if hops == MAX_HOPS {
+            continue;
+        }
+        for child in node.borrow().children.iter().flatten() {
+            queue.push_back((Rc::clone(child), hops + 1));
+        }
+    }
+    None
 }
 
 /// Splits every node reachable from `first` into four new nodes, welds the

@@ -99,7 +99,10 @@ consumes it is in [`render`](render.md)). The curved atmosphere shell
     shader renders at the state's factor (the morph preserves lateral
     in-plane coordinates, so the height scales by `1 - flatten_factor`);
     `None` beyond the planet's silhouette. The headless query future
-    picking will use.
+    picking will use; the runtime window's player-terrain collision
+    already consumes it (the player clamp measures clearance above the
+    rendered surface along the same vertical, so collision and rendering
+    never disagree - see the [render specification](render.md)).
   - `precision_error_bound(state) -> f32` - the f32 rounding-error bound
     the floating origin keeps contained: the unit roundoff (2^-24) scaled
     by the player's distance from the anchor.

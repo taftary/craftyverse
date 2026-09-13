@@ -12,7 +12,7 @@ const EPSILON: f32 = 1e-3;
 
 /// Scheduler test configuration: level thresholds 400/200/100/50 with a
 /// 520/260/130/65 hysteresis band, budget 2, everything active.
-fn test_config() -> LodConfig {
+pub fn test_config() -> LodConfig {
     LodConfig {
         base_split_distance: 400.0,
         hysteresis_ratio: 1.3,
@@ -25,24 +25,24 @@ fn test_config() -> LodConfig {
 
 /// A radius-300 icosphere and the center of its first face (the player's
 /// anchor point, about 238 world units from the planet center).
-fn planet() -> (IcosphereMesh, Vec3) {
+pub fn planet() -> (IcosphereMesh, Vec3) {
     let mesh = build_icosphere("planet", 300.0, 0, Vec3::ZERO);
     let anchor = mesh.faces[0].borrow().center;
     (mesh, anchor)
 }
 
-fn scheduler(mesh: &IcosphereMesh, config: LodConfig) -> LodScheduler {
+pub fn scheduler(mesh: &IcosphereMesh, config: LodConfig) -> LodScheduler {
     LodScheduler::new(config, mesh.faces.clone()).unwrap()
 }
 
 /// Every live node, traversed from an active chunk (the scheduler's retired
 /// generations are unlinked and unreachable).
-fn live_nodes(scheduler: &LodScheduler) -> Vec<NodeRef> {
+pub fn live_nodes(scheduler: &LodScheduler) -> Vec<NodeRef> {
     collect_nodes(&scheduler.active_chunks()[0])
 }
 
 /// The level multiset of the live nodes, sorted, for stability comparisons.
-fn level_signature(scheduler: &LodScheduler) -> Vec<u32> {
+pub fn level_signature(scheduler: &LodScheduler) -> Vec<u32> {
     let mut levels: Vec<u32> = live_nodes(scheduler)
         .iter()
         .map(|node| node.borrow().level)
@@ -53,7 +53,7 @@ fn level_signature(scheduler: &LodScheduler) -> Vec<u32> {
 
 /// Runs `update` until the queue is empty and a frame performs no work.
 /// Asserts the per-frame budget on every frame.
-fn stabilize(scheduler: &mut LodScheduler, player: Vec3) {
+pub fn stabilize(scheduler: &mut LodScheduler, player: Vec3) {
     let budget = scheduler.config().operations_per_frame;
     for _ in 0..10_000 {
         let report = scheduler.update(player);
@@ -76,7 +76,7 @@ fn stabilize(scheduler: &mut LodScheduler, player: Vec3) {
 /// Asserts the node-graph invariants over the live mesh: reciprocal links,
 /// level difference at most 1 across every shared edge, watertight edges
 /// between equal-level neighbors, and exact T-junctions across levels.
-fn assert_graph_invariants(scheduler: &LodScheduler) {
+pub fn assert_graph_invariants(scheduler: &LodScheduler) {
     for node in live_nodes(scheduler) {
         let node_ref = node.borrow();
         for port in 0..3 {

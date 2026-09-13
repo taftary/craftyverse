@@ -281,7 +281,7 @@ fn split_rekeys_the_parent_slot_and_merge_collapses_the_group() {
     }
 
     // Merge back: the four group slots collapse into the parent's.
-    let parent = planet_crafter_engine::node::unsplit_node(&center);
+    let parent = planet_crafter_engine::node::unsplit_node(&center).unwrap();
     let report = FrameReport {
         merges: vec![parent.clone()],
         loaded: vec![parent.clone()],

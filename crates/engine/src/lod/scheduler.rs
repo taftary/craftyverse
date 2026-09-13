@@ -7,7 +7,7 @@ use std::rc::Rc;
 use glam::Vec3;
 
 use super::config::LodConfig;
-use crate::node::{NodeRef, collect_nodes, split_node_local, unsplit_node};
+use crate::node::{NodeRef, collect_nodes, split_group_members, split_node_local, unsplit_node};
 
 /// A queued topology operation. Excess work is queued, never dropped; the
 /// queue drains over the following frames.
@@ -194,9 +194,16 @@ impl LodScheduler {
                 Operation::Split(node) => {
                     let key = Operation::Split(Rc::clone(&node)).key();
                     self.queued.remove(&key);
-                    if !live_ptrs.contains(&(Rc::as_ptr(&node) as usize))
-                        || node.borrow().level >= self.config.max_level
-                    {
+                    let node_ref = node.borrow();
+                    let level = node_ref.level;
+                    let stale = !live_ptrs.contains(&(Rc::as_ptr(&node) as usize))
+                        || level >= self.config.max_level
+                        // Re-validate the threshold: the player may have
+                        // moved away since the request was queued.
+                        || player_position.distance(node_ref.center)
+                            >= self.config.split_threshold(level);
+                    drop(node_ref);
+                    if stale {
                         continue;
                     }
                     // Restricted subdivision: redirect to the coarsest
@@ -222,12 +229,27 @@ impl LodScheduler {
                     let Some(center) = find_group_center(&live, &base) else {
                         continue;
                     };
-                    if !merge_eligible(center) {
+                    // Names repeat across generations (a group can merge and
+                    // re-split under the same base name): validate the
+                    // resolved group's atomicity, level, and threshold
+                    // against the live node, not the queued name.
+                    let Some(members) = split_group_members(center) else {
+                        continue;
+                    };
+                    let group_level = members[3].borrow().level;
+                    if player_position.distance(group_parent_center(&members))
+                        <= self.config.merge_threshold(group_level - 1)
+                    {
+                        continue;
+                    }
+                    if !merge_eligible(&members) {
                         // A finer group blocks the merge; the evaluation
                         // pass re-queues it while the distance holds.
                         continue;
                     }
-                    let parent = unsplit_node(center);
+                    let Some(parent) = unsplit_node(center) else {
+                        continue;
+                    };
                     // Keep the traversal roots on live nodes.
                     for root in &mut self.roots {
                         if Rc::ptr_eq(root, center) {
@@ -262,10 +284,16 @@ impl LodScheduler {
             if level >= 1
                 && let Some(base) = group_base(&node_ref.name)
             {
-                let parent_center = group_parent_center(node);
-                if player_position.distance(parent_center) > self.config.merge_threshold(level - 1)
-                {
-                    merge_candidates.push((level, base));
+                // Only complete, atomic groups are merge candidates: a
+                // center whose corner was split further has its port
+                // retargeted to a grandchild and is skipped here.
+                if let Some(members) = split_group_members(node) {
+                    let parent_center = group_parent_center(&members);
+                    if player_position.distance(parent_center)
+                        > self.config.merge_threshold(level - 1)
+                    {
+                        merge_candidates.push((level, base));
+                    }
                 }
             }
         }
@@ -382,42 +410,24 @@ fn find_group_center<'a>(live: &'a [NodeRef], base: &str) -> Option<&'a NodeRef>
 /// Centroid of a split group's parent triangle: the corners hold the
 /// parent's `A` (`I.vertices[0]`), `B` (`J.vertices[1]`), and `C`
 /// (`K.vertices[2]`) vertices exactly.
-fn group_parent_center(center: &NodeRef) -> Vec3 {
-    let center_ref = center.borrow();
-    let node_i = center_ref.children[1].as_ref().expect("group corner I");
-    let node_j = center_ref.children[0].as_ref().expect("group corner J");
-    let node_k = center_ref.children[2].as_ref().expect("group corner K");
-    (node_i.borrow().vertices[0] + node_j.borrow().vertices[1] + node_k.borrow().vertices[2]) / 3.0
+fn group_parent_center(members: &[NodeRef; 4]) -> Vec3 {
+    (members[0].borrow().vertices[0]
+        + members[1].borrow().vertices[1]
+        + members[2].borrow().vertices[2])
+        / 3.0
 }
 
 /// Whether a split group may merge under restricted subdivision: every node
 /// linked to the group from outside must be at most at the group level, so
 /// the level difference across the shared edges stays at most 1 after the
 /// merge.
-fn merge_eligible(center: &NodeRef) -> bool {
-    let group_level = center.borrow().level;
-    let group = [
-        Rc::clone(center),
-        Rc::clone(
-            center.borrow().children[0]
-                .as_ref()
-                .expect("group corner J"),
-        ),
-        Rc::clone(
-            center.borrow().children[1]
-                .as_ref()
-                .expect("group corner I"),
-        ),
-        Rc::clone(
-            center.borrow().children[2]
-                .as_ref()
-                .expect("group corner K"),
-        ),
-    ];
-    group.iter().all(|member| {
+fn merge_eligible(members: &[NodeRef; 4]) -> bool {
+    let group_level = members[3].borrow().level;
+    members.iter().all(|member| {
         let member_ref = member.borrow();
         member_ref.children.iter().flatten().all(|neighbor| {
-            group.iter().any(|m| Rc::ptr_eq(m, neighbor)) || neighbor.borrow().level <= group_level
+            members.iter().any(|m| Rc::ptr_eq(m, neighbor))
+                || neighbor.borrow().level <= group_level
         })
     })
 }

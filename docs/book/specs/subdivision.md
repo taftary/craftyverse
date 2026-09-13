@@ -21,8 +21,11 @@ satisfies the geometry, direction, and link invariants of the
   back into its parents.
 - `split_node_local(node: &NodeRef) -> NodeRef` splits exactly one node of a
   live mesh and retargets the neighboring links.
-- `unsplit_node(center: &NodeRef) -> NodeRef` merges one split group back
-  into its parent.
+- `unsplit_node(center: &NodeRef) -> Option<NodeRef>` merges one complete,
+  atomic split group back into its parent.
+- `split_group_members(center: &NodeRef) -> Option<[NodeRef; 4]>` validates
+  that a center node's split group is complete and atomic, and returns its
+  members.
 
 ### split_node() Function Specification
 
@@ -162,8 +165,17 @@ local refinement operation the [LOD scheduler](lod.md) uses.
 3. Retarget every recorded link across its shared edge, resolving the ports
    geometrically with exact vertex comparison as in `split_nodes()`:
    - If the old neighbor is a corner of an already split group (its
-     vertices hold the shared edge's midpoint), both half-edges are welded
-     corner-to-corner; the edge stays watertight.
+     vertices hold the shared edge's midpoint), each half-edge is welded to
+     the corner that holds it. The counterpart corner is found by a bounded
+     breadth-first search outward from the old neighbor - not by navigating
+     through the neighbor's group center, because the group may no longer
+     be atomic: after the group center (or a sibling corner) was split
+     further, the corner's link to its `"{base}.C"` node was retargeted to
+     a grandchild, while the corner nodes themselves remain the right weld
+     targets. A counterpart that no longer exists (a group torn down past
+     the search bound, only reachable by splitting nodes without the
+     scheduler's level-difference discipline) leaves the port open instead
+     of panicking; the edge stays watertight whenever both corners exist.
    - If the old neighbor is one level coarser (its vertices hold the
      edge's endpoints but not its midpoint), only the corner near the
      edge's first endpoint (`node.vertices[p]`) links to the neighbor's
@@ -185,27 +197,37 @@ coarse neighbors first.
 **Signature**
 
 ```text
-unsplit_node(center: &NodeRef) -> NodeRef
+unsplit_node(center: &NodeRef) -> Option<NodeRef>
 ```
 
 The runtime counterpart of `unsplit_nodes()`, scoped to one split group:
 `center` is the group's center node (named `"{base}.C"`).
 
-1. Recover the corner nodes through the center's port layout and rebuild
-   the parent exactly as in `unsplit_nodes()` (vertices, UVs, ring values,
-   parity, origin, level, and base name all recovered from the corners).
-2. Collect every link from a group member to a node outside the group.
-3. `destroy()` the four group members, then retarget the collected links to
+1. Validate the group with `split_group_members()`: the center must be
+   named `"{base}.C"`, be linked to exactly its three corners
+   `"{base}.I"` / `"{base}.J"` / `"{base}.K"` through the split port
+   layout, and all four members must share the same level `>= 1`. When the
+   group is not complete and atomic - a wrong name, a level-0 node, or a
+   non-atomic group whose center or corner was split further and had its
+   links retargeted to grandchildren - the function returns `None` without
+   touching the graph. Non-atomic groups are reachable through local
+   operations (the LOD scheduler splits group centers and corners as
+   ordinary chunks), so they are reported, not panicked on.
+2. Rebuild the parent exactly as in `unsplit_nodes()` (vertices, UVs, ring
+   values, parity, origin, level, and base name all recovered from the
+   corners).
+3. Collect every link from a group member to a node outside the group.
+4. `destroy()` the four group members, then retarget the collected links to
    the surviving parent: the outside node keeps its port, and the parent
    inherits the corner's external port, which equals the parent edge's port
    number. The retargeting happens after the destroy pass so the cleanup
    cannot sever the new links - the same ordering as `unsplit_nodes()`.
 
-Returns the new parent node. Panics when `center` is not the fully linked
-center of a split group. The caller is responsible for merge eligibility
-under restricted subdivision: every node linked to the group must be at
-most at the group level, so the level difference across the shared edges
-stays at most 1 after the merge; the LOD scheduler enforces this.
+Returns `Some(parent)` for a complete, atomic group, `None` otherwise. The
+caller is responsible for merge eligibility under restricted subdivision:
+every node linked to the group must be at most at the group level, so the
+level difference across the shared edges stays at most 1 after the merge;
+the LOD scheduler enforces this.
 
 ### Rules
 

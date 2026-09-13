@@ -38,7 +38,9 @@ use geometry::{child_node, compute_directions};
 
 pub use icosphere::{IcosphereMesh, MAX_SUBDIVISIONS, build_icosphere};
 pub use ring::{DEFAULT_RING, RING_BANDS, assign_geodesic_ring_field, assign_planar_ring_field};
-pub use subdivision::{split_node, split_node_local, split_nodes, unsplit_node, unsplit_nodes};
+pub use subdivision::{
+    split_group_members, split_node, split_node_local, split_nodes, unsplit_node, unsplit_nodes,
+};
 pub use topology::{collect_nodes, destroy_mesh};
 pub use uv::{DEFAULT_UV, unfold_uvs};
 

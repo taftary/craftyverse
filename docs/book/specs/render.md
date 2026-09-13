@@ -334,7 +334,18 @@ three views, the **T** cycle, the checkbox panel and all its controls.
   is drawn through the textured pipeline with the same anchor-relative
   morph constants as the terrain (depth-tested, rebuilt per frame like
   the text buffer), sized by the draw camera's distance so it stays
-  visible from far away. Controls:
+  visible from far away. The player camera collides with the terrain
+  (`clamp_above_surface`, headless and unit-tested): every frame in
+  player mode the player is clamped to `MIN_EYE_HEIGHT` (0.5 world units,
+  a small eye height covering the chord sag of the finest rendered
+  triangles) above the RENDERED surface, measured with the authoritative
+  `surface_height` query - the exact morphed surface the terrain shader
+  renders at the current flatten factor. The push-out is purely along the
+  local vertical (`anchor_up`), so tangential movement is preserved and
+  the player slides along the ground instead of sticking; running it
+  every frame also catches the anchor/flatten factor changing under a
+  stationary player. The navigation camera is exempt
+  (`terrain_collision_applies`) and flies through anything. Controls:
   **left drag** = mouse look; **W/A/S/D** = move in the view plane;
   **Space/C** = rise/sink along world Y; **Shift** (hold) = x8 speed boost;
   **mouse wheel** = user speed multiplier (x1.25 per notch, clamped to
@@ -412,6 +423,8 @@ Folder module `crates/engine/src/render/`:
   **`FlyCamera`**, **`CameraMode`** (player / navigation), `culling_camera`
   and `draw_camera` (the camera-model policy), `fly_speed`,
   `clip_planes`, `chunk_bounds`, `morphed_chunk_bounds`,
+  `clamp_above_surface` (the player-terrain collision clamp, with
+  `MIN_EYE_HEIGHT` and the `terrain_collision_applies` policy),
   `player_marker_vertices`, `overlay_lines`, `flattening_lines`,
   `atmosphere_lines`, `lod_lines`,
   `pool_lines` and `visibility_lines` (unit-tested).

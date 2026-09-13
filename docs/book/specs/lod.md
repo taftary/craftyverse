@@ -66,14 +66,21 @@ One frame, in order:
 1. **Drain the queue within the budget.** At most `operations_per_frame`
    operations execute; each executed split or merge - forced neighbor
    splits included - consumes exactly one operation. Popped operations are
-   validated against the live node set; stale ones are dropped.
+   revalidated at execution time and dropped when stale: a split is dropped
+   when its node is no longer live, reached `max_level`, or is no longer
+   below its split threshold; a merge is dropped when its base name no
+   longer resolves to a live center, when the resolved group is not
+   complete and atomic (`split_group_members` - names repeat across
+   generations after a merge and re-split, so the name alone is never
+   enough), when the group is no longer beyond its merge threshold, or when
+   a finer group blocks it (re-evaluated on later frames).
 2. **Queue newly threshold-crossing chunks.** A chunk at level `L` closer
-   than `split_threshold(L)` is queued for a split; a split group whose
-   parent center is farther than `merge_threshold(L)` is queued for a
-   merge. Queued work is never dropped on arrival: excess work waits in the
-   queue and drains over the following frames. Merge candidates are queued
-   deepest-level first so blocking finer groups merge before the coarser
-   groups they touch.
+   than `split_threshold(L)` is queued for a split; a complete, atomic
+   split group whose parent center is farther than `merge_threshold(L)` is
+   queued for a merge. Queued work is never dropped on arrival: excess work
+   waits in the queue and drains over the following frames. Merge
+   candidates are queued deepest-level first so blocking finer groups merge
+   before the coarser groups they touch.
 3. **Recompute the active zone.** Chunks closer than `active_distance` to
    the player are loaded; the rest are unloaded. When fewer than
    `min_active_meshes` chunks are inside the zone, the nearest outside
