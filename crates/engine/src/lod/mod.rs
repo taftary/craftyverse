@@ -2,7 +2,8 @@
 //!
 //! Node-graph only - no GPU, window, or render dependency, so it is fully
 //! unit-testable headless. Each frame the [`LodScheduler`] reads the player
-//! position and decides which chunks split, merge, load, and unload, within
+//! position (and, via `update_with_camera`, the draw camera) and decides
+//! which chunks split, merge, load, and unload, within
 //! a hard per-frame operation budget. Topology changes go through the local
 //! refinement operation ([`split_node_local`](crate::node::split_node_local))
 //! and the local merge ([`unsplit_node`](crate::node::unsplit_node)); the

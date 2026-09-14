@@ -97,8 +97,9 @@ is first-person, attached to the player: the player position feeds the
 planet
 runtime manager and
 the chunk LOD scheduler every frame. The terrain is the live LOD chain:
-chunks split, merge, load and unload as the player approaches or leaves,
-and every transition only rewrites vertex data inside the fixed slots of
+chunks split, merge, load and unload as the player or the draw camera
+approaches or leaves (loading follows the player sphere, refinement
+follows the nearer of the two), and every transition only rewrites vertex data inside the fixed slots of
 the mesh pool (no GPU mesh object is ever created at runtime); chunk
 vertices
 are computed asynchronously by the pool's worker threads. Every frame a
@@ -135,7 +136,8 @@ A text overlay
   sky dome) and the shell radius multiplier
 - LOD scheduler: loaded chunk count, per-level chunk histogram, the current
   level floor, queued operations, per-frame budget usage, cumulative
-  split/merge counters
+  split/merge counters, draw-camera distance, coarse-shell vs near-field
+  chunk counts
 - mesh pool: pool capacity, slots used/free, queued assignments, vertex
   writes per frame, pending async jobs, worker activity
 - visibility: active camera (player / navigation), chunks visible vs
@@ -153,7 +155,8 @@ Controls:
   new minimum subdivision level
 - **F** - toggle the navigation camera: a free-fly spectator for
   navigating space. It changes only the viewpoint - the player stays put,
-  LOD/loading keep following the player, and culling keeps following the
+  loading keeps following the player, refinement follows the nearer of
+  the player and the draw camera, and culling keeps following the
   player camera, so the navigation camera sees whatever is loaded around
   the player, gaps included. Toggling back returns to the player camera
 - **R** - respawn the player beyond the orbit threshold, facing the

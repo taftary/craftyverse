@@ -15,10 +15,15 @@ specification](mesh-pool.md)), and for frustum and horizon culling
 (feature 4, see the [visibility specification](visibility.md)). The
 shader-side terrain morph that widens the use
 of the skirt metadata (feature 5) is **Planned**; the pool generates the
-border skirts in the vertex data today.
+border skirts in the vertex data today. The hybrid camera-aware update
+with the global coarse shell (feature 7,
+`plan/features/07-camera-aware-lod.md`) and the altitude-driven active
+zone with deep near-field LOD (feature 8,
+`plan/features/08-terrain-ground-scale.md`) are **Current baseline**.
 
-The scheduler consumes player position only. Player orientation never
-participates in any decision.
+The scheduler consumes player position for loading in every mode; the
+hybrid update additionally consumes the draw camera position for
+refinement. Player orientation never participates in any decision.
 
 ### Structure
 
@@ -45,6 +50,15 @@ participates in any decision.
     replacement.
   - `LodScheduler::update(player_position) -> FrameReport` - the per-frame
     update; panics on a non-finite position (internal invariant).
+    Single-reference form of `update_with_camera`.
+  - `LodScheduler::update_with_camera(player_position, camera_position) -> FrameReport` -
+    the hybrid per-frame update (feature 7): loading stays rooted at the
+    player while refinement tests the nearer of the two positions;
+    panics on a non-finite position.
+  - `LodScheduler::set_active_distance(distance) -> Result<(), LodConfigError>` -
+    adjusts the active-zone radius live (the runtime window drives it from
+    the flatten factor, feature 8); rejects a non-positive or non-finite
+    radius.
   - `LodScheduler::active_chunks() -> &[NodeRef]` - the current active
     chunk set.
   - `LodScheduler::set_min_level(min_level) -> Result<(), LodConfigError>` -
@@ -87,15 +101,20 @@ One frame, in order:
    on arrival: excess work waits in the queue and drains over the following
    frames. Merge candidates are queued deepest-level first so blocking
    finer groups merge before the coarser groups they touch.
-3. **Recompute the active zone.** Chunks closer than `active_distance` to
-   the player are loaded; the rest are unloaded. When fewer than
-   `min_active_meshes` chunks are inside the zone, the nearest outside
-   chunks load to reach the minimum.
+3. **Recompute the active zone.** The active set is the union of the
+   player sphere (chunks closer than `active_distance` to the player) and
+   the global coarse shell (every live chunk at or below `min_level`),
+   ordered by hybrid distance; the rest are unloaded. When fewer than
+   `min_active_meshes` chunks are inside the union, the nearest outside
+   chunks (hybrid order) load to reach the minimum.
 
 ### Rules
 
-- **Metric.** Every decision uses the distance from the player position to
-  the chunk center (`Node::center`); merges use the parent triangle's
+- **Metric.** Loading decisions use the distance from the player position
+  to the chunk center (`Node::center`); refinement tests the nearer of
+  the player and the camera against the split threshold (either pulls
+  detail in) and against the higher merge threshold (both must be far to
+  coarsen); merges use the parent triangle's
   centroid, recovered from the group corners.
 - **Hysteresis.** Splits and merges use strict comparisons against separate
   thresholds (`distance < split_threshold`, `distance > merge_threshold`).
@@ -119,9 +138,14 @@ One frame, in order:
   recovery, and explicit cleanup of retired generations (retired nodes are
   left unlinked or destroyed; no `Rc` cycle leaks).
 - **Active zone.** The zone is a full sphere around the player position;
-  chunks load in all directions, including behind the camera. Loading and
+  chunks load in all directions, including behind the camera. The global
+  coarse shell (every live chunk at or below `min_level`) is always
+  active on top, so deep space shows a closed planet. Loading and
   unloading only change active-set membership - the node graph itself stays
-  resident so neighbor links remain intact.
+  resident so neighbor links remain intact. The runtime window shrinks the
+  radius with altitude (0.75 radii in orbit to 0.05 at the surface,
+  feature 8) and refines the near field to level 7 within a budget of 8
+  operations per frame (feature 7).
 - **Crack masking.** With the level difference bounded, the residual
   T-junction seams along chunk borders are metadata (`border_states`) for
   the skirt shader of the runtime window; no runtime cross-chunk vertex

@@ -126,7 +126,11 @@ void main() {
 /// effect from the interpolated barycentric coordinates, the parity sign,
 /// the radial direction and the ring field — never the UVs, so the
 /// procedural output is seam-independent. The effect functions mirror
-/// `render::procedural` formula-for-formula.
+/// `render::procedural` formula-for-formula. Mode 8 (diffuse, the runtime
+/// window's terrain mode) additionally applies the feature-8 ground cue:
+/// a flatten-gated micro checker (visual only, no CPU mirror) plus a
+/// flatten- and distance-gated haze toward the horizon color, so dense
+/// near ground reads detailed and the far field melts into the haze.
 pub const TEX_FRAG: &str = r#"
 #version 450
 layout(location = 0) in vec2 uv;
@@ -201,7 +205,16 @@ void main() {
     } else if (pc.mode == 7u) {
         color = normal * 0.5 + 0.5;
     } else if (pc.mode == 8u) {
-        color = vec3(max(dot(normal, LIGHT_DIR), 0.0));
+        // Runtime terrain mode (feature 8 ground cue, visual only): the
+        // Lambert term carries a flatten-gated micro checker (re-tiling
+        // per leaf, so finer LOD reads finer) and melts into horizon haze
+        // with flatten-gated distance. At flatten 0 this is plain diffuse.
+        float lambert = max(dot(normal, LIGHT_DIR), 0.0);
+        float micro = mix(1.0, 0.85 + 0.15 * checker(bary, parity), pc.flatten);
+        float dist = length(pc.camera_pos - world_pos);
+        float haze = pc.flatten * smoothstep(50.0, 600.0, dist);
+        vec3 ground = vec3(lambert * micro);
+        color = mix(ground, vec3(0.75, 0.85, 0.95), haze * 0.55);
     } else if (pc.mode == 9u) {
         float t = dot(normal, vec3(0.0, 1.0, 0.0)) * 0.5 + 0.5;
         color = vec3(mod(floor(t * LATITUDE_BANDS), 2.0));

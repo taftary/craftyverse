@@ -97,10 +97,10 @@ pub use renderer::panel_item_at;
 pub use renderer::pixel_matrix;
 #[cfg(feature = "test-internals")]
 pub use runtime_window::{
-    CameraMode, FlyCamera, LodReadout, MIN_EYE_HEIGHT, VisibilityReadout, atmosphere_lines,
-    chunk_bounds, clamp_above_surface, clip_planes, culling_camera, draw_camera, flattening_lines,
-    fly_speed, lod_lines, morphed_chunk_bounds, overlay_lines, player_marker_vertices, pool_lines,
-    terrain_collision_applies, visibility_lines,
+    CameraMode, FlyCamera, LodReadout, MIN_EYE_HEIGHT, VisibilityReadout, active_distance_for,
+    atmosphere_lines, chunk_bounds, clamp_above_surface, clip_planes, culling_camera, draw_camera,
+    flattening_lines, fly_speed, hybrid_lines, lod_lines, morphed_chunk_bounds, overlay_lines,
+    player_marker_vertices, pool_lines, terrain_collision_applies, visibility_lines,
 };
 #[cfg(feature = "test-internals")]
 pub use setup::device_type_rank;

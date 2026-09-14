@@ -14,10 +14,11 @@
 //! [`LodScheduler::update`], and the resulting readouts are shown as a text
 //! overlay (same glyph-atlas pattern as the viewer's labels). **F** toggles
 //! the navigation camera: a free-fly spectator camera for navigating space
-//! that changes nothing but the viewpoint - LOD/loading keep following the
-//! player and culling keeps following the PLAYER camera (Decision 1 of
-//! `plan/RELATED.md`), so the navigation camera sees whatever the player
-//! camera would, gaps included. A small world-space cross marks the player
+//! that changes nothing but the viewpoint - loading keeps following the
+//! player, refinement follows the nearer of the player and the draw camera
+//! (feature 7, Decision 7 of `plan/RELATED.md`), and culling keeps
+//! following the PLAYER camera (Decision 1 of `plan/RELATED.md`), so the
+//! navigation camera sees whatever the player camera would, gaps included. A small world-space cross marks the player
 //! position in both camera modes. Only the chunks that
 //! survive the visibility pass
 //! ([`cull_chunks`](crate::visibility::cull_chunks): frustum plus
@@ -127,19 +128,46 @@ fn default_workers() -> usize {
 
 /// The LOD configuration of the runtime window's planet, derived from the
 /// planet radius: splits begin at 1.5 planet radii (geometric x2 per level
-/// from there), the active zone is a sphere of 0.75 radii around the player.
-/// The level-1 floor keeps the whole planet refined one generation past the
-/// icosahedron, so it reads as a sphere from any distance.
+/// from there), the active zone shrinks from a sphere of 0.75 radii around
+/// the player in orbit to 0.05 radii at the surface (see
+/// [`active_distance_for`], driven by the flatten factor each frame). The
+/// level-1 floor keeps the whole planet refined one generation past the
+/// icosahedron, so it reads as a sphere from any distance; the global
+/// coarse shell (feature 7) keeps that shell loaded from deep space. Level
+/// 7 is the depth cap (feature 8): level 6 splits within about 0.023 radii
+/// and level 7 within about 0.012 radii, giving meter-scale triangles near
+/// the ground at radius 300. The budget of 8 operations per frame fills the
+/// shell promptly; excess queues and drains.
 fn lod_config(config: &PlanetConfig) -> LodConfig {
     LodConfig {
         base_split_distance: 1.5 * config.planet_radius,
         hysteresis_ratio: 1.3,
-        max_level: 4,
+        max_level: 7,
         min_level: 1,
-        operations_per_frame: 2,
+        operations_per_frame: 8,
         active_distance: 0.75 * config.planet_radius,
         min_active_meshes: 20,
     }
+}
+
+/// The active-zone radius for one frame (feature 8): 0.75 planet radii in
+/// orbit (`flatten_factor = 0`) shrinking linearly to 0.05 radii at the
+/// surface (`flatten_factor = 1`). The deep near field (level 6-7) then
+/// fits the fixed pool next to the global coarse shell. Pure and headless,
+/// unit-tested.
+pub fn active_distance_for(flatten_factor: f32, planet_radius: f32) -> f32 {
+    let flatten = flatten_factor.clamp(0.0, 1.0);
+    planet_radius * (0.75 - 0.70 * flatten)
+}
+
+/// The hybrid LOD readout lines of the debug overlay (feature 7): the draw
+/// camera's distance to the planet center plus the coarse-shell vs
+/// near-field chunk counts. Pure formatting, unit-tested headless.
+pub fn hybrid_lines(camera_distance: f32, coarse_chunks: usize, near_chunks: usize) -> Vec<String> {
+    vec![
+        format!("camera distance:    {camera_distance:.1}"),
+        format!("shell/near chunks:  {coarse_chunks}/{near_chunks}"),
+    ]
 }
 
 /// Mouse-look sensitivity, in radians per pixel of drag.
@@ -791,8 +819,11 @@ impl RuntimeWindow {
         };
         // Prime the scheduler and the pool from the spawn position so the
         // initial active set (and its slot assignments) exists before the
-        // first frame.
-        let report = window.scheduler.update(window.player_camera.position());
+        // first frame. Both references coincide at spawn.
+        let report = window.scheduler.update_with_camera(
+            window.player_camera.position(),
+            window.player_camera.position(),
+        );
         window.pool.apply_report(&report);
         window
     }
@@ -902,8 +933,9 @@ impl RuntimeWindow {
                 // Toggle the navigation camera: entering spectator mode
                 // continues from the current view; the player camera (and
                 // the player) stays put while the navigation camera flies.
-                // LOD/loading follow the player and culling follows the
-                // player camera in every mode (Decision 1).
+                // Loading follows the player, refinement follows the nearer
+                // of the player and the draw camera, and culling follows the
+                // player camera in every mode (Decisions 1 and 7).
                 self.mode = match self.mode {
                     CameraMode::Player => {
                         self.nav_camera = self.player_camera;
@@ -1011,19 +1043,27 @@ impl RuntimeWindow {
         }
 
         // LOD + mesh pool: drain completed worker results, run the
-        // scheduler for this frame, and dispatch the new vertex jobs. LOD
-        // and loading follow the player, never a camera (Decision 1).
+        // scheduler for this frame, and dispatch the new vertex jobs.
+        // Loading follows the player; refinement follows the nearer of the
+        // player and the draw camera (feature 7, Decision 7). The active
+        // zone shrinks with altitude via the flatten factor (feature 8).
         let outcome = self.pool.poll();
         self.vertex_writes = outcome.vertex_writes;
-        let report = self.scheduler.update(self.player_camera.position());
+        let viewport = renderer.viewport();
+        let draw_camera = *draw_camera(&self.player_camera, &self.nav_camera, self.mode);
+        let _ = self.scheduler.set_active_distance(active_distance_for(
+            state.flatten_factor,
+            config.planet_radius,
+        ));
+        let report = self
+            .scheduler
+            .update_with_camera(self.player_camera.position(), draw_camera.position());
         self.operations_used = report.splits.len() + report.merges.len();
         self.total_splits += report.splits.len() as u64;
         self.total_merges += report.merges.len() as u64;
         self.pool.apply_report(&report);
         let stats = self.pool.stats();
 
-        let viewport = renderer.viewport();
-        let draw_camera = *draw_camera(&self.player_camera, &self.nav_camera, self.mode);
         let draw_distance = draw_camera.position().distance(config.planet_origin);
         let (near, far) = clip_planes(draw_distance, config.planet_radius);
         // Floating-origin rendering (feature 5): the draw transform and the
@@ -1093,16 +1133,22 @@ impl RuntimeWindow {
         for chunk in chunks {
             *histogram.entry(chunk.borrow().level).or_default() += 1;
         }
+        let floor = self.scheduler.config().min_level;
+        let coarse = chunks
+            .iter()
+            .filter(|chunk| chunk.borrow().level <= floor)
+            .count();
         lines.extend(lod_lines(&LodReadout {
             active_chunks: chunks.len(),
             level_histogram: histogram.into_iter().collect(),
-            min_level: self.scheduler.config().min_level,
+            min_level: floor,
             queued_operations: self.scheduler.queued_operations(),
             operations_budget: self.scheduler.config().operations_per_frame,
             operations_used: self.operations_used,
             total_splits: self.total_splits,
             total_merges: self.total_merges,
         }));
+        lines.extend(hybrid_lines(draw_distance, coarse, chunks.len() - coarse));
         lines.extend(pool_lines(&stats, self.vertex_writes));
         lines.extend(visibility_lines(&VisibilityReadout {
             camera: self.mode,

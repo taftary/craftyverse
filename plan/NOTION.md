@@ -177,4 +177,18 @@ The runtime must support the following ordered layers:
 - Single terrain shader.
 - Single curved‑atmosphere shader.
 - No per‑frame CPU terrain generation.
-- Hard, configurable limit on LOD operations per frame (initially 2).
+- Hard, configurable limit on LOD operations per frame (initially 2;
+  the runtime window tunes to 8 with the camera-aware scheduler).
+
+## **Enhancement Addendum (Features 7-8)**
+
+- LOD refinement is hybrid: loading follows the player sphere, splits
+  react to the nearer of the player and the draw camera, merges require
+  the nearer distance to clear the higher merge threshold (both
+  viewpoints far to coarsen; same geometric thresholds and hysteresis).
+- A global coarse shell (every chunk at or below the level floor) stays
+  loaded from any distance, so deep space always shows a closed planet.
+- Terrain-level ground is exactly flat, subdivided to level 7 only near
+  the player (active zone shrinks from 0.75 radii in orbit to 0.05 radii
+  at the surface), with micro shading detail and horizon haze selling
+  the scale. No height displacement.

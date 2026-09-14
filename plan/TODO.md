@@ -27,6 +27,8 @@ just headless tests.
 | 4 | Visibility | `plan/features/04-visibility.md` | 1, 3 | Done |
 | 5 | Ground Flattening | `plan/features/05-ground-flattening.md` | 1, 3 | Done |
 | 6 | Atmosphere | `plan/features/06-atmosphere.md` | 1 | Done |
+| 7 | Camera-Aware LOD | `plan/features/07-camera-aware-lod.md` | 2, 3, 4 | Done |
+| 8 | Terrain Ground Scale | `plan/features/08-terrain-ground-scale.md` | 1, 2, 3, 5, 6 | Done |
 
 ## 1. Planet Runtime Manager
 
@@ -102,6 +104,32 @@ just headless tests.
 - [x] GPU-gated space-to-ground sweep scenario
 - [x] Debug screen: active atmosphere state (none / rim / scattering /
       fog / sky dome), normalized distance factor, shell radius multiplier
+
+## 7. Camera-Aware LOD
+
+- [x] Hybrid metric: splits and merges test the nearer of the player
+      and the camera, same 1.3x hysteresis, no oscillation
+- [x] Global coarse shell: all chunks at or below `min_level` always
+      active (closed sphere from space)
+- [x] Active set orders by hybrid distance for pool contention; budget 8
+      ops/frame with queued drain
+- [x] Culling unchanged (player camera in every mode)
+- [x] Headless tests: shell closure, hybrid split/merge, budget, invariants
+- [x] Debug screen: camera distance, coarse-shell vs near-field counts
+
+## 8. Terrain Ground Scale
+
+- [x] Runtime `max_level` 7 with geometric thresholds (L6 ~0.023R,
+      L7 ~0.012R split distance)
+- [x] Altitude-driven active zone: 0.75R in orbit to 0.05R at surface via
+      live setter from `flatten_factor`
+- [x] Perfectly flat relief: tangent plane at factor 1, height query and
+      collision unchanged
+- [x] Ground shading: flatten-gated micro detail plus distance-gated
+      horizon haze in the single terrain shader (visual only)
+- [x] Headless tests: zone lerp, flatness, near-field fit in pool 1024
+- [x] Debug screen: existing flatten/world-flatten lines plus feature 7
+      camera/shell lines
 
 ## Definition of done (every feature)
 

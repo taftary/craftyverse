@@ -5,9 +5,10 @@ use glam::{Vec2, Vec3};
 use planet_crafter_engine::node::{build_icosphere, destroy_mesh};
 use planet_crafter_engine::runtime::{PlanetConfig, PlanetRuntimeManager, PlanetaryLayer};
 use planet_crafter_engine::testing::{
-    CameraMode, FlyCamera, LodReadout, PoolStats, VisibilityReadout, chunk_bounds, clip_planes,
-    culling_camera, draw_camera, flattening_lines, fly_speed, lod_lines, morphed_chunk_bounds,
-    overlay_lines, player_marker_vertices, pool_lines, visibility_lines,
+    CameraMode, FlyCamera, LodReadout, PoolStats, VisibilityReadout, active_distance_for,
+    chunk_bounds, clip_planes, culling_camera, draw_camera, flattening_lines, fly_speed,
+    hybrid_lines, lod_lines, morphed_chunk_bounds, overlay_lines, player_marker_vertices,
+    pool_lines, visibility_lines,
 };
 
 fn config() -> PlanetConfig {
@@ -228,6 +229,25 @@ fn lod_lines_report_the_scheduler_state() {
     assert!(joined.contains("queued operations:  3"), "{joined}");
     assert!(joined.contains("budget used:        2/2"), "{joined}");
     assert!(joined.contains("splits/merges:      120/45"), "{joined}");
+}
+
+#[test]
+fn active_distance_shrinks_from_orbit_to_surface() {
+    assert!((active_distance_for(0.0, 300.0) - 225.0).abs() < 1e-3);
+    assert!((active_distance_for(1.0, 300.0) - 15.0).abs() < 1e-3);
+    let mid = active_distance_for(0.5, 300.0);
+    assert!(mid > 15.0 && mid < 225.0, "{mid}");
+    // Out-of-range factors clamp instead of extrapolating.
+    assert!((active_distance_for(-2.0, 300.0) - 225.0).abs() < 1e-3);
+    assert!((active_distance_for(2.0, 300.0) - 15.0).abs() < 1e-3);
+}
+
+#[test]
+fn hybrid_lines_report_camera_and_shell_counts() {
+    let lines = hybrid_lines(5200.0, 80, 12);
+    let joined = lines.join("\n");
+    assert!(joined.contains("camera distance:    5200.0"), "{joined}");
+    assert!(joined.contains("shell/near chunks:  80/12"), "{joined}");
 }
 
 #[test]

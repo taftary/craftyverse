@@ -288,7 +288,14 @@ fn active_zone_loads_and_unloads_with_the_player() {
     let assert_zone = |scheduler: &LodScheduler, player: Vec3| {
         assert!(!scheduler.active_chunks().is_empty());
         for chunk in scheduler.active_chunks() {
-            assert!(player.distance(chunk.borrow().center) < 150.0);
+            // The player sphere plus the global coarse shell (level 0 is
+            // the floor here): shell chunks stay loaded from any distance.
+            let node_ref = chunk.borrow();
+            assert!(
+                player.distance(node_ref.center) < 150.0 || node_ref.level == 0,
+                "chunk outside the zone without shell membership: {}",
+                node_ref.name
+            );
         }
     };
     assert_zone(&scheduler, anchor);
@@ -298,12 +305,22 @@ fn active_zone_loads_and_unloads_with_the_player() {
             .any(|node| anchor.distance(node.borrow().center) >= 150.0)
     );
 
-    // Teleport to the opposite side: the old zone unloads, the new loads.
+    // Teleport to the opposite side: the old near field unloads
+    // immediately; the coarse shell was already loaded there, so the new
+    // side's detail loads as the queued splits drain over following
+    // frames.
     let opposite = -anchor;
     let report = scheduler.update(opposite);
     assert!(!report.unloaded.is_empty());
-    assert!(!report.loaded.is_empty());
     assert_zone(&scheduler, opposite);
+    stabilize(&mut scheduler, opposite);
+    assert_zone(&scheduler, opposite);
+    let max_level = live_nodes(&scheduler)
+        .iter()
+        .map(|node| node.borrow().level)
+        .max()
+        .unwrap();
+    assert_eq!(max_level, config.max_level);
     destroy_mesh(&scheduler.active_chunks()[0]);
 }
 

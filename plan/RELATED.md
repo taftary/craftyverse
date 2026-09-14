@@ -379,6 +379,40 @@ This preserves the existing node and icosphere logic while leaving room for mobi
 - Consequence: runtime work cannot regress the node-system viewer, and
   the two windows can evolve independently.
 
+### Decision 7: Hybrid camera-aware LOD with a global coarse shell
+
+- Loading stays rooted at the player (active-zone sphere), refinement
+  tests the nearer of the two references: splits against the split
+  threshold (either viewpoint pulls detail in), merges against the
+  higher merge threshold (both viewpoints must be far to coarsen), same
+  geometric thresholds and 1.3x hysteresis, so the band stays stable.
+- Every live chunk at or below `min_level` is always active: the level-1
+  floor yields a closed 80-chunk shell from any distance, fixing the
+  deep-space partial planet (20 nearest of 80).
+- The per-frame budget moves to 8 operations (forced neighbor splits
+  included) so the shell fills promptly; excess still queues.
+- Culling is unchanged: the player camera drives frustum and horizon in
+  every mode (Decision 1); navigation-mode gaps stay intentional.
+- Consequence: `update(player)` delegates to
+  `update_with_camera(player, player)`; the scheduler orders the active
+  set by hybrid distance for pool contention.
+
+### Decision 8: Near-field deep LOD with flat relief and shading cues
+
+- Ground detail is geometry plus shading, never displacement: `max_level`
+  7 for the runtime window, thresholds unchanged (L6 at about 0.023R,
+  L7 at about 0.012R from a 1.5R base), relief exactly the tangent
+  plane at full flatten.
+- The active zone shrinks with altitude (0.75R in orbit to 0.05R at the
+  surface, driven by `flatten_factor`), so the deep near field fits the
+  1024-slot pool next to the global shell.
+- The huge-planet cue combines dense near triangles (meter-scale at
+  radius 300), a flatten-gated micro checker in the Diffuse branch, and
+  a distance-gated horizon haze; the procedural CPU reference is
+  intentionally unextended (visual only).
+- Consequence: `surface_height` and `clamp_above_surface` are unchanged;
+  at factor 1 the world is the tangent plane.
+
 ## Open Questions in NOTION.md
 
 All four questions are resolved; see the Decisions section. The original
@@ -425,6 +459,10 @@ Each phase is independently testable, and earlier phases unblock later ones:
    Decision 3.
 6. Atmosphere. Curved shell rendering and layer-driven blending (reads as
    a sky dome at full flatten, per Decision 3).
+7. Camera-aware LOD. Hybrid player/camera refinement with a global
+   coarse shell and a budget of 8 operations per frame, per Decision 7.
+8. Terrain ground scale. Near-field deep LOD to level 7 with an
+   altitude-driven active zone and flat shading cues, per Decision 8.
 
 Each phase has a feature specification in `plan/features/` (one file per
 phase) and is tracked in `plan/TODO.md`.
